@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Live stills</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="tj-panels.css">
+<style>
+/* ---------- mockup-only additions: everything below is the proposal ---------- */
+.stageWrap { display: flex; flex-direction: column; }
+.boardArea { position: relative; inset: auto; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 12px; background: var(--bg); }
+.mockBoard { position: relative; width: min(100%, calc((100dvh - 300px) * 1.294)); aspect-ratio: 4096 / 3165; background: #f4f4f6; box-shadow: 0 0 14px rgba(0,0,0,.16); overflow: hidden; }
+.mockBoard img.still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* empty live board: the pitch's own fallback text, made into a control */
+.stillEmpty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 16px; color: #9ca3af; font-size: 15px; line-height: 1.4; }
+.stillEmpty strong { color: var(--ink); font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
+.stillEmpty p { margin: 0 0 10px; }
+.emptyBtns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.emptyBtns .fileBtn { font: inherit; font-size: 13px; padding: 9px 14px; }
+.touchOnly { display: none; }
+@media (pointer: coarse) { .touchOnly { display: inline-block; } .deskOnly { display: none !important; } }
+
+/* drag-over: the selected ring the app already uses, with the toast as the label */
+.dropVeil { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 4px var(--card); background: rgba(0,0,0,.08); }
+.dropVeil .toast { display: flex; flex-direction: column; gap: 2px; }
+.dropVeil .toast small { opacity: .7; font-size: 12px; }
+.mockBoard.is-drag .dropVeil { display: flex; }
+
+/* on-board annotations, to show they survive a replace */
+.mk { position: absolute; width: 3.2%; aspect-ratio: 1; border-radius: 50%; background: #e02020; border: 2px solid #0b0b0e; transform: translate(-50%, -50%); }
+.mk.b { background: #1e2f6f; }
+.mkArrow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+.stillChoice .setItem { flex: none; }
+.stillChoice .carryImportPreviews span { flex-basis: 96px; height: 74px; }
+
+/* the stills strip: the background picker's tiles, board-sized */
+.stills { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--panel); overflow-x: auto; scrollbar-width: none; }
+.stills::-webkit-scrollbar { display: none; }
+.thumb, .thumbAdd { flex: none; position: relative; width: 72px; aspect-ratio: 4096/3165; padding: 0; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); background: var(--bar); cursor: pointer; }
+/* a transition is the gap between two stills: the Boards list's link chip, in the strip */
+.cutChip { flex: none; align-self: flex-start; margin-top: 16px; min-height: 24px; padding: 2px 8px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 13px; background: var(--bar); color: var(--ink-soft); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.cutChip svg { width: 12px; height: 12px; }
+.cutChip.on { border-color: var(--ink); color: var(--ink); }
+.transSheet .setItem, .transSheet .setGroup { flex: none; }
+/* the sheet shows the transition itself, looping, rather than describing it */
+.transPreview { position: relative; flex: none; width: 100%; max-width: 360px; align-self: center; aspect-ratio: 4096/3165; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--bar); }
+.transPreview img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.transPreview .pm { position: absolute; inset: 0; }
+.transPreview .mk { width: 3.6%; border-width: 1.5px; }
+.transCap { align-self: center; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.transNote { margin: 0 4px; font-size: 12px; color: var(--ink-soft); line-height: 1.4; }
+.shot { flex: none; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.steps { display: flex; gap: 4px; height: 5px; }
+.steps i { width: 5px; height: 5px; border-radius: 50%; background: var(--pill); }
+.shot.current .steps i.on { background: var(--ink); }
+#marks, #marksNext { position: absolute; inset: 0; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb.current { border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink), inset 0 0 0 2px var(--card); }
+.thumbAdd { display: grid; place-items: center; border-style: dashed; border-color: var(--pill); background: none; color: var(--ink-soft); }
+.thumbAdd svg { width: 20px; height: 20px; }
+
+
+/* mockup controls, not part of the proposal */
+.mockNav { flex: none; display: flex; gap: 6px; padding: 6px 10px; background: #1d1d1f; overflow-x: auto; scrollbar-width: none; }
+.mockNav button { flex: none; font: inherit; font-size: 12px; color: #fff; background: rgba(255,255,255,.1); border: 0; border-radius: 999px; padding: 5px 11px; cursor: pointer; }
+.mockNav button.on { background: #fff; color: #1d1d1f; font-weight: 600; }
+.toastBand { top: auto !important; bottom: 110px !important; }
+.t-toast { opacity: 0; transition: opacity .25s, transform .25s; transform: translateY(8px); }
+.t-toast.is-open { opacity: 1; transform: none; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+<div class="mockNav" id="mockNav">
+  <button data-state="empty">1 Empty</button>
+  <button data-state="drag">2 Drag over</button>
+  <button data-state="choice">3 Paste choice</button>
+  <button data-state="strip">4 Slides</button>
+  <button data-state="play">5 Play</button>
+  <button data-state="trans">6 Edit transition</button>
+  </div>
+  <header class="site-header">
+    <a href="#" class="site-logo" aria-label="Tactics Journal home"><img src="tj-logo.png" alt="Tactics Journal"></a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="#">Home</a><a href="#">Community</a><a href="#" class="active">Board</a><a href="#">AMA</a>
+      <span class="site-nav-divider"></span>
+      <a href="#">About</a><a href="#">Follow</a><a href="#">Contact</a><a href="#">Key</a>
+    </nav>
+    <div class="site-actions">
+      <a href="#" class="site-action" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16L21 21"/></svg></a>
+      <a href="#" class="site-action" aria-label="Account"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1.5-3.5 4.1-5.25 7-5.25S17.5 16.5 19 20"/></svg></a>
+    </div>
+  </header>
+
+  <div class="actionRow" id="actionRow">
+    <button class="iconBtn" aria-label="Snap to grid" title="Snap to grid"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><g transform="scale(1,-1) translate(0,-24)"><path d="M4 13v-8a2 2 0 0 1 2-2h1a2 2 0 0 1 2 2v8a2 2 0 0 0 6 0v-8a2 2 0 0 1 2-2h1a2 2 0 0 1 2 2v8a8 8 0 0 1-16 0"/><path d="M4 8h5M15 8h4"/></g></svg></button>
+    <button class="iconBtn" aria-label="Share" title="Share and export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14V3"/><path d="M8.5 6.5L12 3l3.5 3.5"/><path d="M8 9H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2"/></svg></button>
+    <button class="iconBtn barGap" aria-label="Undo" title="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7L4 11l4 4"/><path d="M4 11h9a6 6 0 0 1 6 6v1"/></svg></button>
+    <button class="iconBtn" id="stripPlay" data-play aria-label="Play" title="Play"><svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16l13-8z"/></svg></button>
+    <button class="iconBtn" aria-label="Redo" title="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7l4 4-4 4"/><path d="M20 11h-9a6 6 0 0 0-6 6v1"/></svg></button>
+    <button class="iconBtn barGap" aria-label="Board settings" title="Board settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    <button class="iconBtn" data-pick aria-label="Add still" title="Add still: paste, drop or choose an image"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2.5h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.4"/></svg></button>
+    <input type="file" accept="image/*" multiple hidden data-file>
+  </div>
+
+  <div class="workArea" id="workArea" style="flex:1;min-height:0;display:flex;flex-direction:column">
+    <main class="stageWrap">
+      <div class="boardArea">
+        <div class="mockBoard" id="board">
+          <img class="still" id="stillImg" alt="" hidden>
+          <img class="still" id="stillNext" alt="" style="opacity:0">
+          <div id="marks" hidden>
+            <svg class="mkArrow" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="M38 58 L58 44" stroke="#facc15" stroke-width=".6" fill="none" stroke-dasharray="1.6 1"/><path d="M58 44 l-2.6 .4 l1.2 2 z" fill="#facc15"/></svg>
+            <span class="mk" style="left:38%;top:58%"></span>
+            <span class="mk" style="left:61%;top:66%"></span>
+            <span class="mk b" style="left:52%;top:40%"></span>
+          </div>
+          <div id="marksNext" style="opacity:0">
+            <span class="mk" style="left:44%;top:52%"></span>
+            <span class="mk" style="left:70%;top:61%"></span>
+            <span class="mk b" style="left:57%;top:35%"></span>
+          </div>
+          <div class="stillEmpty" id="empty">
+            <strong>Add a match still</strong>
+            <p>Paste a screenshot or drop an image here.</p>
+            <span class="emptyBtns"><button class="fileBtn touchOnly" data-paste>Paste</button><button class="fileBtn" data-pick>Choose image</button></span>
+          </div>
+          <div class="dropVeil" id="veil"><div class="toast"><span id="veilTitle">Drop to add still</span><small id="veilSub" hidden>Hold ⌥ to replace this still</small></div></div>
+
+        </div>
+      </div>
+
+      <div class="stills" id="strip" aria-label="Slides" hidden>
+        <div id="thumbs" style="display:flex;gap:10px;padding:2px"></div>
+        <button class="thumbAdd" data-pick aria-label="Add still" title="Add still"><svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg></button>
+      </div>
+    </main>
+    <nav class="toolbar" id="toolbar">
+      <button data-room="settings"><span class="tlabel">Settings</span></button>
+      <button data-room="shapes"><span class="tlabel">Shapes</span></button>
+      <button data-room="text"><span class="tlabel">Text</span></button>
+      <button data-room="styles" disabled><span class="tlabel">Styles</span></button>
+      <button data-room="slides" id="slidesTab" aria-expanded="false"><span class="tlabel">Slides</span></button>
+    </nav>
+  </div>
+</div>
+
+<div class="modal hidden" id="choiceModal">
+  <div class="sheet stillChoice" id="choice" role="dialog" aria-modal="true" aria-label="Add this still">
+    <div class="sheetHead">
+      <strong>Add this still</strong>
+      <span class="sheetBtns"><button data-choose="cancel">Cancel</button></span>
+    </div>
+    <div class="carryImportPreviews"><span><img id="choiceImg" alt=""></span></div>
+    <div class="setGroup">
+      <button class="setItem" data-choose="new"><span class="setItemLabel">New board<span class="setItemNote">Added after this one.</span></span><svg class="ic setChev" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 6l6 6l-6 6"/></svg></button>
+      <button class="setItem" data-choose="replace"><span class="setItemLabel">Replace this still<span class="setItemNote">Your drawings stay where they are.</span></span><svg class="ic setChev" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 6l6 6l-6 6"/></svg></button>
+    </div>
+    <div class="setGroup"><button class="setItem carryImportSwitch" role="switch" aria-checked="true" data-copy>
+      <span class="setItemLabel">Copy objects to the new board<span class="setItemNote">They stay on this board too.</span></span>
+      <span class="mTrack t-toggle" data-on="true"><span class="mThumb t-toggle-thumb"></span></span>
+    </button></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="transModal">
+  <div class="sheet transSheet" role="dialog" aria-modal="true" aria-label="Transition">
+    <div class="sheetHead">
+      <strong>Transition</strong>
+      <span class="sheetBtns"><button class="active" data-trans-done>Done</button></span>
+    </div>
+    <div class="transPreview" aria-label="Preview"><img id="transA" alt=""><img id="transB" alt="" style="opacity:0"><div class="pm" id="pmA"><span class="mk" style="left:38%;top:58%"></span><span class="mk" style="left:61%;top:66%"></span><span class="mk b" style="left:52%;top:40%"></span></div><div class="pm" id="pmB" style="opacity:0"><span class="mk" style="left:44%;top:52%"></span><span class="mk" style="left:70%;top:61%"></span><span class="mk b" style="left:57%;top:35%"></span></div></div>
+    <small id="transTitle" class="transCap"></small>
+    <div class="setGroup">
+      <div class="setItem setItemStatic"><span class="setItemLabel">Style</span><span class="setSeg" role="group" aria-label="Style"><button data-trans="style:Cut">Cut</button><button data-trans="style:Dissolve">Dissolve</button><button data-trans="style:Move">Move</button></span></div>
+      <div class="setItem setItemStatic"><span class="setItemLabel">Length</span><span class="setSeg" role="group" aria-label="Length"><button data-trans="len:0.3s">0.3s</button><button data-trans="len:0.6s">0.6s</button><button data-trans="len:1.2s">1.2s</button><button data-trans="len:2.2s">2.2s</button></span></div>
+      <div class="setItem setItemStatic"><span class="setItemLabel">Pace</span><span class="setSeg" role="group" aria-label="Pace"><button data-trans="pace:Smooth">Smooth</button><button data-trans="pace:Even">Even</button><button data-trans="pace:Settle">Settle</button></span></div>
+    </div>
+    <p class="transNote" id="transNote"></p>
+  </div>
+</div>
+
+<div class="toastBand"><div class="toast t-toast toast--action" id="toast"><span id="toastText"></span><button class="toastAction" id="toastAct"></button></div></div>
+
+
+<script>
+const $ = s => document.querySelector(s)
+const board = $('#board'), img = $('#stillImg'), empty = $('#empty'), marks = $('#marks'), choice = $('#choice'), strip = $('#strip'), thumbs = $('#thumbs')
+const DEMO = 'still.jpeg'
+// three stills in the project; filters stand in for different moments
+let stills = [{ src: DEMO, f: '' }, { src: DEMO, f: 'hue-rotate(18deg) saturate(1.2)' }, { src: DEMO, f: 'brightness(.85) contrast(1.1)' }]
+let slidesOpen = false
+let current = 0, step = 0, pending = null, toastTimer, playToken = 0
+
+function show(i) {
+  current = i
+  const s = stills[i]
+  img.hidden = !s; empty.hidden = !!s; marks.hidden = !s
+  if (s) { img.src = s.src; img.style.filter = s.f }
+  renderStrip()
+}
+const STYLE_ICON = {
+  Dissolve: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6" stroke-dasharray="2 2.5"/></svg>',
+  Cut: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v16"/></svg>',
+  Move: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-4-4l4 4l-4 4"/></svg>',
+}
+const NOTES = {
+  Cut: 'The next slide replaces this one at once, like a broadcast cut.',
+  Dissolve: 'The slides blend into each other. Drawings fade out, then in.',
+  Move: 'Drawings slide to their spots on the next slide. Best when the camera barely moved.',
+}
+let links = []
+const linkAt = i => (links[i] ??= { style: 'Dissolve', len: '0.6s', pace: 'Smooth' })
+let editing = -1
+function chip(i) { const l = linkAt(i); return `<button class="cutChip${editing === i ? ' on' : ''}" data-link="${i}" title="Transition: ${l.style}, ${l.len}">${STYLE_ICON[l.style]}${l.len}</button>` }
+function openTrans(i) {
+  editing = i; renderStrip()
+  const l = linkAt(i), a = stills[i], b = stills[i + 1]
+  $('#transA').src = a.src; $('#transA').style.filter = a.f
+  $('#transB').src = b.src; $('#transB').style.filter = b.f
+  document.querySelectorAll('[data-trans]').forEach(btn => { const [k, v] = btn.dataset.trans.split(':'); btn.classList.toggle('active', l[k] === v); btn.setAttribute('aria-pressed', l[k] === v) })
+  $('#transNote').textContent = NOTES[l.style]
+  $('#transModal').classList.remove('hidden')
+  transLoop(++transToken)
+}
+/** One transition, drawn the same way in the sheet preview and on the board. */
+function runTransition(style, { a, b, ma, mb, box }, d, pace) {
+  const o = { duration: d, easing: pace, fill: 'forwards' }
+  const w = box.clientWidth, h = box.clientHeight
+  const overlay = (css) => { const el = document.createElement('div'); el.style.cssText = 'position:absolute;inset:0;pointer-events:none;' + css; box.appendChild(el); setTimeout(() => el.remove(), d + 100); return el }
+  if (style === 'Cut') { b.style.opacity = 1; ma.style.opacity = 0; mb.style.opacity = 1; return }
+  if (style === 'Dissolve') {
+    ma.animate([{ opacity: 1 }, { opacity: 0 }], { ...o, duration: d * .4 })
+    b.animate([{ opacity: 0 }, { opacity: 1 }], o)
+    mb.animate([{ opacity: 0 }, { opacity: 0, offset: .55 }, { opacity: 1 }], { ...o, duration: d * 1.25 })
+  } else {
+    [...ma.querySelectorAll('.mk')].forEach((m, k) => { const to = mb.querySelectorAll('.mk')[k]
+      const tx = (parseFloat(to.style.left) - parseFloat(m.style.left)) / 100 * w, ty = (parseFloat(to.style.top) - parseFloat(m.style.top)) / 100 * h
+      m.animate([{ transform: 'translate(-50%,-50%)' }, { transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px))` }], o) })
+    b.animate([{ opacity: 0 }, { opacity: 0, offset: .45 }, { opacity: 1, offset: .46 }, { opacity: 1 }], { ...o, easing: 'linear' })
+  }
+}
+let transToken = 0
+async function transLoop(token) {
+  const a = $('#transA'), b = $('#transB'), ma = $('#pmA'), mb = $('#pmB')
+  while (token === transToken) {
+    const l = linkAt(editing), d = ms(l.len), pace = PACE[l.pace]
+    document.querySelectorAll('.transPreview *').forEach(el => el.getAnimations().forEach(x => x.cancel()))
+    ;[a, b, ma, mb].forEach(el => { el.style.transform = ''; el.style.clipPath = '' })
+    b.style.opacity = 0; ma.style.opacity = 1; mb.style.opacity = 0
+    $('#transTitle').textContent = `Slide ${editing + 1} to slide ${editing + 2} · ${l.style}, ${l.len}`
+    await wait(800); if (token !== transToken) return
+    runTransition(l.style, { a, b, ma, mb, box: a.parentElement }, d, pace)
+    await wait(Math.max(d, 50) + 1200)
+  }
+}
+function closeTrans() {
+  transToken++; $('#transModal').classList.add('hidden'); editing = -1; renderStrip() }
+function renderStrip() {
+  strip.hidden = !slidesOpen
+  $('#slidesTab').classList.toggle('active', slidesOpen); $('#slidesTab').setAttribute('aria-expanded', slidesOpen)
+  thumbs.innerHTML = stills.map((s, i) => `<span class="shot${i === current ? ' current' : ''}"><button class="thumb${i === current ? ' current' : ''}" data-i="${i}" title="Slide ${i + 1} of ${stills.length}"><img src="${s.src}" style="filter:${s.f}" alt=""></button><span class="steps">${Array.from({ length: s.steps || 1 }, (_, n) => `<i class="${n === (i === current ? step : 0) ? 'on' : ''}"></i>`).join('')}</span></span>` + (i < stills.length - 1 ? chip(i) : '')).join('')
+}
+function toast(text, action) {
+  $('#toastText').textContent = text
+  $('#toastAct').textContent = action || ''
+  $('#toastAct').hidden = !action
+  $('#toast').classList.add('is-open')
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => $('#toast').classList.remove('is-open'), 3200)
+}
+function setNav(state) { document.querySelectorAll('[data-state]').forEach(b => b.classList.toggle('on', b.dataset.state === state)) }
+
+function incoming(srcs) {
+  if (!srcs.length) return
+  if (srcs.length > 1) {
+    stills.splice(current + 1, 0, ...srcs.map(src => ({ src, f: '' })))
+    show(current + 1); toast(`Added ${srcs.length} boards.`, 'Undo'); return
+  }
+  if (!stills[current]) { stills[current] = { src: srcs[0], f: '' }; show(current); toast('Still added.', 'Find players'); return }
+  pending = srcs[0]; $('#choiceImg').src = pending; openChoice()
+}
+function openChoice() { $('#choiceModal').classList.remove('hidden') }
+function choose(kind) {
+  $('#choiceModal').classList.add('hidden')
+  if (kind === 'new') { stills.splice(current + 1, 0, { src: pending, f: '' }); show(current + 1); toast('Still added as a new board.', 'Undo') }
+  if (kind === 'replace') { stills[current] = { src: pending, f: '' }; show(current); toast('Still replaced.', 'Undo') }
+  pending = null; setNav('strip')
+}
+
+const readFiles = files => Promise.all([...files].filter(f => f.type.startsWith('image/')).map(f => URL.createObjectURL(f)))
+
+document.addEventListener('click', e => {
+  if (e.target.id === 'choiceModal') { choose('cancel'); return }
+  if (e.target.id === 'transModal') { closeTrans(); return }
+  const t = e.target.closest('button,[data-pick]'); if (!t) return
+  if (t.dataset.pick !== undefined) $('[data-file]').click()
+  if (t.dataset.paste !== undefined) pasteFromClipboard()
+  if (t.dataset.copy !== undefined) { const on = t.getAttribute('aria-checked') !== 'true'; t.setAttribute('aria-checked', on); const tr = t.querySelector('.mTrack'); tr.classList.add('is-init'); tr.dataset.on = on }
+  if (t.dataset.choose) choose(t.dataset.choose)
+  if (t.dataset.link) { playToken++; resetPlay(); setPlaying(false); openTrans(+t.dataset.link); setNav('trans') }
+  if (t.dataset.trans) { const [k, v] = t.dataset.trans.split(':'); linkAt(editing)[k] = v; openTrans(editing) }
+  if (t.dataset.transDone !== undefined) closeTrans()
+  if (t.dataset.play !== undefined) { if (playing) stopPlay(); else startPlay(false) }
+  if (t.dataset.i) { playToken++; resetPlay(); setPlaying(false); show(+t.dataset.i); setNav('strip') }
+  if (t.dataset.state) setState(t.dataset.state)
+  if (t.dataset.room === 'slides') { slidesOpen = !slidesOpen; renderStrip() }
+})
+$('[data-file]').addEventListener('change', async e => { incoming(await readFiles(e.target.files)); e.target.value = '' })
+document.addEventListener('paste', async e => {
+  if (/INPUT|TEXTAREA/.test(document.activeElement.tagName)) return
+  const files = [...e.clipboardData.files]
+  if (!files.length) { toast('Nothing to paste. Copy a screenshot first.'); return }
+  incoming(await readFiles(files))
+})
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#choiceModal').classList.contains('hidden')) choose('cancel') })
+
+async function pasteFromClipboard() {
+  try {
+    const items = await navigator.clipboard.read()
+    const blobs = []
+    for (const item of items) { const type = item.types.find(t => t.startsWith('image/')); if (type) blobs.push(await item.getType(type)) }
+    if (!blobs.length) { toast('Nothing to paste. Copy a screenshot first.'); return }
+    incoming(blobs.map(b => URL.createObjectURL(b)))
+  } catch { toast('Nothing to paste. Copy a screenshot first.') }
+}
+
+/* ---------- 5 Play: a step on one still moves; a new still dissolves ---------- */
+const wait = ms => new Promise(r => setTimeout(r, ms))
+const ease = 'cubic-bezier(0.22, 1, 0.36, 1)'
+function resetPlay() {
+  document.getAnimations().forEach(a => { if (a.effect?.target?.closest?.('#board')) a.cancel() })
+  ;[img, $('#stillNext'), marks, $('#marksNext')].forEach(el => { el.style.transform = ''; el.style.clipPath = ''; el.style.transformOrigin = '' })
+  $('#stillNext').style.opacity = 0; $('#marksNext').style.opacity = 0; marks.style.opacity = 1
+}
+let playing = false
+const ICON_PLAY = '<svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16l13-8z"/></svg>', ICON_PAUSE = '<svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 5m0 1a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zm8 0m0 1a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1z"/></svg>'
+function setPlaying(on) { playing = on; const b = $('#stripPlay'); b.innerHTML = on ? ICON_PAUSE : ICON_PLAY; b.setAttribute('aria-label', on ? 'Pause' : 'Play'); b.title = on ? 'Pause' : 'Play' }
+function startPlay(once, link = 1) { stills[1].steps = 2; setPlaying(true); play(++playToken, once, link) }
+function stopPlay() { playToken++; setPlaying(false); resetPlay(); step = 0; show(current) }
+const ms = len => parseFloat(len) * 1000
+const PACE = { Smooth: 'ease-in-out', Even: 'linear', Settle: 'cubic-bezier(0.22, 1, 0.36, 1)' }
+async function play(token, once = false, link = 1) {
+  const runner = marks.querySelector('.mk'), arrow = marks.querySelector('.mkArrow'), next = $('#stillNext')
+  while (token === playToken) {
+    resetPlay(); step = 0; show(1)
+    await wait(900); if (token !== playToken) return
+    toast('Same still: the players move.')
+    const w = board.clientWidth, h = board.clientHeight
+    runner.animate([{ transform: 'translate(-50%,-50%)' }, { transform: `translate(calc(-50% + ${0.20 * w}px), calc(-50% - ${0.14 * h}px))` }], { duration: 1100, easing: 'ease-in-out', fill: 'forwards' })
+    arrow.animate([{ opacity: 1 }, { opacity: 1, offset: .7 }, { opacity: 0 }], { duration: 1100, fill: 'forwards' })
+    await wait(1100); step = 1; renderStrip()
+    await wait(1100); if (token !== playToken) return
+    const l = linkAt(link), d = ms(l.len), pace = PACE[l.pace]
+    toast(`${l.style}, ${l.len}`)
+    const s2 = stills[2]; next.src = s2.src; next.style.filter = s2.f
+    runTransition(l.style, { a: img, b: next, ma: marks, mb: $('#marksNext'), box: board }, d, pace)
+    await wait(Math.max(d, 50)); current = 2; step = 0; renderStrip()
+    await wait(1800)
+    if (once) { if (token === playToken) { setPlaying(false) } return }
+  }
+}
+
+let depth = 0
+function veil(n) {
+  const has = !!stills[current]
+  $('#veilTitle').textContent = n > 1 ? `Drop to add ${n} boards` : has ? 'Drop to add as a new board' : 'Drop to add still'
+  $('#veilSub').hidden = !(has && n <= 1)
+}
+document.addEventListener('dragenter', e => { e.preventDefault(); depth++; veil(e.dataTransfer.items.length); board.classList.add('is-drag') })
+document.addEventListener('dragover', e => e.preventDefault())
+document.addEventListener('dragleave', () => { if (--depth <= 0) { depth = 0; board.classList.remove('is-drag') } })
+document.addEventListener('drop', async e => {
+  e.preventDefault(); depth = 0; board.classList.remove('is-drag')
+  const srcs = await readFiles(e.dataTransfer.files)
+  if (!srcs.length) { toast('Images only: PNG or JPG'); return }
+  if (srcs.length === 1 && e.altKey && stills[current]) { stills[current] = { src: srcs[0], f: '' }; show(current); toast('Still replaced.', 'Undo'); return }
+  incoming(srcs)
+})
+
+function setState(s) {
+  slidesOpen = s === 'strip' || s === 'play' || s === 'trans'
+  setNav(s); $('#choiceModal').classList.add('hidden'); board.classList.remove('is-drag')
+  playToken++; step = 0; resetPlay(); setPlaying(false)
+  stills = [{ src: DEMO, f: '' }, { src: DEMO, f: 'hue-rotate(18deg) saturate(1.2)' }, { src: DEMO, f: 'brightness(.85) contrast(1.1)' }]
+  if (s === 'empty') { stills = []; current = 0; show(0) }
+  if (s === 'drag') { stills = []; show(0); veil(1); board.classList.add('is-drag') }
+  if (s === 'choice') { show(1); pending = DEMO; $('#choiceImg').src = DEMO; openChoice() }
+  transToken++; $('#transModal').classList.add('hidden'); editing = -1; links = []
+  if (s === 'trans') { show(1); openTrans(1); return }
+  if (s === 'play') { show(1); startPlay(false); return }
+  if (s === 'strip') { show(1); toast('Still added.', 'Find players') }
+}
+setState('empty')
+</script>
+</body>
+</html>
