@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Export look</title>
+<style>
+/* tokens and export sheet rules copied from src/styles.css */
+:root {
+  --bg: #ffffff; --bar: #f5f5f7; --line: #d2d2d7; --ink: #1d1d1f; --ink-soft: #6e6e73;
+  --action: #0071E3; --card: #ffffff;
+}
+html[data-theme-resolved="dark"] {
+  --bg: #000000; --bar: #1c1c1e; --line: #38383a; --ink: #f5f5f7; --ink-soft: #98989d;
+  --action: #0a84ff; --card: #1c1c1e;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 24px 16px; background: #e8e8ed; color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+html[data-theme-resolved="dark"] body { background: #2c2c2e; }
+button, select { font-family: inherit; cursor: pointer; }
+.mockBar { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #6e6e73; }
+.mockBar button { border: 1px solid #c7c7cc; background: #fff; border-radius: 6px; padding: 4px 10px; font-size: 12px; color: #1d1d1f; }
+.phone {
+  position: relative; width: 390px; max-width: 100%; height: 844px; border-radius: 38px; overflow: hidden;
+  background: var(--bg); box-shadow: 0 0 0 10px #1d1d1f, 0 20px 60px rgba(0,0,0,.25);
+}
+
+.expSheet { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
+.expSheet__head {
+  flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  height: 46px; padding: 0 14px; border-bottom: 1px solid var(--line); color: var(--ink-soft); font-size: 13px;
+  margin-top: 38px;
+}
+.expSheet__head button { border: 0; background: none; min-height: 32px; padding: 0 4px; color: var(--action); font-size: 14px; }
+.expSheet__head button:last-child { font-weight: 600; }
+.expSheet__body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+.expOpts { display: flex; flex-direction: column; gap: 8px; }
+.expOpt {
+  display: grid; grid-template-columns: 26px 1fr 20px; gap: 12px; align-items: center; min-height: 58px;
+  padding: 12px 6px; border: 0; background: none; text-align: left; color: var(--ink); transition: opacity 140ms ease;
+}
+.expOpt + .expOpt { border-top: 1px solid var(--line); }
+.expOpt:active { opacity: 0.55; }
+.expOpt:disabled { opacity: 0.4; cursor: default; }
+.expOpt svg { width: 21px; height: 21px; display: block; color: var(--ink-soft); }
+.expOpt .expTick { opacity: 0; transition: opacity 140ms ease; }
+.expOpt.active .expTick { opacity: 1; }
+.expOpt b { display: block; font-size: 13px; font-weight: 600; }
+.expOpt small { display: block; color: var(--ink-soft); font-size: 11.5px; line-height: 1.4; }
+.expLook { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.expPreview { display: block; width: 100%; height: 220px; border-radius: 10px; background: var(--bar); }
+.expField { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; color: var(--ink); font-size: 13px; }
+.expField select {
+  min-height: 32px; max-width: 60%; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); color: var(--ink); font: inherit; font-size: 13px;
+}
+.expSeg { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--bar); }
+.expSeg button {
+  min-height: 30px; padding: 4px 10px; border: 0; border-radius: 6px; background: none;
+  color: var(--ink-soft); font: inherit; font-size: 13px; letter-spacing: -0.01em;
+}
+.expSeg button.active { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.expHint, .expStatus { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.45; }
+.expHint[hidden], .expStatus:empty { display: none; }
+.expNotes { display: flex; align-items: center; gap: 9px; color: var(--ink); font-size: 13px; }
+.expNotes[hidden] { display: none; }
+.expNotes input { width: 16px; height: 16px; accent-color: var(--action); }
+</style>
+</head>
+<body>
+<div class="mockBar">
+  <span>Mockup · Export sheet</span>
+  <button id="theme">App theme: Light</button>
+</div>
+
+<div class="phone">
+  <div class="expSheet" role="dialog" aria-labelledby="exportSheetTitle">
+    <div class="expSheet__head">
+      <button>Cancel</button>
+      <span id="exportSheetTitle">Export</span>
+      <button id="go">Export</button>
+    </div>
+    <div class="expSheet__body">
+      <div class="expOpts" id="opts" role="group" aria-label="Export format"></div>
+      <div class="expLook">
+        <svg class="expPreview" id="preview" preserveAspectRatio="xMidYMid meet"></svg>
+        <label class="expField">
+          <span>Pitch</span>
+          <select id="pitch" aria-label="Pitch style for the export">
+            <option value="">As drawn</option>
+            <option value="pitch">Pitch</option>
+            <option value="pitch-up">Vertical</option>
+            <option value="full-pitch">Full Pitch</option>
+            <option value="training">Training</option>
+            <option value="sidebyside">Two pitches</option>
+          </select>
+        </label>
+        <div class="expField">
+          <span>Colour</span>
+          <span class="expSeg" role="group" aria-label="Board colour for the export">
+            <button data-paper="drawn" class="active">As drawn</button>
+            <button data-paper="light">Light</button>
+            <button data-paper="dark">Dark</button>
+          </span>
+        </div>
+        <p class="expHint" id="lookNote" hidden></p>
+      </div>
+      <label class="expNotes" id="notes" hidden><input type="checkbox" checked><span>Include the note on each board</span></label>
+      <p class="expHint">The GIF and the video follow the timing on each link.</p>
+      <p class="expStatus" id="status" role="status"></p>
+    </div>
+  </div>
+</div>
+
+<script>
+const ic = {
+  photo: '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M15 8h.01M3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z"/><path d="m3 16l5-5c.928-.893 2.072-.893 3 0l5 5"/><path d="m14 14l1-1c.928-.893 2.072-.893 3 0l3 3"/></g>',
+  stack: '<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3l8 4.5l-8 4.5l-8-4.5zM4 12l8 4.5l8-4.5M4 16.5L12 21l8-4.5"/>',
+  gif: '<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 8H6a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2v-4H7m5-4v8m4-4h3m1-4h-4v8"/>',
+  movie: '<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm4-2v16m8-16v16M4 8h4m-4 8h4m-4-4h16m-4-4h4m-4 8h4"/>',
+  check: '<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m5 12l5 5L20 7"/>',
+}
+const svg = name => `<svg viewBox="0 0 24 24">${ic[name]}</svg>`
+const KINDS = [
+  { k: 'board', label: 'This board', note: 'A PNG of the pitch you have open.', ic: 'photo' },
+  { k: 'images', label: 'All project images', note: '3 PNGs, one for every board.', ic: 'stack' },
+  { k: 'gif', label: 'The project as a GIF', note: 'Loops the whole move. Drops into a message or a post.', ic: 'gif' },
+  { k: 'video', label: 'The project as a video', note: 'Full quality, for slides or a longer edit.', ic: 'movie' },
+]
+const PITCH = {
+  pitch: { h: 618, layout: 'h' }, 'pitch-up': { h: 640, layout: 'v' }, 'full-pitch': { h: 1066, layout: 'v', r: 15 },
+  training: { h: 418, layout: 'h' }, sidebyside: { h: 533, layout: 'side' },
+}
+const DRAWN = { pitch: 'pitch', dark: false }
+let kind = 'board', look = { pitch: '', paper: 'drawn' }
+
+function drawOpts() {
+  document.getElementById('opts').innerHTML = KINDS.map(o => `
+    <button class="expOpt${o.k === kind ? ' active' : ''}" data-kind="${o.k}" aria-pressed="${o.k === kind}">
+      ${svg(o.ic)}<span><b>${o.label}</b><small>${o.note}</small></span><span class="expTick">${svg('check')}</span>
+    </button>`).join('')
+  document.getElementById('notes').hidden = kind === 'board' || kind === 'images'
+}
+
+/* The board on screen: three players, a run and a label, in fractions of the pitch. */
+const BOARD = {
+  players: [
+    { x: 0.25, y: 0.49, c: '#e02020', n: '9', name: 'Havertz', ink: '#fff' },
+    { x: 0.5, y: 0.49, c: '#ffffff', n: '4', name: 'White', ink: '#111827' },
+    { x: 0.75, y: 0.49, c: '#1e2f6f', n: '1', name: 'Raya', ink: '#fff' },
+  ],
+  arrow: [[0.275, 0.49], [0.37, 0.42], [0.47, 0.49]],
+  run: [[0.53, 0.66], [0.72, 0.66]],
+  label: { x: 0.5, y: 0.33, t: 'Overload left' },
+}
+
+function drawPreview() {
+  const id = look.pitch || DRAWN.pitch
+  const dark = look.paper === 'drawn' ? DRAWN.dark : look.paper === 'dark'
+  const p = PITCH[id]
+  const W = 800, H = p.h
+  const map = ([fx, fy]) => p.layout === 'v' ? [fy * W, (1 - fx) * H]
+    : p.layout === 'side' ? [(0.035 + fx * 0.42) * W, fy * H] : [fx * W, fy * H]
+  const k = p.layout === 'side' ? 0.5 : 1
+  const r = (p.r || 13) * k * 1.4
+  const ink = dark ? '#ffffff' : '#111111'
+  const nameInk = dark ? '#f5f5f7' : '#111827'
+  const ring = dark ? '#f5f5f7' : '#0b0b0e'
+  const [a0, a1, a2] = BOARD.arrow.map(map)
+  const [r0, r1] = BOARD.run.map(map)
+  const [lx, ly] = map([BOARD.label.x, BOARD.label.y])
+  const head = (from, to, colour, size) => {
+    const ang = Math.atan2(to[1] - from[1], to[0] - from[0])
+    const s = size, pts = [[0, 0], [-s, -s * 0.6], [-s, s * 0.6]].map(([x, y]) =>
+      `${to[0] + x * Math.cos(ang) - y * Math.sin(ang)},${to[1] + x * Math.sin(ang) + y * Math.cos(ang)}`)
+    return `<polygon points="${pts.join(' ')}" fill="${colour}"/>`
+  }
+  const font = 'font-family="Inter, -apple-system, Helvetica, Arial, sans-serif" font-weight="700" text-anchor="middle"'
+  const el = document.getElementById('preview')
+  el.setAttribute('viewBox', `0 0 ${W} ${H}`)
+  el.innerHTML = `
+    <image href="art/${id}${dark ? '-dark' : ''}.jpg" width="${W}" height="${H}"/>
+    <path d="M${a0} Q${a1} ${a2}" fill="none" stroke="${ink}" stroke-width="${6 * k}" stroke-linecap="round"/>
+    ${head(a1, a2, ink, 18 * k)}
+    <path d="M${r0} L${r1}" stroke="#e02020" stroke-width="${6 * k}" stroke-dasharray="${16 * k} ${12 * k}"/>
+    ${head(r0, r1, '#e02020', 18 * k)}
+    <text x="${lx}" y="${ly}" ${font} font-size="${30 * k}" fill="${ink}">${BOARD.label.t}</text>
+    ${BOARD.players.map(pl => {
+      const [x, y] = map([pl.x, pl.y])
+      return `<circle cx="${x}" cy="${y}" r="${r}" fill="${pl.c}" stroke="${ring}" stroke-width="${r * 0.38}"/>
+        <text x="${x}" y="${y + r * 0.38}" ${font} font-size="${r * 1.05}" fill="${pl.ink}">${pl.n}</text>
+        <text x="${x}" y="${y + r * 1.4 + 22 * k}" ${font} font-size="${24 * k}" fill="${nameInk}">${pl.name}</text>`
+    }).join('')}`
+
+  document.querySelectorAll('[data-paper]').forEach(b => {
+    const on = b.dataset.paper === look.paper
+    b.classList.toggle('active', on); b.setAttribute('aria-pressed', on)
+  })
+  const animated = kind === 'gif' || kind === 'video'
+  const note = document.getElementById('lookNote')
+  const said = look.pitch && look.pitch !== DRAWN.pitch && animated
+    ? 'On another pitch each board is shown whole, so the animation does not follow the zoom set on each board.' : ''
+  note.textContent = said; note.hidden = !said
+}
+
+document.getElementById('opts').addEventListener('click', e => {
+  const b = e.target.closest('[data-kind]'); if (!b) return
+  kind = b.dataset.kind; drawOpts(); drawPreview()
+})
+document.querySelector('.expSeg').addEventListener('click', e => {
+  const b = e.target.closest('[data-paper]'); if (!b) return
+  look.paper = b.dataset.paper; drawPreview()
+})
+document.getElementById('pitch').addEventListener('change', e => { look.pitch = e.target.value; drawPreview() })
+document.getElementById('go').addEventListener('click', () => {
+  const s = document.getElementById('status')
+  s.textContent = 'Mockup: this would share or download the picture shown above.'
+  setTimeout(() => { s.textContent = '' }, 2500)
+})
+document.getElementById('theme').addEventListener('click', e => {
+  const root = document.documentElement
+  const dark = root.getAttribute('data-theme-resolved') !== 'dark'
+  root.setAttribute('data-theme-resolved', dark ? 'dark' : 'light')
+  e.target.textContent = `App theme: ${dark ? 'Dark' : 'Light'}`
+})
+drawOpts(); drawPreview()
+</script>
+</body>
+</html>

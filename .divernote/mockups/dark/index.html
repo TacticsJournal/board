@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dark boards</title>
+<style>
+/* tokens and settings-sheet rules copied from src/styles.css */
+:root {
+  --bg: #ffffff; --settings-bg: #f5f5f7; --bar: #f5f5f7; --line: #d2d2d7; --ink: #1d1d1f; --ink-soft: #6e6e73;
+  --action: #0071E3; --card: #ffffff;
+}
+html[data-theme-resolved="dark"] {
+  --bg: #000000; --settings-bg: #000000; --bar: #1c1c1e; --line: #38383a; --ink: #f5f5f7; --ink-soft: #98989d;
+  --action: #0a84ff; --card: #1c1c1e;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 20px 16px 40px; background: #e8e8ed; color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+button, select { font-family: inherit; cursor: pointer; }
+
+/* mockup controls, outside the app */
+.mockBar { max-width: 1180px; margin: 0 auto 16px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; font-size: 13px; }
+.mockBar b { font-size: 15px; margin-right: 6px; }
+.mockSeg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: #d9d9de; }
+.mockSeg button { border: 0; background: none; border-radius: 6px; padding: 5px 11px; font-size: 13px; color: #48484c; }
+.mockSeg button.on { background: #fff; color: #1d1d1f; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+.mockWhy { max-width: 1180px; margin: -6px auto 16px; font-size: 13px; color: #48484c; line-height: 1.5; }
+
+.stage { max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; justify-content: center; }
+
+/* the editor, with the board on its mat */
+.editor { flex: 1 1 560px; max-width: 760px; border-radius: 14px; overflow: hidden; background: var(--bg); box-shadow: 0 10px 40px rgba(0,0,0,.18); }
+.editorBar { display: flex; justify-content: center; gap: 30px; height: 44px; align-items: center; border-bottom: 1px solid var(--line); color: var(--ink); }
+.editorBar svg { width: 20px; height: 20px; }
+.mat { display: grid; place-items: center; padding: 22px; background: var(--settings-bg); min-height: 420px; }
+html[data-theme-resolved="dark"] .mat { background: #000; }
+.board { display: block; width: 100%; max-height: 640px; box-shadow: 0 0 14px rgba(0,0,0,.16); }
+
+/* the Pitch screen of Settings */
+.phone {
+  flex: none; width: 390px; max-width: 100%; height: 780px; border-radius: 38px; overflow: hidden;
+  background: var(--settings-bg); box-shadow: 0 0 0 10px #1d1d1f, 0 20px 60px rgba(0,0,0,.25);
+}
+.sheet { height: 100%; overflow-y: auto; padding: 46px 14px 20px; display: flex; flex-direction: column; gap: 10px; color: var(--ink); background: var(--settings-bg); }
+.sheetHead { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.sheetHead strong { font-size: 22px; flex: 1; display: flex; align-items: center; gap: 8px; }
+.sheetHead strong svg { width: 20px; height: 20px; color: var(--ink-soft); }
+.sheetHead button { border: 0; background: none; color: var(--action); font-size: 15px; }
+.setGroupHead { font-size: 13px; color: var(--ink-soft); letter-spacing: -0.01em; padding: 14px 6px 6px; }
+.setGroup { display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.setItem { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 10px 14px; color: var(--ink); font-size: 15px; letter-spacing: -0.01em; }
+.setItem + .setItem { border-top: 1px solid var(--line); }
+.setItem .ic { width: 19px; height: 19px; flex: none; color: var(--ink-soft); }
+.setItemLabel { flex: 1; }
+.setSeg { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--bar); }
+.setSeg button { border: 0; border-radius: 6px; background: none; color: var(--ink-soft); font-size: 13px; letter-spacing: -0.01em; padding: 4px 10px; min-height: 30px; }
+.setSeg button.active { background: var(--card); color: var(--ink); font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.setNote { font-size: 13px; color: var(--ink-soft); letter-spacing: -0.01em; line-height: 1.45; margin: 8px 0 14px; padding: 0 6px; }
+.pitchGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
+.pitchTile { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; min-width: 0; }
+.pitchShot { position: relative; display: block; aspect-ratio: 16 / 10; border-radius: 10px; overflow: hidden; background: var(--bar); border: 1px solid var(--line); }
+.pitchTile.on .pitchShot { border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink), inset 0 0 0 2px var(--card); }
+.pitchShotImg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pitchTileName { font-size: 13px; letter-spacing: -0.01em; margin-top: 6px; }
+.pitchTileSub { font-size: 11px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.pitchTick { position: absolute; top: 7px; left: 7px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: rgba(20, 18, 15, 0.78); }
+.pitchTick svg { width: 13px; height: 13px; color: #fff; }
+.paperGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.paperGrid .pitchShot { aspect-ratio: 4 / 3; }
+.paperGrid .pitchTileName { font-size: 12px; line-height: 1.25; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="mockBar">
+  <b>Dark boards</b>
+  <span>App theme</span>
+  <span class="mockSeg" id="theme">
+    <button data-t="light" class="on">Light</button>
+    <button data-t="dark">Dark</button>
+  </span>
+</div>
+<p class="mockWhy" id="why"></p>
+
+<div class="stage">
+  <div class="editor">
+    <div class="editorBar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".35"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h1"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5-8 4.5-8-4.5zM4 12l8 4.5 8-4.5M4 16.5L12 21l8-4.5"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 11l5 5 5-5M12 4v12"/></svg>
+    </div>
+    <div class="mat"><svg class="board" id="board" preserveAspectRatio="xMidYMid meet"></svg></div>
+  </div>
+
+  <div class="phone">
+    <div class="sheet">
+      <div class="sheetHead">
+        <strong><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>Pitch</strong>
+        <button>Done</button>
+      </div>
+      <div class="setGroupHead">Background</div>
+      <div class="paperGrid" id="papers" role="group" aria-label="Board background"></div>
+      <p class="setNote">Saved with the board, so it exports and shares the way you see it. It does not follow the app theme.</p>
+      <div class="setGroupHead">Pitch styles</div>
+      <div class="pitchGrid" id="tiles"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PITCHES = [
+  { id: 'pitch', label: 'Pitch', h: 618, layout: 'h' },
+  { id: 'pitch-up', label: 'Vertical', h: 640, layout: 'v' },
+  { id: 'full-pitch', label: 'Full Pitch', h: 1066, layout: 'v', r: 15 },
+  { id: 'training', label: 'Training', h: 418, layout: 'h' },
+  { id: 'sidebyside', label: 'Two pitches', h: 533, layout: 'side' },
+]
+const PAPERS = [
+  { id: 'white', label: 'White' }, { id: 'dark', label: 'Dark' },
+  { id: 'slate', label: 'Slate' }, { id: 'grass', label: 'Floodlit grass' },
+]
+const WHY = {
+  white: 'White: the board as it has always been.',
+  dark: 'Dark: the drawing as a negative. Players keep a black ring; black arrows and labels turn white.',
+  slate: 'Slate: flat cool charcoal, crisp white markings, a faint zone grid. Players keep a black ring.',
+  grass: 'Floodlit grass: mown bands, chalk-white markings, a quiet zone grid. Players keep a black ring.',
+}
+let paper = 'grass', pitch = 'pitch'
+const art = (id, p = paper) => `art/${id}-${p}.jpg`
+
+/* a board somebody drew: a curved pass, a run, a label and three players */
+const BOARD = {
+  players: [
+    { x: 0.25, y: 0.49, c: '#e02020', n: '9', name: 'Havertz', ink: '#fff' },
+    { x: 0.5, y: 0.49, c: '#ffffff', n: '4', name: 'White', ink: '#111827' },
+    { x: 0.75, y: 0.49, c: '#1e2f6f', n: '1', name: 'Raya', ink: '#fff' },
+    { x: 0.62, y: 0.25, c: '#facc15', n: '7', name: 'Saka', ink: '#111827' },
+  ],
+  pass: [[0.275, 0.49], [0.37, 0.40], [0.47, 0.49]],
+  run: [[0.53, 0.68], [0.72, 0.68]],
+  label: { x: 0.5, y: 0.34, t: 'Overload left' },
+}
+function drawBoard() {
+  const p = PITCHES.find(x => x.id === pitch)
+  const W = 800, H = p.h
+  const map = ([fx, fy]) => p.layout === 'v' ? [fy * W, (1 - fx) * H]
+    : p.layout === 'side' ? [(0.035 + fx * 0.42) * W, fy * H] : [fx * W, fy * H]
+  const k = p.layout === 'side' ? 0.5 : 1
+  const r = (p.r || 13) * k * 1.3
+  const dark = paper !== 'white'
+  const ink = dark ? '#ffffff' : '#111111'
+  const nameInk = dark ? '#f5f5f7' : '#111827'
+  const ring = '#0b0b0e' // black on every background
+  const [a0, a1, a2] = BOARD.pass.map(map)
+  const [r0, r1] = BOARD.run.map(map)
+  const [lx, ly] = map([BOARD.label.x, BOARD.label.y])
+  const head = (from, to, colour, s) => {
+    const ang = Math.atan2(to[1] - from[1], to[0] - from[0])
+    return `<polygon points="${[[0, 0], [-s, -s * 0.6], [-s, s * 0.6]].map(([x, y]) =>
+      `${to[0] + x * Math.cos(ang) - y * Math.sin(ang)},${to[1] + x * Math.sin(ang) + y * Math.cos(ang)}`).join(' ')}" fill="${colour}"/>`
+  }
+  const font = 'font-family="Inter, -apple-system, Helvetica, Arial, sans-serif" font-weight="700" text-anchor="middle"'
+  const el = document.getElementById('board')
+  el.setAttribute('viewBox', `0 0 ${W} ${H}`)
+  el.innerHTML = `<image href="${art(pitch)}" width="${W}" height="${H}"/>
+    <path d="M${a0} Q${a1} ${a2}" fill="none" stroke="${ink}" stroke-width="${4.5 * k}" stroke-linecap="round"/>
+    ${head(a1, a2, ink, 15 * k)}
+    <path d="M${r0} L${r1}" stroke="#e02020" stroke-width="${4.5 * k}" stroke-dasharray="${14 * k} ${10 * k}"/>
+    ${head(r0, r1, '#e02020', 15 * k)}
+    <text x="${lx}" y="${ly}" ${font} font-size="${22 * k}" fill="${ink}">${BOARD.label.t}</text>
+    ${BOARD.players.map(pl => {
+      const [x, y] = map([pl.x, pl.y])
+      return `<circle cx="${x}" cy="${y}" r="${r}" fill="${pl.c}" stroke="${ring}" stroke-width="${r * 0.3}"/>
+        <text x="${x}" y="${y + r * 0.37}" ${font} font-size="${r * 1.05}" fill="${pl.ink}">${pl.n}</text>
+        <text x="${x}" y="${y + r + 20 * k}" ${font} font-size="${18 * k}" fill="${nameInk}">${pl.name}</text>`
+    }).join('')}`
+}
+function drawTiles() {
+  const check = '<svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" d="m5 12l5 5L20 7"/></svg>'
+  document.getElementById('tiles').innerHTML = PITCHES.map(p => `
+    <button class="pitchTile${p.id === pitch ? ' on' : ''}" data-pitch="${p.id}">
+      <span class="pitchShot"><img class="pitchShotImg" src="${art(p.id)}" alt="">${p.id === pitch ? `<span class="pitchTick">${check}</span>` : ''}</span>
+      <span class="pitchTileName">${p.label}</span>
+      <span class="pitchTileSub">800 &times; ${p.h}</span>
+    </button>`).join('')
+}
+function drawPapers() {
+  const check = '<svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" d="m5 12l5 5L20 7"/></svg>'
+  document.getElementById('papers').innerHTML = PAPERS.map(p => `
+    <button class="pitchTile${p.id === paper ? ' on' : ''}" data-paper="${p.id}" aria-pressed="${p.id === paper}">
+      <span class="pitchShot"><img class="pitchShotImg" src="${art(pitch, p.id)}" alt="">${p.id === paper ? `<span class="pitchTick">${check}</span>` : ''}</span>
+      <span class="pitchTileName">${p.label}</span>
+    </button>`).join('')
+}
+function render() {
+  document.getElementById('why').textContent = WHY[paper]
+  drawBoard(); drawPapers(); drawTiles()
+}
+document.getElementById('papers').addEventListener('click', e => { const b = e.target.closest('[data-paper]'); if (b) { paper = b.dataset.paper; render() } })
+document.getElementById('tiles').addEventListener('click', e => { const b = e.target.closest('[data-pitch]'); if (b) { pitch = b.dataset.pitch; render() } })
+document.getElementById('theme').addEventListener('click', e => {
+  const b = e.target.closest('[data-t]'); if (!b) return
+  document.documentElement.setAttribute('data-theme-resolved', b.dataset.t)
+  document.querySelectorAll('#theme button').forEach(x => x.classList.toggle('on', x === b))
+})
+render()
+</script>
+</body>
+</html>
