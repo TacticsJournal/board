@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Full Pitch mockup</title>
+<style>
+  :root { --bg: #e9e9ee; --ink: #1d1d1f; --soft: #6e6e73; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111; --ink: #f2f2f7; --soft: #98989d; } }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  main { display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; padding: 28px 16px 40px; }
+  figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+  figcaption strong { display: block; font-size: 15px; }
+  figcaption span { color: var(--soft); display: block; max-width: 420px; min-height: 84px; }
+  iframe { width: 420px; height: 790px; border: 0; border-radius: 10px; background: #fff; box-shadow: 0 8px 30px rgba(0,0,0,.14); max-width: calc(100vw - 32px); }
+</style></head><body><main>
+<figure><figcaption><strong>Pitch (today's default)</strong><span>The board lies on its side in a tall, narrow pane, with empty space above and below it.</span></figcaption>
+<iframe src="today.html" title="Pitch"></iframe></figure>
+<figure><figcaption><strong>Where it lives: Settings → Background</strong><span>Full Pitch is already one of the pitch styles (outlined). Its tile crops the art to a landscape strip around the centre circle, so it doesn't look like the upright pitch it is.</span></figcaption>
+<iframe src="picker.html" title="Background picker"></iframe></figure>
+<figure><figcaption><strong>Full Pitch, as it behaves now</strong><span>Settings → Background → Full Pitch, then back to Shapes. The players carry over upright, but the board stays fitted to the space that was left above Settings.</span></figcaption>
+<iframe src="now.html" title="Full Pitch now"></iframe></figure>
+<figure><figcaption><strong>Full Pitch with PR #30</strong><span>The same steps. When Settings closes the board refits and fills the column, which is the upright view from the first mockup.</span></figcaption>
+<iframe src="fixed.html" title="Full Pitch with the fix"></iframe></figure>
+</main></body></html>

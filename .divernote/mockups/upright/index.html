@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Narrow board mockup</title>
+<style>
+  :root { --bg: #e9e9ee; --ink: #1d1d1f; --soft: #6e6e73; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111; --ink: #f2f2f7; --soft: #98989d; } }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  main { display: flex; flex-wrap: wrap; gap: 32px; justify-content: center; padding: 28px 16px 40px; }
+  figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+  figcaption strong { display: block; font-size: 15px; }
+  figcaption span { color: var(--soft); display: block; max-width: 420px; min-height: 104px; }
+  iframe { width: 420px; height: 790px; border: 0; border-radius: 10px; background: #fff; box-shadow: 0 8px 30px rgba(0,0,0,.14); max-width: calc(100vw - 32px); }
+</style></head><body><main>
+<figure><figcaption><strong>Today</strong><span>A tall, narrow pane on a computer. The pitch lies on its side and fills the width, leaving empty space above and below it. The shelf runs off the right edge with nothing to show there is more.</span></figcaption>
+<iframe src="before.html" title="Today"></iframe></figure>
+<figure><figcaption><strong>Proposed</strong><span>The same board stands upright, using the height so the players are about a quarter bigger to click and drag. AVL's goal is at the bottom. The shelf fades at its edge and has a button that steps to the next set of shapes, and the mouse wheel scrolls it (PR #29).</span></figcaption>
+<iframe src="after.html" title="Proposed"></iframe></figure>
+</main></body></html>
