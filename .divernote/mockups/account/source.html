@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Board on iPhone: account and Pro</title>
+<style>
+  body { margin: 0; padding: 32px 24px 56px; background: #1c1c1e; color: #f5f5f7;
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #a1a1a6; margin: 0 0 28px; max-width: 760px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .label { font-weight: 600; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: #a1a1a6; }
+  .label b { color: #ff9f0a; }
+  .scaler { width: 270px; height: 581px; }
+  .phone { width: 426px; height: 898px; padding: 12px; box-sizing: border-box; background: #0b0b0c;
+    border-radius: 68px; box-shadow: 0 0 0 2px #3a3a3c, 0 30px 60px rgba(0,0,0,.5);
+    transform: scale(.6338); transform-origin: top left; }
+  .screen { position: relative; width: 402px; height: 874px; border-radius: 56px; overflow: hidden; background: #000; }
+  .screen iframe { width: 402px; height: 874px; border: 0; display: block; }
+  .island { position: absolute; top: 11px; left: 50%; width: 124px; height: 36px; margin-left: -62px; background: #000; border-radius: 18px; z-index: 5; }
+  .home { position: absolute; left: 50%; bottom: 8px; width: 140px; height: 5px; margin-left: -70px; background: rgba(0,0,0,.6); border-radius: 3px; z-index: 5; }
+  ul { margin: 36px auto 0; max-width: 820px; padding-left: 20px; color: #d1d1d6; }
+  li { margin: 6px 0; }
+</style></head>
+<body>
+<div class="wrap">
+  <h1>Board on iPhone: account and Pro</h1>
+  <p class="sub">Each phone is Board's real Settings sheet, captured at 402 × 874. Only the account rows, the new sign-in screen and the Plans buttons are changed.</p>
+  <div class="grid">
+    <div class="cell"><div class="label">1 · Signed out</div>
+      <div class="scaler"><div class="phone"><div class="screen"><div class="island"></div><div class="home"></div><iframe src="out.html" title="Signed out"></iframe></div></div></div></div>
+    <div class="cell"><div class="label"><b>New</b> · 2 · Sign in</div>
+      <div class="scaler"><div class="phone"><div class="screen"><div class="island"></div><div class="home"></div><iframe src="signin.html" title="Sign in"></iframe></div></div></div></div>
+    <div class="cell"><div class="label"><b>New</b> · 3 · Plans</div>
+      <div class="scaler"><div class="phone"><div class="screen"><div class="island"></div><div class="home"></div><iframe src="plans.html" title="Plans"></iframe></div></div></div></div>
+    <div class="cell"><div class="label">4 · Signed in with Pro</div>
+      <div class="scaler"><div class="phone"><div class="screen"><div class="island"></div><div class="home"></div><iframe src="pro.html" title="Signed in with Pro"></iframe></div></div></div></div>
+  </div>
+  <ul>
+    <li><b>Sign in stays in the app.</b> Settings › Account › Sign in opens a screen in the same sheet. The website's account panel is hidden in the app.</li>
+    <li><b>Sign in with Apple comes first.</b> Apple requires it in any app that offers Google sign-in. Google opens in the system sign-in sheet, which Google allows; it doesn't open in the app's web view. Email codes work as they do on the web.</li>
+    <li><b>Everything still works without an account.</b> Apple rejects apps that require sign-in for features that don't need an account.</li>
+    <li><b>Pro is an App Store subscription.</b> It's bought with Apple Pay, with Restore purchases and the renewal terms Apple requires. Pro belongs to the Tactics Journal account, so someone who buys on iPhone also has Pro on the web.</li>
+    <li><b>Prices end in .99.</b> App Store prices come from Apple's list of price points, so $155.88 a year isn't one of them. The mockup shows $155.99 to keep the same monthly price.</li>
+    <li><b>Manage subscription</b> opens the App Store's subscription screen. The 14-day refund note is removed because Apple handles App Store refunds.</li>
+  </ul>
+</div>
+</body></html>

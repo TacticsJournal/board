@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Board on iPhone landscape</title>
+<style>
+  body { margin: 0; padding: 32px 24px 56px; background: #1c1c1e; color: #f5f5f7;
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", Helvetica, Arial, sans-serif; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #a1a1a6; margin: 0 0 28px; }
+  .row { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 40px; }
+  .label { align-self: center; font-weight: 600; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: #a1a1a6; }
+  .label b { color: #ff9f0a; }
+  .scaler { width: min(100%, 980px); }
+  .phone { position: relative; width: 956px; height: 454px; padding: 12px; box-sizing: border-box;
+    background: #0b0b0c; border-radius: 68px; box-shadow: 0 0 0 2px #3a3a3c, 0 30px 60px rgba(0,0,0,.5);
+    transform-origin: top left; }
+  .screen { position: relative; width: 932px; height: 430px; border-radius: 56px; overflow: hidden; background: #000; }
+  .screen iframe { width: 932px; height: 430px; border: 0; display: block; }
+  .island { position: absolute; left: 14px; top: 50%; width: 36px; height: 124px; margin-top: -62px;
+    background: #000; border-radius: 18px; z-index: 5; }
+  .home { position: absolute; left: 50%; bottom: 8px; width: 180px; height: 5px; margin-left: -90px;
+    background: rgba(255,255,255,.75); border-radius: 3px; z-index: 5; }
+  ul { max-width: 980px; margin: 0 auto 0; padding-left: 20px; color: #d1d1d6; }
+  li { margin: 4px 0; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+
+  .scaler { width: min(100%, 956px); height: auto !important; }
+  .phone { width: 100%; height: auto; aspect-ratio: 956 / 454; padding: 1.26%; border-radius: 7.1% / 15%; transform: none !important; }
+  .screen { width: 100%; height: 100%; border-radius: 6% / 13%; }
+  .home { width: 19%; margin-left: -9.5%; height: 1.1%; bottom: 2%; }
+  .screen img { width: 100% !important; height: 100% !important; }
+  .island { left: 1.5%; width: 3.9%; height: 28.8%; margin-top: -6.7%; top: 50%; }
+</style></head>
+<body>
+<div class="wrap">
+  <h1>Board on iPhone, landscape</h1>
+  <p class="sub">Both phones use the app's real markup and CSS, captured at 932 × 430. The proposed phones show the portrait layout running in landscape.</p>
+</div>
+
+<div class="row">
+  <div class="label">Now</div>
+  <div class="scaler"><div class="phone"><div class="screen">
+    <div class="island"></div><div class="home"></div>
+    <iframe src="now.html" title="Now"></iframe>
+  </div></div></div>
+</div>
+
+<div class="row">
+  <div class="label"><b>Proposed</b> · Shapes open</div>
+  <div class="scaler"><div class="phone"><div class="screen">
+    <div class="island"></div><div class="home"></div>
+    <iframe src="side.html" title="Proposed · Shapes open"></iframe>
+  </div></div></div>
+</div>
+
+<div class="row">
+  <div class="label"><b>Proposed</b> · Shapes closed</div>
+  <div class="scaler"><div class="phone"><div class="screen">
+    <div class="island"></div><div class="home"></div>
+    <iframe src="closed.html" title="Proposed · Shapes closed"></iframe>
+  </div></div></div>
+</div>
+
+<div class="wrap">
+  <ul>
+    <li><b>The board never moves.</b> Opening or closing a room doesn't resize or shift the pitch. Compare the two proposed phones: the pitch is in exactly the same place.</li>
+    <li><b>The shelf opens beside the pitch.</b> In landscape there's empty space on either side of the pitch, so Shapes opens into the left side instead of pushing the board up. It scrolls through Players, Arrows, Zones and Equipment with the same buttons as portrait.</li>
+    <li><b>The portrait controls.</b> The same top bar and the same Settings · Shapes · Text · Styles · Slides band as portrait.</li>
+    <li><b>The biggest pitch so far.</b> About 355pt tall, at all times.</li>
+    <li><b>Clear of the Dynamic Island and corners.</b></li>
+    <li>iPad keeps its current layout.</li>
+  </ul>
+</div>
+
+</body></html>
