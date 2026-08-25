@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "note": "All PNGs are 4096x4096 RGBA with transparent backgrounds. Arrows point right; the editor rotates/stretches the line segment parametrically and uses these as the style reference. Sizes are default logical sizes on the 800x418 board.",
+  "assets": {
+    "pitch": {
+      "src": "pitch/pitch.jpeg",
+      "kind": "background",
+      "size": [800, 418]
+    },
+    "ball": {
+      "src": "ball/ball.png",
+      "kind": "stamp",
+      "anchor": "center",
+      "size": [20, 20]
+    },
+    "player": {
+      "src": "players/player.png",
+      "kind": "stamp",
+      "anchor": "center",
+      "size": [26, 26],
+      "tintable": true,
+      "note": "Red fill with black ring and baked-in drop shadow; recolor fill per team in-editor."
+    },
+    "arrow-solid": {
+      "src": "arrows/arrow-solid.png",
+      "kind": "arrow-style",
+      "stroke": "solid",
+      "head": "swept-triangle"
+    },
+    "arrow-dashed": {
+      "src": "arrows/arrow-dashed.png",
+      "kind": "arrow-style",
+      "stroke": "dashed",
+      "head": "swept-triangle"
+    },
+    "arrow-dotted": {
+      "src": "arrows/arrow-dotted.png",
+      "kind": "arrow-style",
+      "stroke": "dotted",
+      "head": "triangle"
+    },
+    "line": {
+      "src": "icons/line.png",
+      "kind": "tool-icon",
+      "tool": "line"
+    },
+    "box": {
+      "src": "icons/box.png",
+      "kind": "tool-icon",
+      "tool": "box",
+      "note": "Also the visual reference for the translucent zone box."
+    },
+    "circle": {
+      "src": "icons/circle.png",
+      "kind": "tool-icon",
+      "tool": "circle",
+      "note": "Grey zone circle, visual reference for circular zone shading."
+    },
+    "bold_text": {
+      "src": "icons/bold_text.png",
+      "kind": "tool-icon",
+      "tool": "text-bold"
+    },
+    "light_text": {
+      "src": "icons/light_text.png",
+      "kind": "tool-icon",
+      "tool": "text-light"
+    }
+  }
+}

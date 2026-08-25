@@ -1,0 +1,22 @@
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node
+node_modules/
+dist/
+build/
+.next/
+.env*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local/generated exports
+exports/
+*.tmp

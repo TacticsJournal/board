@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Formation generator</title>
+<style>
+  body { margin: 0; padding: 16px; background: #fff; color: #17181b; font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  button { min-height: 44px; padding: 9px 14px; border: 1px solid #d7d8dc; border-radius: 8px; background: #fff; color: #17181b; font: inherit; font-size: 16px; cursor: pointer; }
+  p { color: #686b73; }
+</style>
+<button id="add">Add a 4-3-3</button>
+<p id="status">Waiting for Tactics Board.</p>
+<script>
+  let token = null
+  let board = null
+  const protocol = 'tactics-board-extension/v1'
+  const addButton = document.querySelector('#add')
+  const statusText = document.querySelector('#status')
+  const send = (message) => board?.postMessage({ protocol, token, ...message })
+
+  addButton.addEventListener('click', () => {
+    if (!token) return
+    const players = [
+      [80, 210, 'GK'], [220, 100, 'RB'], [220, 210, 'CB'], [220, 320, 'CB'], [220, 410, 'LB'],
+      [390, 130, 'CM'], [390, 260, 'CM'], [390, 390, 'CM'], [570, 110, 'RW'], [620, 260, 'ST'], [570, 410, 'LW'],
+    ].map(([x, y, label]) => ({ type: 'player', x, y, r: 13, color: '#e02020', label, name: '', namePos: 'bottom', nameSize: 18, nameDisplay: 'last' }))
+    send({ type: 'request', request: { id: 'formation', method: 'board.addObjects', params: { objects: players } } })
+  })
+
+  const receive = (message) => {
+    if (!message || message.protocol !== protocol || message.token !== token) return
+    if (message.type === 'response' && message.id === 'formation') statusText.textContent = message.ok ? 'Formation added.' : message.error
+  }
+
+  addEventListener('message', (event) => {
+    const message = event.data
+    if (!message || message.protocol !== protocol || message.type !== 'init' || typeof message.token !== 'string' || !event.ports[0]) return
+    token = message.token
+    board = event.ports[0]
+    board.onmessage = event => receive(event.data)
+    board.start()
+    send({ type: 'manifest', manifest: {
+      name: 'Formation generator',
+      description: 'Adds a 4-3-3 shape to the current board.',
+      version: '1.0.0',
+      permissions: ['board:write'],
+    } })
+  }, { once: true })
+</script>

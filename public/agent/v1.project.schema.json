@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://board.tacticsjournal.com/agent/v1.project.schema.json",
+  "title": "Tactics Board ordered project document",
+  "type": "object",
+  "required": ["id", "name", "boards", "updated"],
+  "properties": {
+    "id": { "$ref": "https://board.tacticsjournal.com/agent/v1.project.schema.json#/$defs/id" },
+    "name": { "type": "string" },
+    "boards": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "https://board.tacticsjournal.com/agent/v1.project.schema.json#/$defs/board" }
+    },
+    "updated": { "type": "number", "minimum": 0 }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,100}$"
+    },
+    "view": {
+      "type": "object",
+      "required": ["x", "y", "w", "h"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "w": { "type": "number", "exclusiveMinimum": 0 },
+        "h": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "link": {
+      "type": "object",
+      "required": ["dur", "ease"],
+      "properties": {
+        "dur": { "type": "number", "minimum": 120 },
+        "ease": { "enum": ["in-out", "linear", "out"] }
+      },
+      "additionalProperties": true
+    },
+    "board": {
+      "type": "object",
+      "required": ["id", "title", "view", "scene", "note", "link"],
+      "properties": {
+        "id": { "$ref": "https://board.tacticsjournal.com/agent/v1.project.schema.json#/$defs/id" },
+        "title": { "type": "string" },
+        "label": { "type": "string", "minLength": 1 },
+        "view": { "$ref": "https://board.tacticsjournal.com/agent/v1.project.schema.json#/$defs/view" },
+        "scene": { "$ref": "https://board.tacticsjournal.com/agent/v1.scene.schema.json" },
+        "note": { "type": "string" },
+        "link": { "$ref": "https://board.tacticsjournal.com/agent/v1.project.schema.json#/$defs/link" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

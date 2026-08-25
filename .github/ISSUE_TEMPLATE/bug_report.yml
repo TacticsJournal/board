@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a reproducible problem with the board or its documentation.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include secrets, account data, or security vulnerability details. Use GitHub Security Advisories for security reports.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Which release or commit shows the problem?
+      placeholder: 0.1.0 or abc1234
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include browser, version, operating system, and whether this is hosted or self-hosted.
+      placeholder: Firefox 141 on Ubuntu 24.04, self-hosted build
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Give the smallest sequence that shows the problem.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: results
+    attributes:
+      label: Expected and actual result
+      description: Say what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Add safe, redacted console output or screenshots if they help.
+      render: text
+    validations:
+      required: false

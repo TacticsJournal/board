@@ -1,0 +1,314 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://board.tacticsjournal.com/agent/v1.scene.schema.json",
+  "title": "Tactics Board Mapper scene v4",
+  "x-tacticsjournal": {
+    "arrowDashSemantics": {
+      "dotted": "ball movement",
+      "dashed": "defensive movement",
+      "solid": "offensive movement"
+    },
+    "arrowDashSemanticsAreDefaults": true,
+    "arrowDashSemanticsMayBeOverriddenByUser": true,
+    "rotationSemantics": {
+      "unit": "clockwise degrees",
+      "origin": "object center",
+      "zero": "native artwork orientation",
+      "nativeTopByRotation": {
+        "0": "up (-y)",
+        "90": "right (+x)",
+        "180": "down (+y)",
+        "270": "left (-x)"
+      },
+      "transformOrder": "flipX and flipY mirror native artwork coordinates before rotation"
+    },
+    "assetFacingAtZero": {
+      "goal": "front/open side faces down (+y)",
+      "cone": "narrow tip points up (-y)",
+      "image": "native image top points up (-y); semantic forward is not encoded",
+      "player": "no facing direction is encoded",
+      "ball": "no facing direction is encoded",
+      "marker": "no facing direction is encoded"
+    },
+    "goalFrontByRotationWithoutFlips": {
+      "0": "down (+y)",
+      "90": "left (-x)",
+      "180": "up (-y)",
+      "270": "right (+x)"
+    },
+    "drawOrder": ["box", "arrow", "goal", "marker", "cone", "image", "player", "ball", "text"]
+  },
+  "type": "object",
+  "required": ["version", "board", "objects"],
+  "properties": {
+    "version": { "const": 4 },
+    "board": {
+      "type": "object",
+      "required": ["w", "h"],
+      "properties": {
+        "w": { "type": "number", "const": 800 },
+        "h": { "type": "number", "minimum": 100, "maximum": 4000 }
+      },
+      "additionalProperties": true
+    },
+    "pitch": {
+      "type": "string",
+      "description": "Current IDs are pitch, pitch-up, training, sidebyside, live, and classic. Preserve an existing unknown value."
+    },
+    "match": { "$ref": "#/$defs/match" },
+    "arrowLegend": { "$ref": "#/$defs/arrowLegend" },
+    "objects": {
+      "type": "array",
+      "description": "Objects are rendered by tactical type tier regardless of array order. Zones (box) and arrows always render behind players and all other tactical assets.",
+      "maxItems": 2000,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/player" },
+          { "$ref": "#/$defs/ball" },
+          { "$ref": "#/$defs/cone" },
+          { "$ref": "#/$defs/goal" },
+          { "$ref": "#/$defs/image" },
+          { "$ref": "#/$defs/marker" },
+          { "$ref": "#/$defs/arrow" },
+          { "$ref": "#/$defs/box" },
+          { "$ref": "#/$defs/text" }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "required": ["pitch"], "properties": { "pitch": { "const": "pitch" } } },
+      "then": { "properties": { "board": { "properties": { "h": { "const": 618 } } } } }
+    },
+    {
+      "if": { "required": ["pitch"], "properties": { "pitch": { "const": "pitch-up" } } },
+      "then": { "properties": { "board": { "properties": { "h": { "const": 640 } } } } }
+    },
+    {
+      "if": { "required": ["pitch"], "properties": { "pitch": { "const": "training" } } },
+      "then": { "properties": { "board": { "properties": { "h": { "const": 418 } } } } }
+    },
+    {
+      "if": { "required": ["pitch"], "properties": { "pitch": { "const": "sidebyside" } } },
+      "then": { "properties": { "board": { "properties": { "h": { "const": 533 } } } } }
+    },
+    {
+      "if": { "required": ["pitch"], "properties": { "pitch": { "const": "classic" } } },
+      "then": { "properties": { "board": { "properties": { "h": { "const": 418 } } } } }
+    }
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "coordinate": { "type": "number", "minimum": -10000, "maximum": 10000 },
+    "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,100}$" },
+    "point": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" }
+      },
+      "additionalProperties": false
+    },
+    "match": {
+      "type": "object",
+      "required": ["home", "away", "homeScore", "awayScore", "clock", "date", "showScoreboard", "showTeams"],
+      "properties": {
+        "home": { "type": "string", "maxLength": 100 },
+        "away": { "type": "string", "maxLength": 100 },
+        "homeScore": { "type": "string", "maxLength": 8 },
+        "awayScore": { "type": "string", "maxLength": 8 },
+        "clock": { "type": "string", "maxLength": 20 },
+        "date": { "type": "string", "maxLength": 40 },
+        "showScoreboard": { "type": "boolean" },
+        "showTeams": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "arrowLegend": {
+      "type": "object",
+      "description": "Optional user-defined arrow meanings. Omitted keys use the default tactical meanings in x-tacticsjournal.arrowDashSemantics.",
+      "minProperties": 1,
+      "properties": {
+        "solid": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "dashed": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "dotted": { "type": "string", "minLength": 1, "maxLength": 100 }
+      },
+      "additionalProperties": false
+    },
+    "player": {
+      "type": "object",
+      "required": ["id", "type", "x", "y", "r", "color", "label", "name", "namePos", "nameSize", "nameDisplay"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "player" },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "r": { "type": "number", "minimum": 2, "maximum": 100 },
+        "color": { "$ref": "#/$defs/color" },
+        "label": { "type": "string", "maxLength": 20 },
+        "name": { "type": "string", "maxLength": 120 },
+        "namePos": { "enum": ["top", "bottom"] },
+        "nameSize": { "type": "number", "minimum": 8, "maximum": 96 },
+        "nameDisplay": { "enum": ["first", "last", "full"] },
+        "team": { "type": "string", "maxLength": 100 },
+        "flipX": { "type": "boolean" },
+        "flipY": { "type": "boolean" },
+        "rotation": { "type": "number", "minimum": -3600, "maximum": 3600, "description": "Clockwise degrees about the object's center. At 0 degrees the native top is up (-y); 90 degrees turns it right (+x)." }
+      },
+      "additionalProperties": true
+    },
+    "ball": {
+      "type": "object",
+      "required": ["id", "type", "x", "y", "size"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "ball" },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "size": { "type": "number", "minimum": 2, "maximum": 200 },
+        "flipX": { "type": "boolean" },
+        "flipY": { "type": "boolean" },
+        "rotation": { "type": "number", "minimum": -3600, "maximum": 3600, "description": "Clockwise degrees about the ball's center. The ball has no encoded facing direction." }
+      },
+      "additionalProperties": true
+    },
+    "cone": {
+      "type": "object",
+      "required": ["id", "type", "x", "y", "size"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "cone" },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "size": { "type": "number", "minimum": 2, "maximum": 200 },
+        "flipX": { "type": "boolean" },
+        "flipY": { "type": "boolean" },
+        "rotation": { "type": "number", "minimum": -3600, "maximum": 3600, "description": "Clockwise degrees about the cone's center. At 0 degrees the narrow tip points up (-y)." }
+      },
+      "additionalProperties": true
+    },
+    "goal": {
+      "type": "object",
+      "required": ["id", "type", "x", "y", "size", "variant"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "goal" },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "size": { "type": "number", "minimum": 8, "maximum": 1200 },
+        "variant": { "enum": ["small", "normal"] },
+        "flipX": { "type": "boolean" },
+        "flipY": { "type": "boolean" },
+        "rotation": { "type": "number", "minimum": -3600, "maximum": 3600, "description": "Clockwise degrees about the goal's center. Without flips, the front/open side faces down (+y) at 0, left (-x) at 90, up (-y) at 180, and right (+x) at 270." }
+      },
+      "additionalProperties": true
+    },
+    "image": {
+      "type": "object",
+      "required": ["id", "type", "x", "y", "size", "assetId", "aspect"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "image" },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "size": { "type": "number", "minimum": 8, "maximum": 1200 },
+        "assetId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "aspect": { "type": "number", "minimum": 0.05, "maximum": 20 },
+        "flipX": { "type": "boolean" },
+        "flipY": { "type": "boolean" },
+        "rotation": { "type": "number", "minimum": -3600, "maximum": 3600, "description": "Clockwise degrees about the image's center. At 0 degrees the native image top points up (-y), but the document does not encode which part of a custom image means forward." }
+      },
+      "additionalProperties": true
+    },
+    "marker": {
+      "type": "object",
+      "required": ["id", "type", "x", "y", "w", "name", "namePos"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "marker" },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "w": { "type": "number", "minimum": 2, "maximum": 500 },
+        "name": { "type": "string", "maxLength": 120 },
+        "namePos": { "enum": ["top", "bottom"] },
+        "flipX": { "type": "boolean" },
+        "flipY": { "type": "boolean" },
+        "rotation": { "type": "number", "minimum": -3600, "maximum": 3600, "description": "Clockwise degrees about the marker's center. The marker has no encoded facing direction." }
+      },
+      "additionalProperties": true
+    },
+    "arrow": {
+      "type": "object",
+      "required": ["id", "type", "x1", "y1", "mx", "my", "x2", "y2", "curved", "dash", "color", "width", "head"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "arrow" },
+        "x1": { "$ref": "#/$defs/coordinate" },
+        "y1": { "$ref": "#/$defs/coordinate" },
+        "mx": { "$ref": "#/$defs/coordinate" },
+        "my": { "$ref": "#/$defs/coordinate" },
+        "x2": { "$ref": "#/$defs/coordinate" },
+        "y2": { "$ref": "#/$defs/coordinate" },
+        "curved": { "type": "boolean" },
+        "dash": {
+          "enum": ["solid", "dashed", "dotted"],
+          "description": "Default tactical meaning: dotted is ball movement, dashed is defensive movement, and solid is offensive movement. A user may establish a different legend through their agent; preserve that explicit choice."
+        },
+        "color": { "$ref": "#/$defs/color" },
+        "width": { "type": "number", "minimum": 1, "maximum": 50 },
+        "head": { "type": "boolean" },
+        "measure": { "type": "boolean" },
+        "headSize": { "type": "number", "minimum": 2, "maximum": 200 }
+      },
+      "additionalProperties": true
+    },
+    "box": {
+      "type": "object",
+      "required": ["id", "type", "shape", "x", "y", "w", "h", "rotation", "fill", "opacity"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "box" },
+        "shape": { "enum": ["rect", "ellipse", "outline"] },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "w": { "type": "number", "minimum": 2, "maximum": 4000 },
+        "h": { "type": "number", "minimum": 2, "maximum": 4000 },
+        "rotation": { "type": "number", "minimum": -3600, "maximum": 3600 },
+        "fill": { "$ref": "#/$defs/color" },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "label": { "type": "string", "maxLength": 120 },
+        "labelPos": { "enum": ["top", "right", "bottom", "left"] },
+        "corners": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "$ref": "#/$defs/point" }
+        },
+        "flipX": { "type": "boolean" },
+        "flipY": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "text": {
+      "type": "object",
+      "required": ["id", "type", "x", "y", "text", "size", "bold", "color", "rotation"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "text" },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "text": { "type": "string", "maxLength": 500 },
+        "size": { "type": "number", "minimum": 6, "maximum": 200 },
+        "bold": { "type": "boolean" },
+        "color": { "$ref": "#/$defs/color" },
+        "rotation": { "type": "number", "minimum": -3600, "maximum": 3600 },
+        "flipX": { "type": "boolean" },
+        "flipY": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

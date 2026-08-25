@@ -1,0 +1,10 @@
+/*
+  Strict-Transport-Security: max-age=31536000
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(self "https://polar.sh" "https://sandbox.polar.sh" "https://buy.polar.sh"), publickey-credentials-get=(self "https://polar.sh" "https://sandbox.polar.sh" "https://buy.polar.sh")
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-src 'self' https://polar.sh https://sandbox.polar.sh https://buy.polar.sh; img-src 'self' data: blob: https://tacticsjournal.com https://images.tacticsjournal.com; font-src 'self' data:; connect-src 'self' https://tacticsjournal.com https://billing-sandbox.tacticsjournal.pages.dev wss://board.tacticsjournal.com wss://tactics-board-mapper.pages.dev wss://*.tactics-board-mapper.pages.dev https://www.thesportsdb.com https://en.wikipedia.org; worker-src 'self' blob:; manifest-src 'self'; form-action 'self' https://tacticsjournal.com; upgrade-insecure-requests
+/extensions/*
+  X-Frame-Options: SAMEORIGIN
+  Content-Security-Policy: default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; frame-src 'self' data:; frame-ancestors 'self'

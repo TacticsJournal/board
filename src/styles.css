@@ -1,0 +1,4131 @@
+/* Cool neutral theme: white and system grey surfaces, one blue accent, the
+   system font. The pitch art keeps its own warmth; everything around it is
+   neutral, so the board reads as paper on a desk rather than a cream page. */
+:root {
+  --bg: #ffffff;
+  --bar: #f5f5f7;
+  --line: #d2d2d7;
+  --ink: #1d1d1f;
+  --ink-soft: #6e6e73;
+  /* Compatibility alias while the last `--orange` usages are converted: the
+     blue is the only accent now, and highlight and action are the same job. */
+  --orange: var(--action);
+  --blue: #4a90d9;
+  /* The board's action colour, already used by the pill button and the email
+     form. Buttons take this; it is now the only accent on the board. */
+  --action: #0071E3;
+  --pill: #c7c7cc;
+  --fab-bg: #ffffff;
+  --card: #ffffff;
+  /* The near-black that carries an active state: a filled tool, a played
+     segment, the live row's border. Was a warm grey (#8a8076). */
+  --grip: #1d1d1f;
+  --on-grip: #ffffff;
+
+  /* The bottom panel. It floats over the pitch, so these have to be opaque:
+     --panel is the shelf the active room tab joins, --track the well a
+     segmented control sits in. The band of rooms under the panel takes no
+     ground of its own. */
+  --track: #e8e8ed;
+  --band-ink: #6e6e73;
+  --panel: #f5f5f7;
+  --bandH: 30px;
+
+  /* Motion. Entrances and exits take --ease-out; anything that slides along an
+     edge takes --ease-drawer, the iOS drawer curve. Nothing here exceeds 300ms:
+     past that the board stops feeling like a tool and starts feeling like a
+     transition. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-press-out: 200ms;
+  --dur-modal: 200ms;
+  --dur-push: 220ms;
+  --dur-sheet: 300ms;
+  --icon-swap-dur: 250ms;
+  --icon-swap-blur: 2px;
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-ease: ease-in-out;
+  /* transitions.dev recipes, kept under their own semantic names so the
+     snippets below stay the tuned originals. */
+  --dropdown-open-dur: 250ms;
+  --dropdown-close-dur: 150ms;
+  --dropdown-pre-scale: 0.97;
+  --dropdown-closing-scale: 0.99;
+  --dropdown-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --tabs-dur: 250ms;
+  --tabs-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --toast-open: 350ms;
+  --toast-close: 250ms;
+  --toast-distance: 16px;
+  --toast-blur: 2px;
+  --toast-scale: 0.97;
+  --toast-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --toggle-dur: 350ms;
+  /* 40px track, 18px thumb, 3px inset: the thumb travels 16px. */
+  --toggle-travel: 16px;
+  --toggle-ov1: 1px;
+  --toggle-ov2: 0px;
+  --toggle-track: 150ms;
+  --toggle-ease: cubic-bezier(0.34, 1.35, 0.64, 1);
+  /* The row press tint, neutral so it reads the same on white and on grey. */
+  --row-press: rgba(0, 0, 0, 0.06);
+}
+/* dark palette matches tacticsjournal.com (style.scss html[data-theme-resolved="dark"]) */
+html[data-theme-resolved="dark"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --bar: #1c1c1e;
+  --line: #38383a;
+  --ink: #f5f5f7;
+  --ink-soft: #98989d;
+  --orange: var(--action);
+  --action: #0a84ff;
+  --pill: #48484a;
+  --fab-bg: #1c1c1e;
+  --card: #1c1c1e;
+  --grip: #f5f5f7;
+  --on-grip: #1c1c1e;
+  --row-press: rgba(255, 255, 255, 0.11);
+  --track: #2c2c2e;
+  --band-ink: #98989d;
+  --panel: #1c1c1e;
+}
+html[data-theme-resolved="dark"] header.site-header,
+html[data-theme-resolved="dark"] .site-menu-panel { background: var(--bg); }
+html[data-theme-resolved="dark"] .site-nav a,
+html[data-theme-resolved="dark"] .site-action,
+html[data-theme-resolved="dark"] .actionRow button,
+html[data-theme-resolved="dark"] .site-menu-panel a { color: var(--ink); }
+html[data-theme-resolved="dark"] .actionRow { border-top-color: rgba(255, 255, 255, 0.12); }
+html[data-theme-resolved="dark"] .site-nav-divider { background: rgba(255, 255, 255, 0.15); }
+html[data-theme-resolved="dark"] .site-menu-overlay { background: rgba(0, 0, 0, 0.5); }
+html[data-theme-resolved="dark"] .site-menu-panel a:hover { background: rgba(255, 255, 255, 0.06); }
+html[data-theme-resolved="dark"] .site-menu-divider { background: rgba(255, 255, 255, 0.12); }
+html[data-theme-resolved="dark"] .site-menu-theme .theme-setting { border-top-color: rgba(255, 255, 255, 0.12); }
+html[data-theme-resolved="dark"] .modal { background: rgba(0, 0, 0, 0.6); }
+html[data-theme-resolved="dark"] .labelIn,
+html[data-theme-resolved="dark"] .playerNamePick select,
+html[data-theme-resolved="dark"] .impRow select {
+  background: #111214;      /* TJ --field-bg */
+  border-color: rgba(255, 255, 255, 0.16); /* TJ --field-border */
+}
+html[data-theme-resolved="dark"] .textEdit { background: rgba(17, 18, 20, 0.94); color: var(--ink); }
+html[data-theme-resolved="dark"] .saveItem .savePrev { background: #161617; }
+html[data-theme-resolved="dark"] .setTutorial p,
+html[data-theme-resolved="dark"] .mobileHomeHint p,
+html[data-theme-resolved="dark"] .proCard li { color: #d4d4d4; } /* TJ --text-secondary */
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+html, body { margin: 0; height: 100%; overscroll-behavior: none; touch-action: manipulation; }
+body {
+  /* The platform font, so Apple hardware gets SF and its optical sizing,
+     tracking tables and legibility tuning for free. */
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  letter-spacing: -0.005em;
+}
+
+/* Tracking is size-specific or it is wrong somewhere: large text reads too
+   loose at the default, small labels too tight. */
+.libTitle, .libTitleInput, .setHead, .sheetHead, .shareDialog h2, .agentImportHead h2 { letter-spacing: -0.02em; }
+.libCount, .options .hint, .options .lbl, .band, .expStatus { letter-spacing: 0.005em; }
+#app, .app { height: 100dvh; display: flex; flex-direction: column; position: relative; }
+/* The bottom panel floats over the pitch: opening a room must never resize or
+   move the board under your finger. */
+.panelDock {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--bandH, 30px) + env(safe-area-inset-bottom));
+  z-index: 24;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+.panelDock > * { pointer-events: auto; }
+.tooSmallScreen { display: none; }
+body.board-viewport-too-small { overflow: hidden; }
+body.board-viewport-too-small .app { display: none; }
+body.board-viewport-too-small .tooSmallScreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: var(--bg);
+  color: var(--ink);
+}
+.tooSmallCard {
+  width: min(100%, 360px);
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--card);
+  text-align: center;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12);
+}
+.tooSmallCard strong {
+  display: block;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+.tooSmallCard p {
+  margin: 0 0 14px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+.tooSmallCard a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: #0071E3;
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  font-size: 13px;
+  color: var(--orange);
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 10px;
+  min-height: 40px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+button:disabled { opacity: 0.35; cursor: default; }
+
+/* ---------- site header (exact copy of tacticsjournal.com) ---------- */
+header.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  min-height: 48px;
+  padding: 0 20px;
+  box-sizing: border-box;
+  background: #fff;
+  width: 100%;
+  position: relative;
+  z-index: 110;
+  flex: none;
+}
+.site-logo {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  justify-content: flex-start;
+  min-height: 44px;
+}
+.site-logo img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  margin: 0;
+}
+.site-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 28px;
+  min-width: 0;
+}
+.site-nav a {
+  color: #333;
+  text-decoration: none;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  transition: opacity 0.15s ease;
+}
+.site-nav a:hover { opacity: 0.6; }
+.site-nav a.active { font-weight: 600; }
+.site-nav-divider { display: none; }
+.site-nav .site-nav-divider ~ a { display: none; }
+@media (min-width: 768px) {
+  header.site-header { justify-content: center; gap: 28px; }
+  .site-actions { justify-content: flex-start; }
+  .site-nav a { font-size: 1rem; }
+  .site-nav .site-nav-divider ~ a { display: inline; }
+  .site-menu { display: none; }
+  .site-nav-divider {
+    display: inline-block;
+    width: 1px;
+    height: 18px;
+    background: rgba(0, 0, 0, 0.15);
+    margin: 0 8px;
+  }
+}
+.site-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 0 0 auto;
+  gap: 26px;
+  min-width: 0;
+  position: relative;
+  z-index: 115;
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.site-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #333;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+  position: relative;
+  z-index: 120;
+}
+.site-action:hover { opacity: 0.6; }
+.site-action svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.site-menu {
+  position: relative;
+  z-index: 125;
+}
+.site-menu summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 3px;
+}
+.site-menu summary::-webkit-details-marker { display: none; }
+.menu-icon .menu-top,
+.menu-icon .menu-bottom {
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: center;
+  transform-box: fill-box;
+  opacity: 1;
+  stroke: currentColor;
+}
+.site-menu[open]:not(.closing) .menu-icon .menu-top { transform: translateY(4px) rotate(45deg); }
+.site-menu[open]:not(.closing) .menu-icon .menu-bottom { transform: translateY(-4px) rotate(-45deg); }
+.site-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 99;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              visibility 0s linear 0.4s;
+}
+.site-menu[open] .site-menu-overlay {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              visibility 0s linear;
+}
+.site-menu[open].closing .site-menu-overlay {
+  opacity: 0;
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              visibility 0s linear 0.4s;
+}
+.site-menu-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-width: auto;
+  padding: 56px 0 32px;
+  border: none;
+  border-radius: 0;
+  background: #fff;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 100;
+  clip-path: inset(0 0 100% 0);
+  transition: clip-path 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.site-menu[open] .site-menu-panel { clip-path: inset(0 0 0 0); }
+.site-menu[open].closing .site-menu-panel { clip-path: inset(0 0 100% 0); }
+.site-menu-panel a {
+  display: block;
+  color: #333;
+  text-decoration: none;
+  font-size: 28px;
+  font-weight: 700;
+  font-family: "Inter", sans-serif;
+  letter-spacing: -0.03em;
+  padding: 10px 48px;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.3s ease, transform 0.3s ease, background 0.15s ease;
+}
+.site-menu-primary,
+.site-menu-secondary {
+  position: relative;
+  z-index: 1;
+}
+.site-menu-divider {
+  height: 1px;
+  margin: 18px 48px;
+  background: rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.site-menu-secondary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 18px;
+  padding: 0 48px;
+}
+.site-menu-secondary a {
+  min-width: 0;
+  padding: 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.site-menu[open] .site-menu-panel a,
+.site-menu[open] .site-menu-divider {
+  opacity: 1;
+  transform: translateY(0);
+}
+.site-menu[open] .site-menu-primary a:nth-of-type(1) { transition-delay: 0.06s; }
+.site-menu[open] .site-menu-primary a:nth-of-type(2) { transition-delay: 0.1s; }
+.site-menu[open] .site-menu-primary a:nth-of-type(3) { transition-delay: 0.14s; }
+.site-menu[open] .site-menu-primary a:nth-of-type(4) { transition-delay: 0.18s; }
+.site-menu[open] .site-menu-primary a:nth-of-type(5) { transition-delay: 0.22s; }
+.site-menu[open] .site-menu-divider { transition-delay: 0.24s; }
+.site-menu[open] .site-menu-secondary a:nth-of-type(1) { transition-delay: 0.26s; }
+.site-menu[open] .site-menu-secondary a:nth-of-type(2) { transition-delay: 0.28s; }
+.site-menu[open] .site-menu-secondary a:nth-of-type(3) { transition-delay: 0.3s; }
+.site-menu[open] .site-menu-secondary a:nth-of-type(4) { transition-delay: 0.32s; }
+.site-menu[open] .site-menu-secondary a:nth-of-type(5) { transition-delay: 0.34s; }
+.site-menu[open] .site-menu-secondary a:nth-of-type(6) { transition-delay: 0.36s; }
+.site-menu[open] .site-menu-secondary a:nth-of-type(7) { transition-delay: 0.38s; }
+.site-menu[open] .site-menu-secondary a:nth-of-type(8) { transition-delay: 0.4s; }
+
+/* Search lives in the icon row on desktop only. On mobile the icon goes and
+   the Search link in the menu carries it, same as tacticsjournal.com. */
+.site-menu[open].closing .site-menu-panel a,
+.site-menu[open].closing .site-menu-divider {
+  opacity: 0;
+  transform: translateY(-8px);
+  transition-delay: 0s;
+}
+.site-menu-panel a:hover { background: rgba(0, 0, 0, 0.04); }
+/* Both theme controls belong to the ported site header, so they take the
+   site's field tokens rather than the board's cream chrome. */
+.theme-setting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted, #86868b);
+  font-size: 12px;
+}
+.theme-setting-label {
+  color: var(--text-muted, #86868b);
+  font-size: 12px;
+  font-weight: 500;
+}
+.theme-setting-select {
+  appearance: none;
+  min-width: 88px;
+  padding: 6px 28px 6px 10px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.1));
+  border-radius: 999px;
+  background-color: var(--field-bg, #fff);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  color: var(--text-secondary, #3c3c3c);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+}
+.theme-setting-select:focus {
+  outline: 2px solid color-mix(in srgb, var(--text, #111) 22%, transparent);
+  outline-offset: 2px;
+}
+.site-menu-theme {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  margin: 28px 48px 0;
+  margin-top: auto;
+  padding-top: 28px;
+  flex-shrink: 0;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition-delay: 0.42s;
+}
+.site-menu[open] .site-menu-theme {
+  opacity: 1;
+  transform: translateY(0);
+}
+.site-menu[open].closing .site-menu-theme {
+  opacity: 0;
+  transform: translateY(8px);
+  transition-delay: 0s;
+}
+.site-menu-theme .theme-setting {
+  justify-content: space-between;
+  padding-top: 18px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+@media (max-width: 767px) {
+  header.site-header {
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 48px;
+    padding: 0 12px;
+  }
+  .site-logo { min-height: 48px; padding-right: 10px; }
+  .site-logo img { width: 24px; height: 24px; }
+  .site-nav { display: flex; gap: 16px; }
+  .site-nav a:nth-of-type(1),
+  .site-nav a:nth-of-type(2),
+  .site-nav a:nth-of-type(3) { display: inline-flex; }
+  .site-nav a:nth-of-type(n+4) { display: none; }
+  .site-nav a { font-size: 0.9rem; }
+  .site-nav .site-nav-divider,
+  .site-nav .site-nav-divider ~ a { display: none; }
+  .site-actions {
+    position: static;
+    transform: none;
+    gap: 20px;
+    margin-left: auto;
+  }
+  .site-actions a[data-inline-toggle="search"] { display: none; }
+  .site-action svg { width: 22px; height: 22px; }
+  .site-menu-panel a {
+    font-size: 24px;
+    font-family: "Inter", sans-serif;
+    letter-spacing: -0.03em;
+  }
+  .site-menu-secondary a {
+    font-size: 16px;
+    letter-spacing: -0.02em;
+  }
+  .site-menu-theme {
+    margin-left: 28px;
+    margin-right: 28px;
+  }
+}
+
+/* ---------- action row below the nav ---------- */
+.actionRow {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 38px;
+  min-height: 44px;
+  padding: 0 12px;
+  background: transparent;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+.actGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 24px;
+}
+.actionRow button {
+  color: #333;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  transition: opacity 0.15s ease;
+}
+.actionRow button:hover { opacity: 0.6; }
+.iconBtn { width: 22px; min-height: 44px; }
+.iconBtn.active { color: var(--orange); }
+.iconBtn svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+  margin: 0 auto;
+  stroke-width: 1.3;
+}
+/* the row draws from two icon sets: the board's own, which carry their weight
+   on the <svg>, and the Tabler ones, which carry it on the path inside. Set
+   both, or the row reads at two weights. */
+.iconBtn svg * { stroke-width: 1.3; }
+@media (max-width: 400px) {
+  .actionRow { gap: 26px; }
+  .actGroup { gap: 18px; }
+}
+
+/* ---------- stage + floating controls ---------- */
+.stageWrap { flex: 1; min-height: 0; position: relative; }
+#stage { position: absolute; inset: 0; touch-action: none; }
+.liveEditChip {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 999px;
+  background: var(--bar);
+  color: var(--ink-soft);
+  opacity: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  pointer-events: none;
+}
+.liveEditChip.isVisible { opacity: 1; }
+button, a, summary, .toolbar, .options, .actionRow { touch-action: manipulation; }
+
+.fab {
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--fab-bg);
+  color: var(--orange);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fab svg { width: 16px; height: 16px; }
+.fab.muted { color: var(--ink-soft); }
+.fab.active { background: var(--grip); color: var(--on-grip); }
+.fab:active { transform: scale(0.94); }
+
+.fabCol {
+  position: absolute;
+  right: 10px;
+  /* centred on the board you can actually see, so opening a panel lifts it
+     clear rather than hiding it behind one */
+  top: calc(50% - var(--panelH, 0px) / 2);
+  transform: translateY(-50%);
+  transition: top var(--dur-sheet, 300ms) var(--ease-drawer, ease);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  z-index: 20;
+}
+/* Two halves of one idea share a capsule: forward and back, across and over. */
+.fabPair {
+  display: flex;
+  flex-direction: column;
+  border-radius: 15px;
+  background: var(--fab-bg);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+.fabPair .fab {
+  height: 27px;
+  min-height: 27px;
+  border-radius: 15px;
+  background: transparent;
+  box-shadow: none;
+}
+.fabPair .fab + .fab { border-top: 1px solid var(--line); }
+.fabPair .fab:first-child { border-radius: 15px 15px 4px 4px; }
+.fabPair .fab:last-child { border-radius: 4px 4px 15px 15px; }
+/* one half hidden leaves a lone button, which should look like one */
+.fabPair .fab:only-child { border-radius: 50%; height: 30px; min-height: 30px; }
+/* Link button, bottom left of the board: what to do with several things at
+   once. The little menu sits above it, the way the handle's own menu does. */
+.fabBL {
+  position: absolute;
+  left: 12px;
+  bottom: calc(14px + var(--panelH, 0px));
+  z-index: 20;
+}
+.linkMenu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  display: flex;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 16px;
+  background: rgba(58, 54, 48, 0.94);
+  box-shadow: 0 6px 20px rgba(24, 20, 14, 0.34);
+}
+.linkMenu button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 66px;
+  padding: 5px 10px 6px;
+  border-radius: 12px;
+  color: var(--on-grip);
+  font-size: 0.6rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.linkMenu button:active { background: rgba(255, 255, 255, 0.14); }
+.linkMenu .linkIc svg { width: 17px; height: 17px; }
+
+/* A saved combination draws itself in the cell, from its own shapes. */
+.cellStamp { width: 100%; height: 100%; }
+
+.hidden { display: none !important; }
+
+.backBtn {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 30;
+  padding: 3px 10px;
+  border-radius: 14px;
+  background: var(--orange);
+  color: #ffffff;
+  min-height: 25px;
+  font-size: 0.52rem;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+}
+.backBtn:active { transform: scale(0.96); }
+
+/* ---------- options tray ---------- */
+.options {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  height: 56px;
+  max-height: 56px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  background: var(--bar);
+  border-top: 1px solid var(--line);
+}
+.options::-webkit-scrollbar { display: none; }
+.options .hint { font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+.options .lbl { font-size: 12px; color: var(--ink-soft); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.options .teamChip,
+.options .addChip,
+.options .playerNamePick,
+.options input,
+.options select,
+.options button { white-space: nowrap; }
+
+.seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  height: 32px;
+  border-radius: 999px;
+  flex: none;
+  background: var(--track);
+}
+.seg button {
+  min-height: 26px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 999px;
+  color: var(--ink);
+  opacity: 0.72;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.seg button.active {
+  background: var(--card);
+  color: var(--ink);
+  opacity: 1;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+}
+html[data-theme-resolved="dark"] .seg button.active { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.55); }
+/* pictogram variant: the control draws its own setting instead of naming it */
+.seg.pic button { width: 40px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.seg.pic svg { display: block; width: 26px; height: 16px; color: var(--ink); }
+
+/* Node editing: the two round buttons that add and remove a node, and the
+   rule that separates them from the curve control beside them. */
+.nodeBtn {
+  width: 32px; height: 32px; min-height: 32px;
+  flex: none;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--fab-bg);
+  color: var(--orange);
+  box-shadow: 0 2px 6px rgba(95, 80, 55, 0.22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.nodeBtn svg { width: 16px; height: 16px; }
+.nodeBtn:active { transform: scale(0.94); }
+.nodeBtn.armed { background: var(--orange); color: #ffffff; }
+.nodeBtn:disabled { color: var(--ink-soft); opacity: 0.5; box-shadow: none; }
+.nodeBtn:disabled:active { transform: none; }
+.trayDiv { width: 1px; height: 26px; flex: none; background: var(--line); }
+
+.sw {
+  width: 24px; height: 24px; min-height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  flex: none;
+}
+html[data-theme-resolved="dark"] .sw { border-color: rgba(255, 255, 255, 0.22); }
+.sw.active { box-shadow: 0 0 0 2px var(--bar), 0 0 0 4px var(--orange); }
+
+.teamChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: var(--ink);
+  font-weight: 600;
+}
+.teamChip.active { border-color: var(--orange); }
+.teamChip .chipDot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+.teamChip.ghost {
+  border-style: dashed;
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+
+.addChip {
+  flex: none;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: var(--orange);
+  font-weight: 600;
+}
+
+.labelIn {
+  width: 56px;
+  font: inherit;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+.nameIn { width: 120px; }
+.playerNamePick { align-items: stretch; }
+.playerNamePick select {
+  width: 200px;
+  min-width: 200px;
+  max-width: 280px;
+  font: inherit;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 5px 8px;
+}
+
+
+/* ---------- bottom room band ---------- */
+/* The active room is the light surface the panel above it sits on, so the tab
+   reads as an open drawer. The old treatment - #fffdf8 on --pill - was 1.9:1. */
+.toolbar {
+  flex: none;
+  display: flex;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.toolbar button {
+  flex: 1;
+  border-radius: 0;
+  min-height: var(--bandH, 30px);
+  color: var(--band-ink);
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0;
+}
+.toolbar button.active {
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 600;
+}
+.toolbar .tlabel { pointer-events: none; }
+
+/* ---------- shapes shelf ---------- */
+.shelf {
+  flex: none;
+  background: var(--panel);
+}
+.shelfScroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior: contain; touch-action: pan-x; border-top: 1px solid var(--line); }
+.shelfScroll::-webkit-scrollbar { display: none; }
+.shelfTrack { display: flex; width: max-content; min-width: 100%; }
+.shelfSec { flex: 0 0 auto; }
+.shelfSecRule { flex: 0 0 1px; width: 1px; margin: 6px 3px; background: var(--line); }
+/* A side with no team to field still holds its column, so the rows after it
+   stay with their own side. */
+.cellSpacer { visibility: hidden; pointer-events: none; }
+.shelfHead { display: none; }
+.shelfHead .shelfName { font-size: 0.85rem; color: var(--ink); }
+.shelfHead .shelfChev { display: block; margin: 1px auto 0; color: var(--ink-soft); }
+.shelfGrid {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, 40px);
+  grid-auto-columns: min-content;
+  gap: 6px;
+  padding: 6px 12px;
+}
+.cell {
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-radius: 10px;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cell svg { display: block; width: 28px; height: 28px; }
+.cell img { display: block; max-width: 30px; max-height: 30px; object-fit: contain; }
+/* the two side pickers carry a code, so they are wider than a token cell */
+.cell.cellTeam { width: auto; min-width: 62px; padding: 0 8px; }
+
+/* Flip and swap lead the players shelf. They are board actions, so they carry
+   no kit colour and no resting fill, and they are drawn in the soft grey the
+   panel gives its secondary text; a rule sets them off from the tokens. */
+.cell.cellUtil { color: var(--ink-soft); }
+.cell.cellUtil svg { width: 22px; height: 18px; }
+.swapArt { display: block; transform: rotate(90deg); }
+.cell.cellUtil:disabled { opacity: 0.32; }
+.shelfRule {
+  grid-row: span 2;
+  width: 1px;
+  background: var(--line);
+  margin: 4px 3px;
+}
+
+/* ---------- the licensed user's own assets ---------- */
+.cell img.cellAsset { max-width: 32px; max-height: 32px; }
+.cell.cellAdd { border: 1px dashed var(--line); color: var(--orange); }
+.cell.cellAdd svg { color: var(--orange); }
+.cell.cellLocked { opacity: 0.42; }
+/* a small dot marks the shapes that are yours */
+.cell .cellMine {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--orange);
+}
+.cell .cellRm {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #c8102e;
+  color: #fff;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}
+.cell { position: relative; }
+.cell.cellDim { opacity: 0.35; }
+.cell.cellHeld { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--orange); }
+
+.assetBar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  overflow: hidden;
+}
+.assetBar > * { min-width: 0; }
+.assetName { flex: 1 1 90px; width: auto; padding: 0; }
+.assetName input {
+  width: 100%;
+  font: inherit;
+  font-size: 0.8rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 6px 8px;
+  outline: none;
+}
+.assetMove {
+  flex: 0 1 86px;
+  width: 86px;
+  min-width: 0;
+  height: 36px;
+  font: inherit;
+  font-size: 0.8rem;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 5px 6px;
+}
+.assetBar .addChip { font-size: 0.8rem; }
+.assetDelete, .assetDone {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  padding: 7px;
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.assetDelete { color: #c8102e; }
+.assetDone { color: var(--ink-soft); }
+.assetDelete .ic, .assetDone .ic { width: 19px; height: 19px; }
+
+.assetRow { gap: 11px; }
+.assetThumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--bar);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  overflow: hidden;
+}
+.assetThumb img { max-width: 22px; max-height: 22px; }
+.assetThumb svg { width: 22px; height: 22px; }
+.assetRowDel {
+  padding: 4px;
+  min-height: 32px;
+  background: transparent;
+  color: var(--ink-soft);
+}
+.assetRowDel svg { width: 17px; height: 17px; }
+.cellTeamInner { display: inline-flex; align-items: center; gap: 6px; }
+.cell.cellTeam svg { width: 20px; height: 20px; }
+.cellCode {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.cellCodeGhost { font-weight: 500; color: var(--ink-soft); }
+/* an arrow is drawn long and thin, so it gets the full width of the cell */
+.cell img.cellWide { max-width: 36px; }
+/* the live marker previews the same crop of the same screenshot the board uses */
+.cell .cellCrop {
+  display: block;
+  width: 30px;
+  height: 17px;
+  background-repeat: no-repeat;
+}
+.cell.active {
+  background: var(--card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+}
+html[data-theme-resolved="dark"] .cell.active { background: #2a2a2c; box-shadow: none; }
+
+/* Arrows and equipment are board art in the board's own ink, and on the dark
+   shelf a black arrow all but disappears. Those cells keep a pitch-pale ground
+   of their own, so the art is read against what it was drawn against. Zones
+   are washes of colour that carry themselves, and players carry their kit, so
+   both stay on the sheet; the add cell is an affordance, not art. */
+html[data-theme-resolved="dark"] .shelfGrid[data-cat="arrows"] .cell:not(.cellAdd):not(.cellSpacer),
+html[data-theme-resolved="dark"] .shelfGrid[data-cat="equipment"] .cell:not(.cellAdd):not(.cellSpacer) {
+  background: #dcdce0;
+  color: #111214;
+}
+html[data-theme-resolved="dark"] .shelfGrid[data-cat="arrows"] .cell.active,
+html[data-theme-resolved="dark"] .shelfGrid[data-cat="equipment"] .cell.active {
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.shelfRail { display: flex; align-items: center; height: 32px; background: var(--panel); }
+.shelfRailList { display: flex; align-items: center; gap: 20px; min-width: 0; flex: 1; height: 32px; padding: 0 14px; overflow-x: auto; scrollbar-width: none; }
+.shelfRailList::-webkit-scrollbar { display: none; }
+.shelfRail button { padding: 0; min-height: 28px; border-radius: 0; font-size: 0.78rem; color: var(--ink-soft); white-space: nowrap; }
+.shelfRail button.active { color: var(--orange); font-weight: 600; }
+.shelfRailRight { flex: 0 0 48px; width: 48px; height: 32px; min-height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px; border-left: 1px solid var(--line); color: var(--ink-soft); }
+.shelfRailRight span { width: 16px; height: 16px; border-radius: 50%; background: #e02020; box-shadow: inset 0 0 0 2px #111; }
+.shelfRailRight svg { width: 12px; height: 8px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.pickerHidden { display: none !important; }
+
+/* Mobile color picker: 264px sheet, 8px gap, and 28px floating dock. */
+.colorPicker { display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 264px; overflow: hidden; background: #333; color: #fff; z-index: 2; }
+.colorPicker.open { display: block; }
+.panelDock.pickerOpen { bottom: env(safe-area-inset-bottom); height: 300px; }
+.panelDock.pickerOpen ~ .toolbar { display: none; }
+.pickerHeader { position: relative; z-index: 3; height: 38px; }
+.pickerTabs { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 24px; }
+.pickerTabs button { height: 38px; min-height: 38px; padding: 0 2px; color: #9e9e9e; font-size: 16px; }
+.pickerTabs button[aria-selected="true"] { color: #fff; font-weight: 600; }
+.pickerEye { position: absolute; z-index: 1; top: 5px; left: 6px; width: 28px; height: 28px; min-height: 28px; padding: 5px; color: #fff; }
+.pickerEye::before { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; border-radius: 8px; transform: translate(-50%, -50%); }
+.pickerEye svg { width: 18px; height: 18px; }
+.pickerSwatches { position: absolute; z-index: 1; inset: 38px 0 0; overflow: hidden; }
+.pickerSwatch { position: absolute; width: 22px; height: 22px; min-height: 22px; padding: 0; border-radius: 50%; background: var(--c); transform: translate(-50%, -50%); }
+.pickerSwatch::before { content: ""; position: absolute; inset: -4px; border-radius: 50%; }
+.pickerSwatch[aria-pressed="true"] { box-shadow: 0 0 0 1.5px #333, 0 0 0 3px #fff; }
+.pickerCustom { position: absolute; z-index: 1; inset: 0; }
+.pickerWheel { position: absolute; left: 50%; top: 134px; width: 168px; height: 168px; transform: translate(-50%, -50%); }
+.pickerHue { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, #f00, #f0f, #00f, #0ff, #0f0, #ff0, #f00); -webkit-mask: radial-gradient(circle closest-side, transparent 0 75%, #000 75.5%); mask: radial-gradient(circle closest-side, transparent 0 75%, #000 75.5%); }
+.pickerHueHit { position: absolute; left: 50%; top: 50%; width: 216px; height: 216px; min-height: 216px; padding: 0; border-radius: 50%; transform: translate(-50%, -50%); background: transparent; -webkit-mask: radial-gradient(circle closest-side, transparent 0 50%, #000 50.5%); mask: radial-gradient(circle closest-side, transparent 0 50%, #000 50.5%); touch-action: none; }
+.pickerTriangle { position: absolute; inset: 0; width: 168px; height: 168px; }
+.pickerRingHandle { position: absolute; left: 50%; top: 5.2%; width: 17px; height: 17px; border-radius: 50%; background: #fff; transform: translate(-50%, -50%); box-shadow: 0 0 0 1px rgba(0,0,0,.28); pointer-events: none; }
+.pickerTriHandle { position: absolute; left: 41%; top: 45%; width: 28px; height: 28px; border: 2px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+.pickerFooter { position: absolute; z-index: 2; bottom: 10px; left: 0; right: 0; height: 28px; padding-left: 16px; display: flex; align-items: center; }
+.pickerFooter button { min-height: 28px; height: 28px; padding: 0; color: #e8e8e8; font-variant-numeric: tabular-nums; }
+.pickerFooter input { width: 96px; height: 28px; padding: 3px 7px; border: 1px solid #777; border-radius: 4px; background: #414141; color: #fff; font: inherit; text-transform: uppercase; }
+.pickerCurrentDot { display: none; }
+.panelDock.pickerOpen .pickerCurrentDot { position: absolute; z-index: 3; bottom: 276px; left: 16px; display: block; width: 16px; height: 16px; border: 2px solid #111; border-radius: 50%; background: #e02020; }
+.pickerCurrentDot::after, .colorDockCurrent::after { content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; border-radius: 50%; background: #fff; transform: translate(-50%, -50%); }
+.colorDock { display: none; }
+.colorDock.open { position: absolute; right: 10px; bottom: 272px; z-index: 3; display: flex; align-items: center; justify-content: space-between; width: 128px; height: 28px; padding: 2px 6px; border-radius: 14px; background: #333; }
+.colorDockCurrent, .colorDockChip span { position: relative; display: block; width: 18px; height: 18px; border: 2px solid #111; border-radius: 50%; background: #e02020; }
+.colorDockChip { position: relative; width: 20px; height: 24px; min-height: 24px; padding: 0; opacity: 0.48; }
+.colorDockChip span { width: 16px; height: 16px; margin: auto; background: #777; }
+.colorDockChip span::after { content: ""; position: absolute; left: 1px; right: 1px; top: 6px; height: 2px; background: #222; transform: rotate(-45deg); }
+.colorDockClose { position: relative; width: 24px; height: 24px; min-height: 24px; padding: 4px; color: #fff; }
+.colorDockClose::before { content: ""; position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; border-radius: 50%; transform: translate(-50%, -50%); }
+.colorDockClose svg { width: 16px; height: 16px; }
+.pickerTabs button:focus-visible, .pickerSwatch:focus-visible, .pickerHueHit:focus-visible, .pickerFooter button:focus-visible, .pickerFooter input:focus-visible, .colorDockClose:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+@media (max-width: 560px) {
+  .toolbar button { font-size: 0.75rem; padding: 6px 2px; }
+}
+
+/* ---------- inline text editor ---------- */
+.textEdit {
+  position: absolute;
+  z-index: 30;
+  font-family: Helvetica, Arial, sans-serif;
+  color: #111;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1.5px dashed var(--blue);
+  border-radius: 4px;
+  padding: 0 4px;
+  min-width: 90px;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+input,
+select,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ---------- import modal ---------- */
+/* The sheets frame the part of the screen that is actually visible, not the
+   layout viewport: iOS does not shrink a fixed element when the keyboard
+   comes up, it scrolls the page under it, which slides a full-height sheet
+   off the top and buries whatever you are typing into. The vv* variables are
+   the visual viewport, published by the board and left at their defaults
+   wherever the two agree. */
+.modal {
+  position: fixed;
+  top: var(--vvTop, 0px);
+  left: var(--vvLeft, 0px);
+  width: var(--vvW, 100%);
+  height: var(--vvH, 100%);
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 130; /* above the site header and its menu (110-125) */
+}
+.modal.hidden { display: none; }
+/* The sheet rises from the edge it is attached to, so it reads as coming from
+   somewhere rather than appearing. `allow-discrete` is what lets it animate out
+   of `display: none` without JS holding the element open. */
+.modal {
+  transition:
+    opacity var(--dur-sheet) var(--ease-out),
+    display var(--dur-sheet) allow-discrete;
+}
+.modal.hidden { opacity: 0; transition-duration: 240ms; }
+.modal > .sheet { transition: transform var(--dur-sheet) var(--ease-drawer); }
+.modal.hidden > .sheet { transform: translateY(100%); transition-duration: 240ms; }
+@starting-style {
+  .modal:not(.hidden) { opacity: 0; }
+  .modal:not(.hidden) > .sheet { transform: translateY(100%); }
+}
+.sheet {
+  width: 100%;
+  max-width: 720px;
+  max-height: min(94dvh, 100%);
+  overflow-y: auto;
+  overflow-x: hidden; /* clips the screen slide; the sheet never scrolls sideways */
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 16px 16px 0 0;
+  padding: 12px 14px max(12px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--ink);
+}
+.sheetHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.sheetHead strong { color: var(--ink); flex: 1 1 auto; min-width: 0; }
+.sheet canvas { width: 100%; border-radius: 10px; touch-action: manipulation; }
+.sheet button { background: var(--card); border: 1px solid var(--line); }
+.sheet button.active { background: var(--grip); color: var(--on-grip); }
+.fileBtn {
+  display: inline-block;
+  text-align: center;
+  font-size: 13px;
+  color: var(--orange);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  cursor: pointer;
+}
+.impRow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+.impRow select {
+  font: inherit;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  margin-left: 6px;
+}
+.impStatus { font-size: 12px; color: var(--ink-soft); white-space: pre-wrap; }
+.hexIn { width: 84px; font-variant-numeric: tabular-nums; }
+
+/* app-wide banner: open-board conflicts, access-loss notices */
+.appBanner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+.appBanner.hidden { display: none; }
+.appBanner p { margin: 0; flex: 1 1 240px; }
+.appBanner .appBannerActions { display: flex; gap: 8px; flex-wrap: wrap; }
+.appBanner button { white-space: nowrap; }
+.appBanner.appBannerWarn { background: #fff7e6; border-bottom-color: #f0c36d; color: #6b4a00; }
+@media (prefers-color-scheme: dark) {
+  .appBanner.appBannerWarn { background: #3a2e0d; border-bottom-color: #8a6a1a; color: #ffd88a; }
+}
+
+/* settings sheet */
+.sheetBtns {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.setSheet { padding-top: 18px; }
+/* every tab is the same height: the sheet fills the screen on mobile
+   instead of growing and shrinking with each tab's content; square top */
+@media (max-width: 767px) {
+  .setSheet {
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+    padding-top: max(20px, env(safe-area-inset-top));
+  }
+}
+/* ---------- settings: one grouped list, push screens underneath ----------
+   No tab grid and no glow: selection reads through weight and ground, the
+   accent is grey, and blue is reserved for Pro. Icons are Tabler (MIT). */
+.setPane, .tmPane, .svPane { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.setPane[data-pane] { gap: 4px; }
+/* Drilling in and coming back are the same swap without this: the screen
+   arrives from the side you are travelling, so the back chevron means
+   something. The incoming screen carries the direction on its own — the
+   outgoing one is dropped rather than pushed, which keeps this to a transform
+   and avoids taking the panes out of flow. */
+.setPane[data-pane] { transition: transform var(--dur-push) var(--ease-out), opacity var(--dur-push) var(--ease-out); }
+.setPane[data-pane].setEnterPush { transform: translateX(12%); opacity: 0; }
+.setPane[data-pane].setEnterPop { transform: translateX(-12%); opacity: 0; }
+/* The nav bar is a fixed frame; only its title changes with the screen. */
+.setTitle { transition: opacity calc(var(--dur-push) * 0.45) var(--ease-out); }
+.setTitle.setTitleSwap { opacity: 0; }
+.setNav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 6px;
+}
+.sheet .setBack {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  min-height: 34px;
+}
+.sheet .setBack[hidden] { display: none; }
+.setBackIc { width: 22px; height: 22px; }
+.setTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+.sheet .setDone {
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-size: 15px;
+  padding: 6px 2px;
+}
+.setGroupHead {
+  font-size: 13px;
+  color: var(--ink-soft);
+  letter-spacing: -0.01em;
+  padding: 14px 6px 6px;
+}
+.setGroup {
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.sheet .setItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  text-align: left;
+  cursor: pointer;
+}
+.sheet .setItem:first-child { border-top: 0; }
+.sheet .setItemStatic { cursor: default; }
+/* A row is a button and has to say so when pressed. The tint lands at once and
+   releases slowly: the press is the finger's, the release is the system's.
+   Grey, not blue — blue is reserved for Pro. Rows are full-bleed inside a
+   rounded group, so this is a tint and never a scale. */
+.sheet .setItem:not(.setItemStatic):not([disabled]) {
+  transition: background-color var(--dur-press-out) var(--ease-out);
+}
+.sheet .setItem:not(.setItemStatic):not([disabled]):active {
+  background-color: var(--row-press);
+  transition-duration: 0ms;
+}
+.setItemLabel { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.setItemValue { color: var(--ink-soft); white-space: nowrap; }
+.setPitchSummary { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.projectsCountCompact, .projectsUpdatedCompact { display: none; }
+@media (max-width: 600px) {
+  .projectsUpdatedFull:not([hidden]) { display: none; }
+  .projectsUpdatedCompact:not([hidden]) { display: inline; }
+}
+@media (max-width: 430px) {
+  .projectsCountFull, .setPitchSummary [data-bg-count] { display: none; }
+  .projectsCountCompact { display: inline; }
+}
+.sheet .setItem[disabled], .sheet .setItemMuted { color: var(--ink-soft); cursor: default; }
+.sheet .setItemAction {
+  flex: none;
+  font-size: 13px;
+  color: var(--ink-soft);
+  background: none;
+  border: 0;
+  padding: 6px 4px;
+  min-height: 34px;
+}
+.sheet .setItemAction.danger { color: var(--ink-soft); }
+.setItem .ic { width: 19px; height: 19px; flex: none; color: var(--ink-soft); }
+.setChev { width: 16px; height: 16px; }
+.setTick { color: var(--ink); }
+.setStatusRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0 6px;
+}
+.setStatusRow[hidden] { display: none; }
+.setStatusText {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  line-height: 1.45;
+}
+.sheet .setStatusUndo {
+  flex: none;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  color: var(--action);
+  font-size: 13px;
+  font-weight: 700;
+}
+.sheet .setStatusUndo[hidden] { display: none; }
+.setNote {
+  font-size: 13px;
+  color: var(--ink-soft);
+  letter-spacing: -0.01em;
+  line-height: 1.45;
+  margin: 8px 0 0;
+  padding: 0 6px;
+}
+/* Skills and extensions use plain groups. They are local project settings,
+   not another sales panel. */
+.skillsSection { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 18px; }
+.skillsSectionUnavailable { opacity: 0.52; }
+.skillsSectionUnavailable .setItem { pointer-events: none; }
+.skillsHeading { margin: 0; padding: 0 6px; font-size: 17px; font-weight: 650; letter-spacing: -0.015em; text-transform: none; }
+.skillsIntro { margin: 0; padding: 0 6px; color: var(--ink-soft); font-size: 14px; line-height: 1.45; }
+.skillsEmpty { padding: 12px 14px; color: var(--ink-soft); font-size: 14px; }
+.skillsForm, .extensionDetail { display: flex; flex-direction: column; gap: 14px; padding: 10px 6px; }
+.skillsForm > label { display: flex; flex-direction: column; gap: 6px; color: var(--ink-soft); font-size: 13px; }
+.skillsInput { box-sizing: border-box; width: 100%; min-height: 44px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; font-size: 16px; }
+.skillsTextarea { min-height: 180px; resize: vertical; line-height: 1.4; }
+.skillsSubheading { margin: 2px 0 -6px; color: var(--ink-soft); font-size: 13px; font-weight: 650; }
+.skillsToggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font-size: 15px; }
+.skillsToggle .setSeg { margin-left: auto; }
+.extensionDetail .skillsToggle input { width: 20px; height: 20px; margin: 0; accent-color: var(--action); }
+.skillsButton, .skillsDelete { min-height: 44px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; font-size: 16px; text-align: center; }
+.skillsDelete { color: #b42318; }
+.extensionDetail > p { margin: 0; line-height: 1.45; }
+.extensionFrame { min-height: 180px; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.extensionFrame iframe { display: block; width: 100%; min-height: 300px; border: 0; }
+.setCode {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.sheet .setItemAction.setCopy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--action);
+  font-weight: 600;
+}
+.sheet .setItemAction.setCopy .ic { width: 16px; height: 16px; }
+.sheet .setProviderAction {
+  min-height: 46px;
+  padding-left: 45px;
+  color: var(--action);
+  font-weight: 600;
+  text-decoration: none;
+}
+.sheet .setProviderAction > .ic { width: 16px; height: 16px; color: var(--ink-soft); }
+.sheet .setProviderAction .setItemLabel { white-space: normal; text-overflow: clip; }
+.sheet .setProviderAction [data-provider-label] .ic {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 5px;
+  color: var(--action);
+  vertical-align: -3px;
+}
+.setStepNum {
+  flex: none;
+  width: 19px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.setNoteStrong { color: var(--ink); }
+/* the board's own player dot, so a row shows the colour its dots will be */
+.setDot {
+  width: 24px; height: 24px;
+  flex: none;
+  border-radius: 50%;
+  border: 3px solid #0b0b0e;
+}
+.setDotEmpty { background: transparent; border-color: var(--pill); }
+/* two tiers, two weights: a one-off unlock sits back, the subscription fills */
+.setTag {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.setTagLicense { background: var(--bar); color: var(--ink-soft); }
+.setTagPro { background: #2f6fb0; color: #ffffff; }
+.setSeg {
+  position: relative;
+  display: flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--bar);
+  --tabs-pill-inset: 2px;
+  --tabs-pill-radius: 6px;
+}
+.sheet .setSeg button {
+  position: relative;
+  z-index: 1;
+  border: 0;
+  transition: color var(--tabs-dur) var(--tabs-ease);
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  padding: 4px 10px;
+  min-height: 30px;
+}
+.sheet .setSeg button.active { background: var(--card); color: var(--ink); font-weight: 700; }
+.sheet .setSeg.is-measured button.active { background: none; }
+.setSearchItem { cursor: text; }
+.sheet .setSearch {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  padding: 0;
+}
+.sheet .setSearch::placeholder { color: var(--ink-soft); }
+.sheet .setSearch:focus { outline: none; }
+/* focus is already shown by the caret and the keyboard; a bar down the left
+   edge of the field only reads as a stray mark */
+/* the seg needs its own track in dark: --bar and --card resolve to the same grey */
+html[data-theme-resolved="dark"] .sheet .setSeg { background: #1C1C1E; --tabs-pill-bg: #3A3A3C; }
+html[data-theme-resolved="dark"] .sheet .setSeg button.active { background: #3A3A3C; }
+html[data-theme-resolved="dark"] .setTagPro { background: #3d7ec4; }
+html[data-theme-resolved="dark"] .setTagLicense { background: #2C2C2E; }
+.setUpload input { display: none; }
+.bgAddInput { display: none; }
+/* Two answers, each saying what you get to draw rather than naming a mode. */
+.kindSheet { padding-bottom: 14px; }
+.sheet .kindOpt {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  margin: 8px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sheet .kindOpt:hover { border-color: var(--pill); }
+/* The sheet is a flex column, so a row would otherwise be squeezed below the
+   height of its own words once the visual viewport is short: on iPhone Safari
+   with the browser bars showing, the subtitle spilled through the border into
+   the next row. The row keeps the height its text needs and the sheet scrolls. */
+.sheet .kindOpt { flex: none; }
+.kindName { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.kindWhat { font-size: 13px; color: var(--ink-soft); line-height: 1.4; white-space: normal; }
+.sheet .kindOpt { white-space: normal; }
+.kindNote { font-size: 12px; color: var(--ink-soft); margin: 10px 0 0; }
+.pitchMenuRule { display: block; height: 1px; margin: 4px 6px; background: var(--line); }
+.sheet .pitchMenu button.on { font-weight: 700; }
+.sheet .pitchMenu button.on::after { content: " \2713"; }
+/* The picker is a shelf of pictures: every style and every saved background
+   shows what it looks like and what board it makes, because a name alone
+   stops telling them apart once there are a dozen. */
+.pitchGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 10px;
+}
+.sheet .pitchTile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.pitchShot {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bar);
+  border: 1px solid var(--line);
+}
+ /* The ring has to read over a photograph as well as over our own art, so it
+   carries a hairline of the sheet's own paper inside it. */
+.pitchTile.on .pitchShot {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px var(--ink), inset 0 0 0 2px var(--card);
+}
+.pitchShotImg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pitchShotEmpty { display: block; width: 100%; height: 100%; }
+.pitchTileName {
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  margin-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pitchTileSub { font-size: 11px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.pitchTick {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  /* fixed rather than themed: it sits on the image, not on the sheet */
+  background: rgba(20, 18, 15, 0.78);
+}
+.pitchTick .ic { width: 13px; height: 13px; color: #ffffff; }
+.pitchTag { position: absolute; top: 6px; right: 6px; }
+.pitchMore {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(20, 18, 15, 0.55);
+}
+.pitchMore .ic { width: 16px; height: 16px; color: #ffffff; }
+.sheet .pitchTile.menuOpen { z-index: 4; }
+.pitchMenu {
+  position: absolute;
+  right: 6px;
+  bottom: 38px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  min-width: 118px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
+}
+.sheet .pitchMenu button {
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 7px 8px;
+  border-radius: 7px;
+  min-height: 32px;
+}
+.sheet .pitchMenu button.danger { color: #b4432a; }
+.pitchAddShot {
+  display: grid;
+  place-items: center;
+  border-style: dashed;
+  border-color: var(--pill);
+}
+.pitchAddShot .ic { width: 22px; height: 22px; color: var(--ink-soft); }
+.setGroupCount { color: var(--ink-soft); }
+.setGroupCount:not(:empty)::before { content: " \2014  "; }
+html[data-theme-resolved="dark"] .sheet .pitchMenu button.danger { color: #e0765c; }
+html[data-theme-resolved="dark"] .pitchTile.on .pitchShot { border-color: var(--ink); }
+/* The settings sheet reads as part of the board, on the board's own paper,
+   with the list conventions of a settings screen: cards on a ground, near
+   black text, one blue that means "this does something". Redefining the
+   tokens on the sheet reskins everything inside it without touching a
+   component rule. The accent needs no override now: --action is the app's
+   only accent. */
+.setSheet {
+  /* A settings screen inverts the board's ground: grouped cards in white on
+     grey, rather than the board's white with grey chrome. */
+  --bg: #F5F5F7;
+  --bar: #E8E8ED;
+  --card: #FFFFFF;
+  --line: #D2D2D7;
+  --ink: #1D1D1F;
+  --ink-soft: #6E6E73;
+  --pill: #C7C7CC;
+  --fab-bg: #FFFFFF;
+}
+html[data-theme-resolved="dark"] .setSheet {
+  --bg: #000000;
+  --bar: #1C1C1E;
+  --card: #1C1C1E;
+  --line: #38383A;
+  --ink: #F5F5F7;
+  --ink-soft: #98989D;
+  --pill: #48484A;
+  --fab-bg: #1C1C1E;
+}
+/* Active pills sit on the sheet's own tokens rather than the cream literal
+   they were written against. */
+.setSheet button.active { color: #ffffff; }
+
+/* Pro tab: tagline hero + tier cards */
+.proHero { padding: 6px 2px 14px; }
+.proTagline {
+  margin: 0;
+  padding-bottom: 8px;
+  font-size: clamp(1.9rem, 9vw, 2.7rem);
+  line-height: 1.04;
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  color: var(--ink);
+}
+.proTagline br { display: block; }
+.proLede {
+  margin: 12px 0 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  max-width: 40ch;
+}
+.proChoose {
+  margin: 0 0 12px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.proTiers {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+@media (min-width: 640px) {
+  .proTiers { grid-template-columns: repeat(3, 1fr); align-items: stretch; }
+}
+/* Cards are equal weight, and the one on sale is marked by a border rather
+   than a second accent colour. Blue means "this is the action" everywhere on
+   this pane; nothing else competes with it. */
+.proCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 18px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--card);
+  overflow-wrap: anywhere;
+}
+.proCardAccent {
+  border: 2px solid var(--action);
+  padding: 17px 15px 15px;
+}
+.proCardHead {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: 2px;
+}
+.proCardName { font-size: 1.12rem; font-weight: 700; color: var(--ink); letter-spacing: -0.015em; }
+.proCardPrice {
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--ink);
+}
+.proCardAccent .proCardPrice { font-weight: 600; }
+/* Pro names one price at a time. The toggle sits with the card's title so the
+   choice reads as part of that card, not as a page-wide switch. */
+.proCardHeadRow {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.proBilling {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  --tabs-pill-inset: 0px;
+  --tabs-pill-radius: 999px;
+  --tabs-pill-bg: var(--ink);
+}
+/* Only the selected side is drawn. The global button rule sets a 40px tap
+   target, which is too tall next to the card title, so these reset it. */
+.proBilling button {
+  position: relative;
+  z-index: 1;
+  min-height: 0;
+  transition: color var(--tabs-dur) var(--tabs-ease);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: transparent;
+}
+.proBilling button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--card);
+}
+.proBilling.is-measured button[aria-pressed="true"] { background: none; }
+.proCardAmount {
+  margin: 6px 0 0;
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.proCardPer {
+  margin-left: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+.proCardBilled {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.proSavePill {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #2f7d55;
+}
+html[data-theme-resolved="dark"] .proSavePill { color: #61c08a; }
+/* The buy button sits at the foot of the card whatever the list length, so the
+   three cards line up along the bottom instead of stepping. */
+.proCard ul { margin: 4px 0 0; padding-left: 16px; line-height: 1.5; display: flex; flex-direction: column; gap: 5px; font-size: 0.84rem; color: var(--ink); }
+.proCard li { min-width: 0; overflow-wrap: anywhere; }
+.proCardSoon {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+.proCardNote { margin: 12px 0 0; font-size: 0.76rem; line-height: 1.45; color: var(--ink-soft); }
+.proHeroCta { margin-top: 14px; }
+/* The repeat button sits under the card's list, so it needs its own top gap
+   and the full card width rather than the hero's inline sizing. */
+/* Both cards' buttons, so Pro's looks like the licence's rather than an inline
+   link: pushed to the foot of the card, full width, centred. */
+[data-lic-card-cta],
+[data-pro-card-cta] { margin-top: auto; }
+[data-lic-card-cta]:not(:empty),
+[data-pro-card-cta]:not(:empty) { padding-top: 14px; }
+[data-lic-card-cta] .proBuyBtn,
+[data-pro-card-cta] .proBuyBtn { display: block; text-align: center; }
+/* "Pro is active" replaces the button in the same slot, so it should not
+   inherit the button's top gap on top of its own. */
+[data-pro-card-cta] .proHeroNote { margin-top: 0; }
+.proBuyBtn {
+  display: inline-block;
+  padding: 11px 20px;
+  border-radius: 999px;
+  background: var(--action);
+  color: #fff;
+  font-weight: 500;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.proBuyBtn:hover { filter: brightness(1.08); }
+/* Buying is a real <button>, and `.sheet button` paints every button in the
+   sheet with the card background. That outranks a lone class, so without this
+   the buy button is a white pill with white text on it. The sheet's own action
+   colour is used rather than --action, so it tracks the sheet in dark mode. */
+.sheet .proBuyBtn {
+  background: var(--orange);
+  color: #fff;
+  border: 0;
+  white-space: normal;
+}
+.proManageLink {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--action);
+  text-decoration: none;
+}
+.proManageLink:hover { text-decoration: underline; }
+.proHeroNote { margin: 10px 0 0; font-size: 0.82rem; line-height: 1.5; color: var(--ink-soft); }
+
+/* waitlist form: copy of the tacticsjournal.com .email-form pill
+   (style.scss .email-form), values inlined for the board's variables */
+.email-form {
+  --r-border: var(--field-border, #ddd);
+  --r-border-focus: #3c3c3c;
+  --r-text: var(--ink, #111);
+  --r-text-muted: var(--ink-soft, #8b8b8b);
+  --r-btn-bg: #0071E3;
+  --r-btn-text: #fff;
+}
+html[data-theme-resolved="dark"] .email-form {
+  --r-border: var(--field-border, rgba(255,255,255,0.16));
+  --r-border-focus: #d4d4d4;
+  --r-text: var(--ink, #fafafa);
+  --r-text-muted: var(--ink-soft, #a3a3a3);
+}
+.email-form form,
+form.email-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: min(100%, var(--site-form-width, 360px));
+  max-width: var(--site-form-width, 360px);
+  margin: 0 auto;
+  border: 1px solid var(--r-border, var(--line));
+  border-radius: 9999px;
+  padding: 6px;
+  box-sizing: border-box;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.3s ease;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+}
+.email-form form:focus-within,
+form.email-form:focus-within {
+  border-color: var(--r-border-focus, var(--ink));
+  box-shadow: 0 0 0 4px rgba(17, 17, 17, 0.06);
+}
+.email-form form input[type="email"],
+.email-form form input[type="text"],
+form.email-form input[type="email"],
+form.email-form input[type="text"] {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--r-text, var(--ink));
+  font-size: 1.05rem;
+  padding: 12px 0 12px 24px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  outline: none;
+}
+.email-form form input::placeholder,
+form.email-form input::placeholder { color: var(--r-text-muted, var(--ink-soft)); }
+.email-form form button,
+form.email-form button {
+  padding: 14px 30px;
+  background: var(--r-btn-bg, #0071E3);
+  color: var(--r-btn-text, #fff);
+  border: none;
+  border-radius: 9999px;
+  font-size: 1.05rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s ease, box-shadow 0.3s ease, transform 0.2s ease;
+}
+.email-form form button:hover,
+form.email-form button:hover { opacity: 0.95; transform: translateY(-1px); }
+.email-form form button:active,
+form.email-form button:active { transform: translateY(0); }
+.email-form form button:disabled,
+form.email-form button:disabled { opacity: 0.6; transform: none; cursor: default; }
+@media (min-width: 768px) {
+  .email-form form,
+  form.email-form {
+    width: min(100%, var(--site-form-width, 360px));
+    max-width: var(--site-form-width, 360px);
+    gap: 6px;
+    padding: 5px;
+  }
+  .email-form form input[type="email"],
+  .email-form form input[type="text"],
+  form.email-form input[type="email"],
+  form.email-form input[type="text"] {
+    font-size: 0.95rem;
+    padding: 10px 0 10px 22px;
+  }
+  .email-form form button,
+  form.email-form button {
+    font-size: 0.95rem;
+    padding: 11px 24px;
+  }
+}
+@media (max-width: 569px) {
+  .email-form form,
+  form.email-form {
+    width: 100%;
+    gap: 6px;
+    padding: 5px;
+  }
+  .email-form form input[type="email"],
+  .email-form form input[type="text"],
+  form.email-form input[type="email"],
+  form.email-form input[type="text"] {
+    font-size: 0.95rem;
+    padding: 11px 0 11px 18px;
+  }
+  .email-form form button,
+  form.email-form button {
+    font-size: 0.95rem;
+    padding: 11px 18px;
+  }
+}
+p.research-gate-note.research-gate-legal a,
+p.research-gate-note.research-gate-legal a:visited,
+p.research-gate-note.research-gate-legal a:hover {
+  color: inherit;
+  text-decoration: none;
+}
+.email-form .research-gate-note {
+  max-width: var(--site-form-width, 360px);
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  text-align: center;
+  line-height: 1.4;
+  margin: 6px auto 0;
+}
+@media (max-width: 480px) {
+  .email-form .research-gate-note { font-size: 0.75rem; }
+}
+.email-form [data-wl-note] { text-align: center; margin-top: 4px; }
+.mobileHomeHint {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13px;
+}
+.mobileHomeHint p { margin: 0; line-height: 1.45; color: var(--ink-soft); overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+  .mobileHomeHint { display: flex; }
+}
+.setTutorial {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--ink);
+  padding-top: 10px;
+}
+.setTutorial p { margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
+
+/* match (cog) sheet: stacked label-over-input form */
+.matchSheet { gap: 14px; }
+.mField { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.mGrow { width: auto; box-sizing: border-box; }
+.mPair { display: flex; gap: 8px; min-width: 0; }
+.mPair .mGrow { flex: 1 1 0; min-width: 0; }
+.matchSheet input[type="date"] { width: 100%; }
+
+.mScore { display: flex; align-items: center; gap: 12px; }
+.mDash { color: var(--ink-soft); font-weight: 600; }
+.stepper {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--card);
+}
+.stepper button {
+  border: 0;
+  background: transparent;
+  width: 38px;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--ink);
+  cursor: pointer;
+}
+.stepper .mStepIn {
+  width: 40px;
+  text-align: center;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.mSwitches {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.matchSheet .mSwitch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 4px;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+}
+.mTrack {
+  position: relative;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--pill);
+}
+.mThumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--card);
+}
+.mSwitch.on .mTrack { background: var(--orange); }
+html[data-theme-resolved="dark"] .mSwitch.on .mTrack { background: #4b9bff; }
+html[data-theme-resolved="dark"] .mThumb { background: #0a0a0a; }
+
+/* saves sheet */
+.saveName { flex: 1 1 180px; min-width: 0; }
+.saveList { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+/* a saved board is a list row: thumbnail, name, when, then its actions */
+.saveItem { gap: 11px; }
+.saveItem .savePrev {
+  width: 64px;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  line-height: 0;
+  cursor: pointer;
+  background: var(--bar);
+}
+.saveItem .savePrev svg { display: block; width: 100%; height: auto; }
+.saveItem .saveMeta { flex: 1 1 120px; display: flex; flex-direction: column; gap: 1px; min-width: 0; cursor: pointer; }
+.saveItem .saveMeta strong { font-weight: 400; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saveItem .saveMeta span { font-size: 12.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saveItemLocked .savePrev { opacity: 0.72; }
+.saveReadOnly {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+}
+.saveReadOnly .ic { width: 15px; height: 15px; }
+.saveStatus:empty { display: none; }
+.saveItem button { flex: 0 0 auto; }
+.saveItem button.danger { color: #c2554b; }
+.exportMenu {
+  position: fixed;
+  z-index: 90;
+  width: 196px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+.exportMenu button {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+}
+.exportMenu button:hover, .exportMenu button:focus-visible { background: var(--row-press); outline: none; }
+
+.shareDialog {
+  width: min(420px, calc(100vw - 28px));
+  max-height: min(620px, calc(100dvh - 28px));
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--ink);
+  padding: 20px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.24);
+}
+.shareDialog::backdrop { background: rgba(0, 0, 0, 0.48); }
+.shareForm { display: grid; gap: 14px; }
+.shareDialog h2, .shareDialog h3, .shareBody h3 { margin: 0; font-size: 17px; line-height: 1.25; }
+.shareDialog h3, .shareBody h3 { margin-top: 4px; font-size: 14px; }
+.shareDialog label, .shareBody label { display: grid; gap: 7px; font-size: 13px; color: var(--ink-soft); }
+/* One way of naming someone is asked at a time, so the others are not there.
+   The display rule above outranks the hidden attribute on its own. */
+.shareDialog label[hidden], .shareBody label[hidden] { display: none; }
+.shareDialog input, .shareBody input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.shareDialog input:focus, .shareBody input:focus { border-color: var(--action); outline: 2px solid rgba(0, 113, 227, 0.24); }
+.shareActions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.shareActions button, .shareList button { min-height: 44px; padding: 0 2px; border: 0; background: none; color: var(--ink-soft); font-size: 14px; }
+.shareActions button[type="submit"] {
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 12px 20px;
+  border-radius: 999px;
+  background: var(--action);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+.shareActions button:disabled { opacity: 0.45; }
+.shareActions button:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+.shareStatus { min-height: 1.25em; margin: -4px 0 0; font-size: 13px; color: var(--ink-soft); }
+.shareStatus:empty { display: none; }
+.shareList { margin: 0; padding: 0; list-style: none; border-bottom: 1px solid var(--line); }
+.shareList li { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 48px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.shareList .shareEmpty { color: var(--ink-soft); }
+.shareList button { min-height: 34px; padding: 2px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: #c2554b; }
+.shareList button:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+.agentLinkDialog { width: min(420px, calc(100vw - 32px)); padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink); }
+.agentLinkDialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+.agentLinkDialog form { display: grid; gap: 12px; }
+.agentLinkDialog input { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); user-select: text; -webkit-user-select: text; }
+.agentLinkDialog button { justify-self: end; min-height: 38px; padding: 0 2px; border: 0; background: none; color: var(--action); font-size: 14px; font-weight: 600; }
+.agentImportDialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(760px, calc(100dvh - 32px));
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+}
+.agentImportDialog:focus { outline: none; }
+.agentImportDialog::backdrop { background: rgba(0, 0, 0, 0.42); }
+.agentImportHead { display: flex; align-items: center; gap: 12px; padding: 18px 20px 12px; }
+.agentImportHead h2 { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 20px; letter-spacing: -0.025em; }
+.agentImportMeta { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 20px 12px; }
+.agentImportMeta[hidden] { display: none; }
+.agentImportMeta strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.agentImportMeta span { flex: none; color: var(--ink); font-size: 13px; }
+.agentImportPreview {
+  margin: 0 20px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 12px;
+  background: var(--bg);
+}
+.agentImportPreview svg { display: block; width: 100%; max-height: 220px; }
+.agentImportCopy { padding: 14px 20px 18px; }
+.agentImportCopy p { margin: 0; color: var(--ink); font-size: 14px; line-height: 1.5; }
+.agentImportProjects { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; margin: 0 20px 18px; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--line); }
+.agentImportProjects[hidden] { display: none; }
+.agentImportProjects button { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 52px; padding: 8px 14px; border: 0; background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.agentImportProjects button:hover { background: var(--row-press); }
+.agentImportProjects strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agentImportProjects span { flex: none; color: var(--ink-soft); font-size: 13px; }
+.agentImportActions { display: flex; justify-content: flex-end; gap: 10px; padding: 0 20px 20px; }
+.agentImportActions button {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.agentImportActions .agentImportPrimary { border-color: var(--ink); background: var(--ink); color: var(--bg); }
+.agentImportBoard {
+  --agent-preview-h: clamp(150px, 30dvh, 190px);
+  width: min(480px, calc(100vw - 20px));
+  max-width: 100%;
+  max-height: calc(100dvh - 20px);
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+}
+.agentImportBoard[open] { display: flex; flex-direction: column; }
+.agentImportBoard .agentImportPreview {
+  flex: none;
+  width: 100%;
+  height: var(--agent-preview-h);
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--bg);
+}
+.agentImportBoard .agentImportPreview[hidden] { display: none; }
+.agentImportBoard .agentImportPreview svg { width: 100%; height: 100%; max-height: none; }
+.agentImportClose {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.agentImportClose::before {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--card);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.agentImportClose svg { position: relative; z-index: 1; }
+.agentImportClose:hover { color: var(--ink); }
+.agentImportClose:hover::before { background: var(--row-press); }
+.agentImportStep {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  padding: 16px 18px calc(18px + env(safe-area-inset-bottom));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.agentImportStepHead { display: flex; min-width: 0; align-items: center; gap: 6px; padding-right: 44px; }
+.agentImportBack {
+  display: flex;
+  flex: none;
+  min-height: 44px;
+  margin: -6px 4px -6px -6px;
+  padding: 0 10px 0 6px;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.agentImportBack[hidden] { display: none; }
+.agentImportBack:hover { background: var(--row-press); color: var(--ink); }
+.agentImportPrompt {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agentImportPrompt:focus { outline: none; }
+.agentImportSub { margin: 3px 0 0; color: var(--ink-soft); font-size: 13px; line-height: 1.35; }
+.agentImportSub:empty { display: none; }
+.agentImportRows { display: grid; grid-template-columns: minmax(0, 1fr); flex: none; gap: 10px; margin-top: 16px; }
+.agentImportRows[hidden] { display: none; }
+.agentImportRow {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 56px;
+  padding: 9px 14px;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.agentImportRow:hover, .agentImportRow:active { background: var(--row-press); }
+.agentImportRowText { flex: 1 1 auto; min-width: 0; }
+.agentImportRowText b { display: block; font-size: 15px; font-weight: 600; }
+.agentImportRowText span {
+  display: block;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agentImportRowPrimary { border-color: var(--ink); background: var(--ink); color: var(--bg); }
+.agentImportRowPrimary .agentImportRowText span { color: var(--bg); opacity: 0.66; }
+.agentImportRowPrimary:hover, .agentImportRowPrimary:active { background: var(--ink); opacity: 0.92; }
+.agentImportChev { flex: none; color: var(--ink-soft); }
+.agentImportBoard .agentImportProjects {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 12px 0 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.agentImportBoard .agentImportProjects button { min-height: 56px; }
+.agentImportBoard .agentImportProjects button:focus-visible { outline-offset: -3px; }
+.agentImportDialog button:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+@media (max-width: 430px) {
+  .agentImportDialog { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); border-radius: 14px; }
+  .agentImportHead { padding: 16px 16px 10px; }
+  .agentImportMeta { padding: 0 16px 10px; }
+  .agentImportPreview { margin: 0 16px; }
+  .agentImportCopy { padding: 12px 16px 16px; }
+  .agentImportProjects { margin: 0 16px 16px; }
+  .agentImportActions { padding: 0 16px 20px; }
+  .agentImportActions button { flex: 1 1 0; padding: 0 10px; }
+  .agentImportBoard { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); border-radius: 18px; }
+  .agentImportStep { padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 430px) {
+  .saveItem { flex-wrap: wrap; align-items: flex-start; }
+  .saveItem .savePrev { width: 74px; }
+  .saveItem .saveMeta { flex-basis: calc(100% - 90px); }
+}
+
+/* team sheet: side switch + one editor */
+.tmSides { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+/* Home and Away side by side: picking a side, not two long cards to scroll */
+.tmSideSwitch { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 0; }
+.sheet .tmSideCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  transition: box-shadow 140ms ease, background 140ms ease;
+}
+/* neutral, not blue: the accent is reserved for actions, and this is a state */
+.sheet .tmSideCard[aria-checked="true"] {
+  box-shadow: inset 0 0 0 2px var(--ink);
+  border-color: transparent;
+}
+.sheet .tmSideCard:active { background: var(--row-press); }
+.sheet .tmSideCard:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+/* title case already, so no transform: HOME shouted twice reads as an error */
+.tmSideTag { font-size: 11px; font-weight: 700; letter-spacing: 0.01em; color: var(--ink-soft); }
+.tmSideBody { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tmSideBody .setDot { width: 22px; height: 22px; border-width: 3px; }
+.tmSideName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; }
+.tmSideName.muted { color: var(--ink-soft); font-weight: 400; }
+.tmSideMeta { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-soft); }
+.tmCardKit { display: flex; flex: none; gap: 7px; }
+.tmCardKit .sw { width: 24px; height: 24px; min-height: 24px; }
+/* one editor for the selected side; it ends where its last row ends */
+.tmEditor { min-width: 0; }
+.tmEditorBody { min-height: 0; }
+.tmEditorBody:empty { display: none; }
+.tmEditorBody > .setItem:first-child { border-top: 1px solid var(--line); }
+.tmEmpty { padding: 18px 14px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 14px; line-height: 1.5; text-align: center; }
+.sheet .tmClear { color: #c8102e; }
+.tmAddedTick { color: var(--ink-soft); }
+/* Results are a list, not a stack of cards: the group they sit in is already
+   a card, and a box around each row makes eight of them unreadable. */
+.tmResults { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; }
+.sheet .tmTeam {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 9px 12px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  text-align: left;
+  color: var(--ink);
+  transition: opacity 140ms ease;
+}
+.sheet .tmTeam:active { opacity: 0.55; }
+.tmTeam img { width: 26px; height: 26px; object-fit: contain; }
+/* the board's own player dot, at list size, keeping its dark outline */
+.tmTeamPlayer { width: 25px; height: 25px; }
+.tmTeamName { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tmTeamLeague { margin-left: auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--ink-soft); }
+
+.tmRoster {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 6px;
+}
+.tmPlayer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 7px 10px;
+  color: var(--ink);
+  min-height: 44px;
+}
+.tmNum {
+  min-width: 26px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--orange);
+}
+.tmName { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tmPos { margin-left: auto; min-width: 0; max-width: 35%; overflow: hidden; text-overflow: ellipsis; font-size: 10px; color: var(--ink-soft); white-space: nowrap; }
+@media (max-width: 430px) {
+  .tmTeamLeague { max-width: 38%; }
+  .tmRoster { grid-template-columns: 1fr; }
+}
+/* The side the field belongs to, for when the cards have scrolled off the top
+   with the keyboard up: it is the one thing you cannot afford to guess. */
+.tmSearchSide {
+  display: none;
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+/* Keyboard up on a phone: the sheet can be barely taller than the field
+   itself, so the picker gives its height to the results. The cards lose
+   their second line but keep both sides and the selected ring, the results
+   stop being their own scroller inside a scroller, and the pane carries
+   enough tail room for the field to reach the top of what is left. */
+body.kb-open .sheet .tmSideCard { min-height: 0; padding: 7px 10px; }
+body.kb-open .tmSideMeta { display: none; }
+body.kb-open .tmSides .setGroupHead { padding: 8px 6px 4px; }
+body.kb-open .tmSearchSide { display: inline-flex; }
+body.kb-open .tmResults { max-height: none; overflow: visible; }
+body.kb-open .tmPane { padding-bottom: calc(var(--vvH, 100dvh) * 0.75); }
+.setSearchItem { scroll-margin-top: 6px; }
+
+/* very narrow: keep both sides side by side, give the name the room */
+@media (max-width: 360px) {
+  .tmSideSwitch { gap: 8px; }
+  .sheet .tmSideCard { padding: 9px 10px; }
+  .tmSideBody .setDot { width: 18px; height: 18px; border-width: 2px; }
+  .tmSideName { font-size: 14px; }
+}
+
+/* ---------- iPad & desktop ---------- */
+@media (min-width: 768px) {
+  /* sheets float centered instead of rising from the bottom edge */
+  .modal { align-items: center; padding: 28px; }
+  .sheet {
+    border-radius: 16px;
+    max-height: 88dvh;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+  }
+  /* Centered, so there is no edge to rise from: it settles into place instead.
+     A modal is not anchored to a trigger, so scaling from the centre is right. */
+  .modal > .sheet {
+    transition:
+      transform var(--dur-modal) var(--ease-out),
+      opacity var(--dur-modal) var(--ease-out);
+  }
+  .modal.hidden > .sheet { transform: scale(0.97); opacity: 0; transition-duration: 160ms; }
+  @starting-style {
+    .modal:not(.hidden) > .sheet { transform: scale(0.97); opacity: 0; }
+  }
+  /* same-height tabs, like the full-screen sheet on phones */
+  .setSheet { height: min(720px, 88dvh, 100%); }
+
+  /* bottom tabs: centered, capped width - five stretched full-width
+     buttons look broken on a wide monitor */
+  .toolbar { justify-content: center; }
+  .toolbar button { flex: 0 1 170px; }
+  .shelfGrid { justify-content: center; }
+  .shelfRail { justify-content: center; }
+
+  /* options tray content centers when there is room, still scrolls when not */
+  .options > :first-child { margin-left: auto; }
+  .options > :last-child { margin-right: auto; }
+}
+
+/* hover affordances for mouse/trackpad users; never on touch */
+@media (hover: hover) and (pointer: fine) {
+  .fab:hover { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18); }
+  .fab.active:hover { background: var(--grip); }
+  .toolbar button:hover:not(.active) { background: rgba(0, 0, 0, 0.045); color: var(--ink); }
+  .seg button:hover:not(.active),
+  .sheet .setItem:hover:not(.setItemStatic) { background: rgba(0, 0, 0, 0.04); }
+  .teamChip:hover:not(.active),
+  .addChip:hover,
+  .sheet .tmTeam:hover { background: var(--bar); }
+  .tmPlayer:hover { border-color: var(--pill); }
+  .saveItem .savePrev:hover,
+  .saveItem .saveMeta:hover { opacity: 0.8; }
+  .fileBtn:hover { border-color: var(--pill); }
+  html[data-theme-resolved="dark"] .toolbar button:hover:not(.active),
+  html[data-theme-resolved="dark"] .seg button:hover:not(.active),
+  html[data-theme-resolved="dark"] .sheet .setItem:hover:not(.setItemStatic) { background: rgba(255, 255, 255, 0.06); }
+  html[data-theme-resolved="dark"] .fab:hover { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); }
+}
+
+/* ---------- reduced motion ----------
+   Fewer and gentler, not none. The fades stay, because they are what says the
+   sheet arrived and the screen changed; the travel is what goes. Colour
+   feedback on a press is not motion, so it is left alone. */
+@media (prefers-reduced-motion: reduce) {
+  .modal > .sheet,
+  .modal.hidden > .sheet { transform: none; }
+  .setPane[data-pane].setEnterPush,
+  .setPane[data-pane].setEnterPop { transform: none; opacity: 0; }
+  @starting-style {
+    .modal:not(.hidden) > .sheet { transform: none; }
+  }
+}
+
+/* ---------- projects and boards ---------- */
+/* Two list screens over the board: Boards is what is in this project, and
+   Projects is the library. They borrow the board's own components — .fab,
+   .options, .toolbar — so there is nothing new to learn. */
+body.lib-open .stageWrap,
+body.lib-open .panelDock,
+body.lib-open #toolbar { display: none; }
+
+.lib { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.lib[hidden] { display: none; }
+
+/* one column for the whole panel: 880px of content, centred, with the old
+   12px gutter kept on anything narrower */
+.libHead, .libList, .libFoot { --lib-gutter: max(12px, calc((100% - 880px) / 2)); }
+.libHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  /* the head, the list and the foot share one column, so a wide window widens
+     the margins rather than stretching a board row across the whole screen */
+  padding: 0 var(--lib-gutter);
+  border-bottom: 1px solid var(--line);
+}
+.libUp { display: flex; align-items: center; gap: 3px; min-height: 30px; padding: 0; color: var(--ink-soft); font-size: 13px; }
+.libUp[hidden] { display: none; }
+.libUp svg { width: 16px; height: 16px; display: block; }
+.libTitleSlot {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.libTitle {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+button.libTitle {
+  height: 40px;
+  color: var(--ink);
+  transition: opacity 120ms ease;
+}
+button.libTitle:active { opacity: 0.55; }
+button.libTitle:focus-visible { outline: 2px solid var(--grip); outline-offset: -4px; border-radius: 6px; }
+.libTitleInput {
+  width: 100%;
+  height: 28px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: none;
+  background: var(--card);
+  color: var(--ink);
+  caret-color: var(--grip);
+  text-align: center;
+  /* iOS zooms focused fields below 16px, even when the viewport asks it not to. */
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 26px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.libTitleInput:focus { border-color: var(--grip); box-shadow: 0 0 0 3px color-mix(in srgb, var(--grip) 10%, transparent); }
+.libTitleInput::placeholder { color: var(--ink-soft); opacity: 1; }
+.libClose { min-height: 30px; padding: 0 4px; color: var(--ink-soft); font-size: 13px; }
+
+.libList { flex: 1; min-height: 0; overflow-y: auto; padding: 12px var(--lib-gutter) 20px; display: flex; flex-direction: column; }
+.libCard {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  padding: 8px;
+  cursor: pointer;
+  transition: border-color 180ms ease, transform 180ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.libCard:active { transform: scale(0.99); }
+.libCard.is-live { border-color: var(--grip); background: var(--bar); }
+
+.boardCard { display: grid; grid-template-columns: 24px 118px 1fr auto; gap: 9px; align-items: center; }
+.boardNum {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--pill);
+  color: var(--on-grip);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+.boardCard.is-live .boardNum { background: var(--grip); }
+/* a preview is the board itself, smaller: same shape, never redrawn to fit */
+.boardShot,
+.projStrip span {
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  aspect-ratio: 800 / 618;
+}
+.libShot { display: block; width: 100%; height: 100%; }
+.boardMeta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.boardTitle { font-size: 13px; font-weight: 600; }
+.boardNote {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.boardNote--empty { font-style: italic; opacity: 0.7; }
+.boardActs { display: flex; flex-direction: column; gap: 2px; }
+.boardActs button { min-height: 26px; padding: 2px 5px; color: var(--ink-soft); }
+.boardActs button svg { width: 16px; height: 16px; display: block; }
+.boardActs button:disabled { opacity: 0.28; }
+
+.libLink { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 0; }
+/* one hairline runs behind the chips, so the two boards read as linked */
+.libLink::before {
+  content: '';
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  top: 50%;
+  height: 1px;
+  background: var(--line);
+}
+.libLink button { position: relative; }
+.libLink button {
+  min-height: 24px;
+  padding: 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--bar);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 600;
+}
+.libLink button svg { width: 13px; height: 13px; display: block; }
+
+.projCard { display: flex; flex-direction: column; gap: 8px; margin-bottom: 9px; }
+.projTop { display: flex; align-items: center; gap: 8px; }
+.projName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+.projMeta { margin-left: auto; color: var(--ink-soft); font-size: 11px; }
+.projMore { min-height: 26px; padding: 2px 4px; color: var(--ink-soft); }
+.projMore svg { width: 15px; height: 15px; display: block; }
+.projMore:disabled { opacity: 0.28; }
+.projStrip { display: flex; gap: 5px; align-items: flex-start; }
+.projStrip span { flex: 1 1 0; max-width: 92px; }
+
+.libFoot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px var(--lib-gutter);
+  background: var(--bar);
+  border-top: 1px solid var(--line);
+}
+.libFoot button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13px;
+  transition: transform 160ms cubic-bezier(0.32, 0.72, 0, 1), border-color 160ms ease;
+}
+.libFoot button:active { transform: scale(0.97); }
+.libFoot button:disabled { opacity: 0.42; }
+.libFoot button svg { width: 15px; height: 15px; display: block; }
+.libFoot button.is-capped { opacity: 0.55; }
+.libCount { flex: none; color: var(--ink-soft); font-size: 11px; }
+
+.libCap {
+  position: absolute;
+  left: 50%;
+  bottom: 64px;
+  z-index: 40;
+  width: min(320px, calc(100% - 32px));
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 8px 26px rgba(90, 75, 50, 0.28);
+  transform: translateX(-50%);
+  animation: libCapIn 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@keyframes libCapIn {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+.libCap p { margin: 0 0 10px; color: var(--ink); font-size: 13px; line-height: 1.45; }
+.libCap span { display: flex; gap: 8px; justify-content: flex-end; }
+.libCap span { gap: 18px; }
+.libCap button { min-height: 30px; padding: 0 2px; border: 0; background: none; color: var(--ink-soft); font-size: 14px; }
+.libCap button:last-child { color: var(--action); font-weight: 600; }
+
+/* ---------- Add board ---------- */
+/* What a new board is drawn on is the first thing it needs, so the chooser
+   carries the pitches and the saved backgrounds themselves rather than a pair
+   of rows. A sheet, not a floating menu: a grid of pictures has to be able to
+   scroll on a phone without being pushed off the top of the screen. */
+.addBoardSheet { gap: 0; padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+/* Every section keeps its own height; the sheet scrolls when they do not all
+   fit, rather than shrinking the rows and the tiles to fit the screen. */
+.addBoardSheet > * { flex: none; }
+.addBoardSheet .sheetHead { padding-bottom: 2px; }
+.addBoardSheet .sheetHead button {
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--action);
+  font-size: 14px;
+}
+.addBoardLabel {
+  margin: 18px 0 8px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+/* Narrower tiles than the settings shelf: this sheet shows three across a
+   phone, so the whole set of pitches is in view without a scroll. */
+.addBoardSheet .pitchGrid { grid-template-columns: repeat(auto-fill, minmax(102px, 1fr)); }
+.addBoardNote { margin: 12px 0 0; color: var(--ink-soft); font-size: 12px; line-height: 1.45; }
+.addBoardNote:empty { margin: 0; }
+.addBoardSheet .pitchTile.is-busy { opacity: 0.55; pointer-events: none; }
+
+/* ---------- the board's note ---------- */
+/* The board's note sits under the board, never over it: a card floating on the
+   pitch covers the part most likely to be drawn on. The band takes only the
+   room its own words need, and the board is fitted to what is left. */
+
+/* ---------- export sheet ---------- */
+.expSheet {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  animation: expIn 260ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@keyframes expIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+.expSheet__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  height: 46px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+.expSheet .expSheet__head button,
+.expSheet__head button { border: 0; background: none; min-height: 32px; padding: 0 4px; color: var(--action); font-size: 14px; }
+.expSheet__head button:last-child { font-weight: 600; }
+.expSheet__body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+.expOpts { display: flex; flex-direction: column; gap: 8px; }
+/* Three ways to leave, all equal: the chosen one is marked, never recoloured,
+   so the list reads as one set rather than one favourite and two also-rans. */
+.expSheet .expOpt,
+.expOpt {
+  display: grid;
+  grid-template-columns: 26px 1fr 20px;
+  gap: 12px;
+  align-items: center;
+  min-height: 58px;
+  padding: 12px 6px;
+  border: 0;
+  background: none;
+  text-align: left;
+  color: var(--ink);
+  transition: opacity 140ms ease;
+}
+.expOpt + .expOpt { border-top: 1px solid var(--line); }
+.expOpt:active { opacity: 0.55; }
+.expOpt:disabled { opacity: 0.4; }
+.expOpt svg { width: 21px; height: 21px; display: block; color: var(--ink-soft); }
+.expOpt .expTick { opacity: 0; transition: opacity 140ms ease; }
+.expOpt.active .expTick { opacity: 1; }
+.expOpt b { display: block; font-size: 13px; font-weight: 600; }
+.expOpt small { display: block; color: var(--ink-soft); font-size: 11.5px; line-height: 1.4; }
+.expNotes { display: flex; align-items: center; gap: 9px; color: var(--ink); font-size: 13px; }
+.expNotes[hidden] { display: none; }
+.expNotes input { width: 16px; height: 16px; accent-color: var(--action); }
+.expHint,
+.expStatus { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.45; }
+.expStatus:empty { display: none; }
+.expFiles { display: flex; flex-direction: column; }
+.expFile { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 6px 0; }
+.expFile + .expFile { border-top: 1px solid var(--line); }
+.expFile__name { min-width: 0; overflow-wrap: anywhere; color: var(--ink); font-size: 13px; }
+.expFile__go {
+  flex: none;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--action);
+  font-size: 13px;
+  font-weight: 600;
+  transition: opacity 140ms ease;
+}
+.expFile__go:active { opacity: 0.55; }
+.expFile__go:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+.expFile__go.done { color: var(--ink-soft); font-weight: 500; }
+
+/* ---------- playback ----------
+   A deck of boards, not a video of them. The arrow keys move it, and the note
+   is a band on the board's bottom edge — the same band the editor draws, on
+   the same colours (--bar over --line, --ink), so the board looks like itself
+   with the chrome taken away. */
+.seqPlayer {
+  position: fixed;
+  inset: 0;
+  z-index: 320;
+  display: grid;
+  place-items: center;
+  /* a page of its own, not a card floating over the editor: playback is the
+     only thing on screen while it lasts */
+  background: var(--bg);
+}
+.seqPlayer__wrap {
+  /* the board takes everything above the bar and the bar sits on the bottom
+     edge of the screen: a pitch is wider than a phone, so width spent on
+     margins is board the reader does not get */
+  display: grid;
+  grid-template-rows: 1fr auto;
+  width: 100%;
+  height: 100%;
+}
+.seqPlayer__board {
+  position: relative;
+  /* Portrait screens have height left after the board reaches full width. Keep
+     the board at the top and give that room to its note below. */
+  place-self: start center;
+  max-width: 100%;
+  overflow: hidden;
+  background: var(--card);
+  /* a white board on a white page still needs an edge; drawn inside the box so
+     it costs no width, and it falls on the screen's own edge when the board
+     runs the full width anyway */
+  box-shadow: inset 0 0 0 1px var(--line);
+  /* pushed back a little while the full note is up, so the note is the thing
+     in front rather than a sheet laid over a board of equal weight */
+  transform-origin: center 42%;
+  will-change: transform;
+}
+.seqPlayer__stage { max-width: 100%; overflow: hidden; background: #fff; cursor: grab; touch-action: pan-y; }
+.seqPlayer__stage.is-dragging { cursor: grabbing; }
+.seqPlayer__svg { display: block; width: 100%; height: 100%; }
+
+.seqPlayer__note {
+  position: relative;
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  background: var(--bar);
+  touch-action: pan-x;
+}
+.seqPlayer__note.is-clipped { cursor: ns-resize; }
+.seqPlayer__noteText,
+.seqPlayer__noteMeasure {
+  padding: 11px 14px 13px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.seqPlayer__noteText { position: absolute; top: 0; left: 0; width: 100%; }
+.seqPlayer__noteMeasure { position: absolute; top: 0; left: 0; width: 100%; visibility: hidden; pointer-events: none; }
+.seqPlayer__noteText h3,
+.seqPlayer__noteMeasure h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.seqPlayer__noteText h3 + p,
+.seqPlayer__noteMeasure h3 + p { margin-top: 0; }
+.seqPlayer__noteText > :first-child,
+.seqPlayer__noteMeasure > :first-child { margin-top: 0; }
+.seqPlayer__noteText > :last-child,
+.seqPlayer__noteMeasure > :last-child { margin-bottom: 0; }
+.seqPlayer__noNote { margin: 0; color: var(--ink-soft); }
+/* every board reserves the same band, so a board without a note is not a
+   shorter board; with no notes anywhere there is no band at all */
+.seqPlayer__note.is-bare { display: none; }
+
+.seqPlayer__veil {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 42px;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--bar) 0%, transparent), var(--bar) 78%);
+  opacity: 0;
+  pointer-events: none;
+}
+.seqPlayer__note.is-clipped .seqPlayer__veil { opacity: 1; }
+.seqPlayer__more {
+  position: absolute;
+  left: 50%; bottom: 1px;
+  transform: translateX(-50%);
+  display: none;
+  place-items: center;
+  width: 32px; height: 20px;
+  min-height: 0;
+  padding: 0;
+  color: var(--ink-soft);
+}
+.seqPlayer__note.is-clipped .seqPlayer__more { display: grid; }
+.seqPlayer__more svg { width: 15px; height: 15px; }
+
+.seqPlayer__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 100%;
+  /* the controls keep their margins even though the board has none */
+  padding: 10px max(14px, env(safe-area-inset-left)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-right));
+  background: none;
+}
+.seqPlayer__toggle {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--grip);
+  color: var(--on-grip);
+  font-size: 12px;
+}
+/* the icon set is drawn in outline; on a filled button the play mark has to
+   be solid or it reads as a hollow shape rather than a button */
+.seqPlayer__toggle svg { width: 17px; height: 17px; }
+.seqPlayer__toggle svg path { fill: currentColor; stroke-width: 1.2; }
+.seqPlayer__step {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--ink);
+  background: var(--track);
+  transition: transform 120ms var(--ease-out), opacity 120ms var(--ease-out);
+}
+.seqPlayer__step svg { width: 16px; height: 16px; }
+.seqPlayer__step:active:not(:disabled) { transform: scale(0.9); }
+.seqPlayer__step:disabled { opacity: 0.3; }
+.seqPlayer__name, .seqPlayer__count { font-size: 11px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.seqPlayer__name { min-width: 0; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.seqPlayer__close { font-size: 13px; color: var(--ink-soft); }
+
+/* one segment per board: the thing the reader is actually moving through */
+.seqPlayer__dots { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 60px; }
+.seqPlayer__dot {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 10px;
+  max-width: 78px;
+  height: 4px;
+  min-height: 4px;
+  padding: 0;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.seqPlayer__dotFill {
+  position: absolute;
+  inset: 0;
+  background: var(--grip);
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+
+/* the note, full screen. It comes up from the bottom edge it lives on and
+   goes back down the same way. */
+.seqPlayer__scrim {
+  position: absolute;
+  inset: 0;
+  background: #1b1713;
+  opacity: 0;
+  pointer-events: none;
+}
+.seqPlayer__scrim.is-live { pointer-events: auto; }
+.seqPlayer__sheet {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+  border-radius: 14px 14px 0 0;
+  background: var(--bar);
+  transform: translate3d(0, 100%, 0);
+  will-change: transform;
+  visibility: hidden;
+  touch-action: none;
+}
+.seqPlayer__sheet.is-live { visibility: visible; }
+.seqPlayer__grip { flex: none; display: grid; place-items: center; padding: 9px 0 5px; cursor: ns-resize; }
+.seqPlayer__grip span { width: 38px; height: 5px; border-radius: 3px; background: var(--pill); }
+.seqPlayer__sheetHead {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: min(620px, 100%);
+  margin: 0 auto;
+  padding: 2px max(16px, env(safe-area-inset-left)) 10px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.seqPlayer__sheetHead b { color: var(--ink); font-size: 14px; font-weight: 600; }
+.seqPlayer__spacer { flex: 1; }
+.seqPlayer__sheetClose { font-size: 13px; color: var(--ink-soft); }
+.seqPlayer__sheetBody {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  width: min(620px, 100%);
+  margin: 0 auto;
+  padding: 2px max(16px, env(safe-area-inset-left)) max(32px, env(safe-area-inset-bottom));
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.55;
+}
+.seqPlayer__sheetBody h3 {
+  margin: 1em 0 0.35em;
+  font-size: 19px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.seqPlayer__sheetBody > :first-child { margin-top: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .seqPlayer__step { transition: none; }
+}
+
+/* on a phone the board title is already in the note, so the bar drops it and
+   keeps the segments, which are the control that has to survive */
+@media (max-width: 640px) {
+  .seqPlayer__bar { gap: 9px; padding: 7px 10px; }
+  .seqPlayer__name { display: none; }
+}
+
+/* ---------- note composer ----------
+   The full-screen editor from the community home (tacticsjournal.com
+   style.scss, .community-page .composer*). TJ's design variables are scoped to
+   it the way tj-panels.css scopes them, so the board keeps its own :root. */
+.composer {
+  --bg: #fff;
+  --surface: #f5f5f7;
+  --text: #1d1d1f;
+  --text-secondary: #3c3c3c;
+  --text-muted: #86868b;
+  --border: rgba(0, 0, 0, 0.1);
+  --btn-bg: #111;
+  --btn-text: #fff;
+  position: fixed;
+  inset: 0;
+  z-index: 340;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+html[data-theme-resolved='dark'] .composer {
+  --bg: #0a0a0a;
+  --surface: #161617;
+  --text: #fafafa;
+  --text-secondary: #d4d4d4;
+  --text-muted: #a3a3a3;
+  --border: rgba(255, 255, 255, 0.12);
+  --btn-bg: #fafafa;
+  --btn-text: #0a0a0a;
+}
+body.composer-open { overflow: hidden; }
+.composer__header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.composer__cancel { min-height: 0; padding: 4px 0; border: 0; border-radius: 0; background: none; color: var(--text); font-family: inherit; font-size: 15px; }
+.composer__count {
+  flex: 1;
+  overflow: hidden;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer__post {
+  min-height: 0;
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.composer__editor { position: relative; flex: 1; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.composer__highlight,
+.composer__body {
+  margin: 0;
+  padding: 16px 16px 120px;
+  font-family: 'iA Writer Quattro S', 'iA Writer Quattro', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* 16px minimum: anything smaller makes iOS zoom the viewport on focus */
+  font-size: 16px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.composer__highlight { position: absolute; top: 0; left: 0; width: 100%; color: var(--text); pointer-events: none; }
+.composer__body {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 100%;
+  height: auto;
+  overflow: hidden;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: none;
+  color: transparent;
+  caret-color: #35b8e0;
+}
+.composer__body::placeholder { color: var(--text-muted); }
+.composer__body[hidden], .composer__highlight[hidden] { display: none; }
+.md-syntax { color: var(--text-muted); }
+.md-heading, .md-bold { font-weight: 700; }
+.md-italic { font-style: italic; }
+.md-code { border-radius: 4px; background: var(--surface); }
+.md-link { color: #35a0e0; }
+.md-quote { color: var(--text-secondary); font-style: italic; }
+.composer__pv { position: relative; min-height: 100%; padding: 14px 16px 120px; color: var(--text); font-size: 16px; line-height: 1.6; }
+.composer__pv[hidden] { display: none; }
+.composer__pv h3 { margin: 0.6em 0 0.3em; font-size: 16px; line-height: 1.3; }
+.composer__pv p { margin: 0.4em 0; }
+.composer__pv code { padding: 1px 4px; border-radius: 4px; background: var(--surface); font-size: 13.5px; }
+.composer__pv a { color: #35a0e0; }
+.composer__footer { border-top: 1px solid var(--border); background: var(--bg); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.composer__toolbar { display: flex; align-items: center; gap: 4px; padding: 8px 12px; }
+.composer__tool { display: inline-flex; min-height: 0; padding: 8px; border: 0; border-radius: 8px; background: none; color: var(--text-secondary); }
+.composer__tool svg { width: 21px; height: 21px; }
+.composer__preview-btn {
+  margin-left: auto;
+  min-height: 0;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+.composer__preview-btn--active { border-color: var(--btn-bg); background: var(--btn-bg); color: var(--btn-text); }
+
+
+/* ---------- feedback form ----------
+   Plain stacked fields in the same card language as the Pro cards. Not the
+   .email-form pill: that one is a single-line capture, this is a real form. */
+.feedbackIntro { display: flex; flex-direction: column; gap: 6px; max-width: 620px; }
+.feedbackIntro h3 { margin: 0; font-size: 1.05rem; font-weight: 700; letter-spacing: -0.015em; color: var(--ink); }
+.feedbackIntro p { margin: 0; font-size: 0.9rem; line-height: 1.5; color: var(--ink-soft); }
+.feedbackForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 620px;
+  min-width: 0;
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--card);
+}
+.feedbackField { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.feedbackLabel { font-size: 13px; font-weight: 600; color: var(--ink); }
+.feedbackInput {
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.95rem;
+}
+.feedbackInput::placeholder { color: var(--ink-soft); }
+.feedbackInput:focus-visible,
+.feedbackInput:focus {
+  outline: 2px solid var(--action);
+  outline-offset: 1px;
+  border-color: var(--action);
+}
+.feedbackTextarea { resize: vertical; min-height: 132px; line-height: 1.5; }
+/* only these two pair up, and only when there is room for both */
+.feedbackRow { display: grid; grid-template-columns: 1fr; gap: 12px; min-width: 0; }
+@media (min-width: 640px) {
+  .feedbackRow { grid-template-columns: 1fr 1fr; }
+}
+/* truly out of the way, not just invisible: bots read it, people never meet it */
+.feedbackHoneypot {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.sheet .feedbackSubmit {
+  align-self: flex-start;
+  min-height: 44px;
+  width: 100%;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.feedbackSubmit:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+.feedbackSubmit:disabled { opacity: 0.6; cursor: default; }
+.feedbackStatus { margin: 0; font-size: 0.85rem; line-height: 1.45; color: var(--ink-soft); overflow-wrap: anywhere; }
+.feedbackStatus:empty { display: none; }
+.feedbackStatusError { color: var(--orange); }
+.feedbackStatus:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+.feedbackSent { display: flex; flex-direction: column; gap: 6px; }
+.feedbackSent h3 { margin: 0; font-size: 1.02rem; font-weight: 700; letter-spacing: -0.015em; color: var(--ink); }
+.feedbackSent p { margin: 0; font-size: 0.9rem; line-height: 1.5; color: var(--ink-soft); }
+
+/* ---------- share sheet ---------- */
+/* The share icon is where a board leaves this device: to a person, to an
+   agent, or as a file. It rises from the bottom edge like every other sheet
+   here, which puts it under the thumb rather than up by the icon, and takes
+   the board's drawer curve and timing from .modal without restating them. */
+/* `.sheet button` paints every button in a sheet as a bordered card, and a
+   lone class does not outrank it. These are written with two classes so the
+   rows read as rows rather than as cards inside a card. */
+.shareSheet { gap: 0; }
+.shareSheet .sheetHead { padding: 2px 6px 6px; }
+.shareSheet .sheetHead button { border: 0; background: none; padding: 0 2px; color: var(--action); font-size: 14px; }
+.shareSheet .shareRow {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 12px;
+  align-items: center;
+  min-height: 56px;
+  padding: 12px 6px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  text-align: left;
+  color: var(--ink);
+  font-size: 14px;
+  transition: opacity 140ms ease;
+}
+.shareSheet .shareRow + .shareRow { border-top: 1px solid var(--line); }
+.shareSheet .shareRow:active { opacity: 0.55; }
+.shareSheet .shareRow svg { width: 21px; height: 21px; display: block; color: var(--ink-soft); }
+.shareSheet .shareRow span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.shareSheet .shareRow b { font-weight: 600; }
+.shareSheet .shareRow small { color: var(--ink-soft); font-size: 12px; line-height: 1.35; }
+.expUnlock {
+  align-self: flex-start;
+  min-height: 32px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--action);
+  font-size: 14px;
+  font-weight: 600;
+  transition: opacity 140ms ease;
+}
+.expUnlock:active { opacity: 0.55; }
+
+/* one link field, wherever a link is handed over */
+.linkField { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
+.linkField input { flex: 1; min-width: 0; }
+.linkField button {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--action);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    transform 80ms ease;
+}
+@media (hover: hover) {
+  .linkField button:hover { background: var(--row-press); color: var(--ink); }
+}
+.linkField button:active { background: var(--row-press); transform: scale(0.9); }
+.linkField button svg { width: 17px; height: 17px; display: block; }
+
+/* transitions.dev menu dropdown: a surface that grows out of the trigger it
+   belongs to. Used by the link/save menu over the board and by a background
+   tile's own menu in Settings. Both open upward, so both take a bottom
+   origin; the closing state has to be removed after --dropdown-close-dur or
+   the next open starts from the closing scale. */
+.t-dropdown {
+  transform-origin: top left;
+  transform: scale(var(--dropdown-pre-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-open-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-open-dur) var(--dropdown-ease);
+  will-change: transform, opacity;
+}
+.t-dropdown[data-origin="top-right"]     { transform-origin: top right; }
+.t-dropdown[data-origin="top-center"]    { transform-origin: top center; }
+.t-dropdown[data-origin="bottom-left"]   { transform-origin: bottom left; }
+.t-dropdown[data-origin="bottom-center"] { transform-origin: bottom center; }
+.t-dropdown[data-origin="bottom-right"]  { transform-origin: bottom right; }
+
+.t-dropdown.is-open {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.t-dropdown.is-closing {
+  transform: scale(var(--dropdown-closing-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-close-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-close-dur) var(--dropdown-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-dropdown { transition: none !important; }
+}
+
+/* A closed menu is not just invisible: it is out of the tab order too. The
+   closing state keeps it painted for as long as it is animating out. */
+.linkMenu.t-dropdown, .pitchMenu.t-dropdown { visibility: hidden; }
+.linkMenu.t-dropdown.is-open, .linkMenu.t-dropdown.is-closing,
+.pitchMenu.t-dropdown.is-open, .pitchMenu.t-dropdown.is-closing { visibility: visible; }
+
+/* transitions.dev tabs sliding: the pill is one element per bar, and JS writes
+   its measured transform and width. The bars keep their own chrome; only the
+   moving fill is the recipe's. */
+.t-tabs-pill {
+  position: absolute;
+  top: var(--tabs-pill-inset, 3px);
+  bottom: var(--tabs-pill-inset, 3px);
+  left: 0;
+  width: 0;
+  background: var(--tabs-pill-bg, var(--card));
+  border-radius: var(--tabs-pill-radius, 8px);
+  box-shadow: var(--tabs-pill-shadow, none);
+  transform: translateX(0);
+  transition:
+    transform var(--tabs-dur) var(--tabs-ease),
+    width     var(--tabs-dur) var(--tabs-ease);
+  will-change: transform, width;
+  z-index: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-tabs-pill { transition: none !important; }
+}
+
+/* transitions.dev toggle: the thumb travels with a double bounce. `.is-init`
+   is added on the first interaction, so no switch plays its return bounce
+   when the sheet is first filled in. */
+.t-toggle { transition: background var(--toggle-track) var(--toggle-ease); }
+.t-toggle-thumb { translate: 0 0; will-change: translate; }
+.t-toggle[data-on="true"] .t-toggle-thumb { translate: var(--toggle-travel) 0; }
+.t-toggle.is-init[data-on="true"] .t-toggle-thumb { animation: t-toggle-on var(--toggle-dur) var(--toggle-ease) both; }
+.t-toggle.is-init[data-on="false"] .t-toggle-thumb { animation: t-toggle-off var(--toggle-dur) var(--toggle-ease) both; }
+@keyframes t-toggle-on {
+  0% { translate: 0 0; }
+  55% { translate: calc(var(--toggle-travel) + var(--toggle-ov1)) 0; }
+  80% { translate: calc(var(--toggle-travel) - var(--toggle-ov2)) 0; }
+  100% { translate: var(--toggle-travel) 0; }
+}
+@keyframes t-toggle-off {
+  0% { translate: var(--toggle-travel) 0; }
+  55% { translate: calc(0px - var(--toggle-ov1)) 0; }
+  80% { translate: var(--toggle-ov2) 0; }
+  100% { translate: 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-toggle-thumb { animation: none !important; }
+}
+
+.t-icon-swap {
+  position: relative;
+  display: inline-grid;
+}
+.t-icon-swap .t-icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity   var(--icon-swap-dur) var(--icon-swap-ease),
+    filter    var(--icon-swap-dur) var(--icon-swap-ease),
+    transform var(--icon-swap-dur) var(--icon-swap-ease);
+  will-change: opacity, filter, transform;
+}
+.t-icon-swap[data-state="a"] .t-icon[data-icon="a"],
+.t-icon-swap[data-state="b"] .t-icon[data-icon="b"] {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+}
+.t-icon-swap[data-state="a"] .t-icon[data-icon="b"],
+.t-icon-swap[data-state="b"] .t-icon[data-icon="a"] {
+  opacity: 0;
+  filter: blur(var(--icon-swap-blur));
+  transform: scale(var(--icon-swap-start-scale));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-icon-swap .t-icon { transition: none !important; }
+}
+
+/* the invitation, standing inside the sheet rather than over it */
+.shareSheet .sheetHead button { display: flex; align-items: center; gap: 3px; }
+.shareSheet .sheetHead button svg { width: 16px; height: 16px; display: block; }
+.shareBody { display: flex; flex-direction: column; padding: 2px 6px 4px; }
+.shareBody .shareForm { display: grid; gap: 12px; }
+.shareBody .shareForm h2 { display: none; }
+.shareBody .shareList { border-bottom: 0; }
+
+/* the toast: says one thing and leaves, so it never needs dismissing. The
+   band across the bottom does the centring so the toast itself owns its
+   transform, which is what the transitions.dev recipe animates. */
+.toastBand {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 400;
+  display: flex;
+  justify-content: center;
+  padding: 0 16px;
+  pointer-events: none;
+}
+.toast {
+  max-width: min(420px, 100%);
+  padding: 10px 16px;
+  border-radius: 20px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* transitions.dev toast: rises from below with a fade, a cross-blur and a
+   slight scale. Arriving runs on the slower clock, leaving on the faster one,
+   so the two directions read differently from one class. */
+.t-toast {
+  opacity: 0;
+  transform: translateY(var(--toast-distance)) scale(var(--toast-scale));
+  filter: blur(var(--toast-blur));
+  will-change: transform, opacity, filter;
+  transition:
+    opacity var(--toast-close) var(--toast-ease),
+    transform var(--toast-close) var(--toast-ease),
+    filter var(--toast-close) var(--toast-ease);
+}
+.t-toast.is-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+  transition:
+    opacity var(--toast-open) var(--toast-ease),
+    transform var(--toast-open) var(--toast-ease),
+    filter var(--toast-open) var(--toast-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-toast { transition: none !important; }
+}
+
+/* the angle a turn is passing through: it stays at the top of the board for as
+   long as the turn does, so the number is there to aim at rather than a
+   message that has been and gone */
+.angleReadout {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: 60;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -6px);
+  transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+.angleReadout.is-up { opacity: 1; transform: translate(-50%, 0); }
+@media (prefers-reduced-motion: reduce) {
+  .angleReadout, .angleReadout.is-up { transform: translate(-50%, 0); }
+}
+
+/* a row this account cannot reach yet: still readable, plainly not ready, and
+   carrying the word that opens it */
+.shareSheet .shareRow.is-locked { grid-template-columns: 26px minmax(0, 1fr) auto; }
+.shareSheet .shareRow.is-locked > span { min-width: 0; }
+/* buttons in this app default to nowrap, which a two-line row cannot use */
+.shareSheet .shareRow b,
+.shareSheet .shareRow small { white-space: normal; }
+.shareSheet .shareRow.is-locked b,
+.shareSheet .shareRow.is-locked small { min-width: 0; overflow-wrap: anywhere; }
+.shareSheet .shareRow.is-locked b,
+.shareSheet .shareRow.is-locked small,
+.shareSheet .shareRow.is-locked svg { opacity: 0.5; }
+.shareSheet .shareRow .setTag { align-self: center; }
+
+/* ---------- a saved combination ---------- */
+/* The cell appearing is the confirmation, so it lights for a beat. */
+.cell.cellLanded {
+  background: #f8e6cf;
+  box-shadow: 0 0 0 2px var(--orange);
+  animation: cellLand 1.6s var(--ease-out) forwards;
+}
+@keyframes cellLand {
+  0%   { transform: scale(0.82); }
+  22%  { transform: scale(1); }
+  70%  { background: #f8e6cf; box-shadow: 0 0 0 2px var(--orange); }
+  100% { background: transparent; box-shadow: 0 0 0 0 rgba(224, 122, 31, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cell.cellLanded { animation: none; }
+}
+html[data-theme-resolved="dark"] .cell.cellLanded { background: #3a2f1e; }
+
+/* Said once, the first time anything is saved. */
+.shelfHint {
+  margin: 0;
+  padding: 4px 10px 2px;
+  color: var(--ink-soft);
+  font-size: 0.58rem;
+}
+
+/* Typing a row name instead of picking one. */
+.stampRowNew { width: 90px; font-size: 0.6rem; }
+
+/* ---------- inviting someone ----------
+   Three ways to name a person, one question about what they may do, and one
+   list of everyone who can already reach the board. The ways are a segmented
+   control rather than three rows in the share sheet, because they are one
+   question asked three ways. */
+.shareWays {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  --tabs-pill-inset: 3px;
+  --tabs-pill-radius: 8px;
+  --tabs-pill-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  /* --bg is the sheet's own white, so it cannot show the control track. */
+  background: var(--bar);
+}
+.shareWays button {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 38px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  transition: color var(--tabs-dur) var(--tabs-ease);
+}
+.copyLinkScope { margin: 6px 0 14px; }
+.copyLinkScope button { min-height: 44px; white-space: normal; }
+.copyLinkScope + .shareStatus { margin-top: 0; }
+.linkField[hidden] { display: none; }
+.shareWays button[aria-selected="true"],
+.shareWays button[aria-checked="true"] {
+  background: var(--card);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+.shareWays.is-measured button[aria-selected="true"],
+.shareWays.is-measured button[aria-checked="true"] { background: none; box-shadow: none; }
+.shareWays button:disabled { opacity: 0.45; }
+.shareWays button:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+html[data-theme-resolved="dark"] .shareWays { background: #1c1c1e; --tabs-pill-bg: #3a3a3c; }
+html[data-theme-resolved="dark"] .shareWays button[aria-selected="true"],
+html[data-theme-resolved="dark"] .shareWays button[aria-checked="true"] { background: #3a3a3c; }
+
+/* Username search remains one field. Results continue its border and take up
+   their own room, rather than covering the permission choice below. */
+.shareUserCombo { display: block; min-width: 0; }
+.shareUserCombo.is-open input {
+  border-color: var(--action);
+  border-radius: 9px 9px 0 0;
+}
+.shareUserPanel {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--action);
+  border-top: 0;
+  border-radius: 0 0 9px 9px;
+  background: var(--card);
+}
+.shareUserPanel[hidden], .shareUserEmpty[hidden] { display: none; }
+.shareUserOptions { display: block; max-height: 216px; overflow-y: auto; }
+.shareUserPanel .shareUserOption {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  margin: 0;
+  padding: 7px 10px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--card);
+  color: var(--ink);
+  text-align: left;
+  touch-action: manipulation;
+}
+.shareUserPanel .shareUserOption:first-child { border-top: 0; }
+.shareUserPanel .shareUserOption:hover,
+.shareUserPanel .shareUserOption.is-active { background: #eaf3ff; }
+.shareUserAvatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--bar);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+.shareUserAvatar img { width: 100%; height: 100%; object-fit: cover; }
+.shareUserMain { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+.shareUserIdentity { display: flex; min-width: 0; align-items: baseline; gap: 6px; white-space: nowrap; }
+.shareUserIdentity strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.shareUserIdentity > span { flex: 0 1 auto; overflow: hidden; color: var(--ink-soft); font-size: 11.5px; text-overflow: ellipsis; }
+.shareUserMain small { overflow: hidden; color: var(--ink-soft); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.shareUserEmpty { display: block; min-height: 48px; padding: 15px 10px; color: var(--ink-soft); font-size: 12.5px; text-align: center; }
+.shareUserLive {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+html[data-theme-resolved="dark"] .shareUserPanel .shareUserOption:hover,
+html[data-theme-resolved="dark"] .shareUserPanel .shareUserOption.is-active { background: #24364b; }
+
+/* What they may do is the same kind of question as how they are named, so it
+   is asked with the same control rather than a pair of loose radios. */
+.shareRole { display: grid; gap: 7px; }
+.shareRoleLabel { font-size: 13px; color: var(--ink-soft); }
+
+.shareList .shareWho { display: flex; flex-direction: column; gap: 1px; min-width: 0; overflow-wrap: anywhere; }
+.shareList .shareWho small { color: var(--ink-soft); font-size: 11.5px; }
+/* the listed permission is the control: tapping it is what changes it */
+.shareList .shareRoleBtn {
+  min-height: 30px;
+  padding: 2px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.shareList .shareRoleBtn.is-fixed { display: inline-block; line-height: 26px; }
+/* The link is copied where it is read: one press makes it, copies it, and
+   leaves it in the field, in the same field an agent link is handed over in. */
+.shareLinkField:not([hidden]) { display: grid; gap: 7px; }
+.linkField input { font-size: 12px; user-select: text; -webkit-user-select: text; }
+
+/* ---------- wide window: rail, panel, context bar ----------
+   A phone stacks board, panel and rooms down the screen. A wide window has
+   width to spare and no height, so the same three stand beside the board: a
+   rail of tools, the panel of that tool's shapes, and one bar over the board
+   for whatever the tool or the selection can change. The elements are the
+   same ones the phone uses - only where they sit changes. */
+.workArea { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.boardArea { position: absolute; inset: 0; }
+.ctxDock { display: none; }
+.panelFold { display: none; }
+
+body.deskMode .workArea { flex-direction: row; position: relative; }
+
+/* the rail */
+body.deskMode #toolbar {
+  order: 0;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 4px;
+  width: 52px;
+  padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+  background: var(--bar);
+  border-right: 1px solid var(--line);
+}
+/* the room band stretches its tabs; a rail of tools sizes them */
+body.deskMode #toolbar button { flex: none; }
+.railBtn {
+  width: 38px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 11px;
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.railBtn svg { display: block; width: 21px; height: 21px; }
+.railBtn.active {
+  background: var(--card);
+  color: var(--orange);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+}
+/* the tool you are on, with its panel folded away: still lit, no drawer */
+.railBtn.active.collapsed { background: transparent; box-shadow: none; }
+/* the press is the only motion here: the lit state lands on a freshly rendered
+   button, where a transition has nothing to travel from */
+.railBtn:active { transform: scale(0.92); }
+.railFoot { margin-top: auto; }
+html[data-theme-resolved="dark"] .railBtn.active { background: #2a2a2c; box-shadow: none; }
+
+/* the panel */
+body.deskMode .panelDock {
+  order: 1;
+  position: static;
+  width: 180px;
+  flex: none;
+  z-index: auto;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+  /* Width, because a container handing its space to a sibling has no transform
+     equivalent - the same exception an accordion's height gets. The contents
+     keep their own width inside it, so the collapse clips them from the right
+     edge instead of reflowing them frame by frame. */
+  transition: width var(--dur-push, 220ms) var(--ease-drawer, ease);
+}
+body.deskMode .panelDock.folded { width: 0; border-right: 0; }
+/* the last sliver fades rather than popping */
+body.deskMode .panelDock > * { transition: opacity 160ms var(--ease-out, ease); }
+body.deskMode .panelDock.folded > * { opacity: 0; }
+/* reduced motion drops the movement and keeps the fade, which is the part
+   that explains where the panel went */
+@media (prefers-reduced-motion: reduce) {
+  body.deskMode .panelDock { transition: none; }
+}
+body.deskMode .colorPicker, body.deskMode .colorDock { display: none !important; }
+body.deskMode .shelf { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+body.deskMode .shelfScroll { flex: 1; min-height: 0; width: 180px; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; border-top: 0; }
+body.deskMode .shelfTrack { display: flex; flex-direction: column; width: 180px; min-width: 0; }
+body.deskMode .shelfSec { width: 180px; flex: 0 0 auto; }
+body.deskMode .shelfSecRule { width: auto; height: 1px; margin: 0 12px; flex: 0 0 1px; }
+body.deskMode .shelfHead { display: block; position: sticky; top: 0; z-index: 1; padding: 12px 12px 7px; width: 180px; background: var(--panel); }
+body.deskMode .shelfGrid { width: 180px; grid-auto-flow: row; grid-template-rows: none; grid-template-columns: repeat(3, 40px); justify-content: center; align-content: start; }
+/* the two sides are a choice, not a shape: they take the row they need */
+body.deskMode .shelfGrid .cellTeam { grid-column: 1 / -1; width: 100%; }
+body.deskMode .assetBar { flex-wrap: wrap; width: 180px; }
+body.deskMode .panelFold {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: none;
+  width: 180px;
+  min-height: 32px;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+body.deskMode .panelFold svg { width: 15px; height: 15px; }
+
+/* the board, with the bar over it */
+/* min-width: 0, or the bar's widest state sets the column's minimum and the
+   board grows off the side of the window */
+body.deskMode .stageWrap { order: 2; display: flex; flex-direction: column; min-width: 0; }
+body.deskMode .boardArea { position: relative; inset: auto; flex: 1; min-height: 0; }
+/* the boards and projects lists take the whole work area, not a column of it.
+   The desktop rules above set display on the pieces the lists hide, so the
+   hiding has to be said again here to outrank them. */
+body.deskMode #libRoot { order: 3; flex: none; }
+body.deskMode.lib-open #libRoot { display: flex; flex: 1; min-width: 0; }
+body.deskMode.lib-open .stageWrap,
+body.deskMode.lib-open .panelDock,
+body.deskMode.lib-open #toolbar { display: none; }
+body.deskMode .ctxDock {
+  position: relative;
+  min-width: 0;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  min-height: 56px;
+  padding-left: 12px;
+  background: var(--bar);
+  border-bottom: 1px solid var(--line);
+}
+body.deskMode .ctxDock .options {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-left: 0;
+  background: transparent;
+  border-top: 0;
+}
+/* the wide-screen rule centres the tray; against the board it reads from the
+   left, next to whatever the selection put there */
+body.deskMode .ctxDock .options > :first-child { margin-left: 0; }
+body.deskMode .ctxDock .options > :last-child { margin-right: 0; }
+/* the selection's six, laid along the bar instead of stacked over the pitch */
+body.deskMode .ctxDock .fabCol {
+  position: static;
+  transform: none;
+  transition: none;
+  flex-direction: row;
+  gap: 6px;
+  padding-right: 10px;
+  border-right: 1px solid var(--line);
+}
+body.deskMode .ctxDock .fabPair { flex-direction: row; }
+body.deskMode .ctxDock .fabPair .fab { width: 27px; height: 30px; min-height: 30px; }
+body.deskMode .ctxDock .fabPair .fab + .fab { border-top: 0; border-left: 1px solid var(--line); }
+body.deskMode .ctxDock .fabPair .fab:first-child { border-radius: 15px 4px 4px 15px; }
+body.deskMode .ctxDock .fabPair .fab:last-child { border-radius: 4px 15px 15px 4px; }
+body.deskMode .ctxDock .fabPair .fab:only-child { border-radius: 50%; width: 30px; }
+/* still positioned, so its little menu hangs off the button and not the bar */
+body.deskMode .ctxDock .fabBL { position: relative; left: auto; bottom: auto; }
+/* the little menu hangs under the bar here, not above a floating button */
+/* On desktop the menu hangs below its button, so it grows from the top. */
+body.deskMode .ctxDock .linkMenu { top: calc(100% + 8px); bottom: auto; transform-origin: top left; }
+/* the bar owns the top of the stage here, so back sits under it */
+body.deskMode .backBtn { top: 68px; }

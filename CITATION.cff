@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use Tactics Journal Board in your work, please cite this release."
+type: software
+title: "Tactics Journal Board"
+version: "0.1.0"
+date-released: 2026-08-26
+license: MIT
+repository-code: "https://github.com/TacticsJournal/board"
+url: "https://board.tacticsjournal.com"
+authors:
+  - family-names: Boas
+    given-names: Kyle
+    affiliation: Tactics Journal
+keywords:
+  - football
+  - soccer
+  - tactics
+  - coaching
+abstract: "A mobile-friendly editor for creating and exporting football tactics diagrams."

@@ -1,0 +1,48 @@
+{
+  "name": "@tacticsjournal/board",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A football tactics board for drawing and importing screenshot positions.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TacticsJournal/board.git"
+  },
+  "homepage": "https://board.tacticsjournal.com",
+  "bugs": {
+    "url": "https://github.com/TacticsJournal/board/issues"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "build:self-hosted": "BOARD_SELF_HOSTED=true vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "api": "uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000",
+    "test": "node --test tests/*.test.mts",
+    "test:entitlements": "node --test tests/entitlements.test.mts",
+    "test:smoke": "node scripts/verify.mjs",
+    "test:saves": "node scripts/verify-saves.mjs",
+    "test:nodes": "node scripts/verify-nodes.mjs",
+    "test:selection-drag": "node scripts/verify-selection-drag.mjs",
+    "test:backgrounds": "node scripts/verify-backgrounds.mjs",
+    "test:project-backgrounds": "node scripts/verify-project-backgrounds.mjs",
+    "test:prod": "BOARD_URL=https://board.tacticsjournal.com/ node scripts/verify.mjs",
+    "test:import-security": "npm run build && (npm run preview -- --port 4173 > /tmp/tbm-import-security-preview.log 2>&1 & pid=$!; trap \"kill $pid 2>/dev/null\" EXIT; sleep 2; node scripts/verify-import-security.mjs)",
+    "test:local": "npm run build && (npm run preview -- --port 4173 > /tmp/tbm-preview.log 2>&1 & pid=$!; trap \"kill $pid 2>/dev/null\" EXIT; sleep 2; node scripts/verify.mjs && node scripts/verify-saves.mjs && node scripts/verify-selection-drag.mjs)",
+    "test:desktop": "node scripts/verify-desktop-layout.mjs",
+    "test:team-search": "node scripts/verify-team-search-mobile.mjs"
+  },
+  "dependencies": {
+    "@polar-sh/checkout": "^0.4.1",
+    "konva": "^10.3.1"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.61.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
+  }
+}
