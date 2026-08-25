@@ -1,6 +1,6 @@
-# Tactics Journal Board
+# Board
 
-Tactics Journal Board is a mobile-friendly editor for football tactics diagrams. Add players, balls, arrows, zones, labels, and a pitch, then export a PNG, GIF, or video.
+Board is a mobile-friendly editor for football tactics diagrams. Add players, balls, arrows, zones, labels, and a pitch, then export a PNG, GIF, or video.
 
 - Version: `0.1.0`
 - Release date: 2026-08-26
