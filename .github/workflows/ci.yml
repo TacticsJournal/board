@@ -12,9 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Set up Node 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
           cache: npm
@@ -28,3 +28,5 @@ jobs:
         run: npm run build
       - name: Build self-hosted bundle
         run: npm run build:self-hosted
+      - name: Build Docker image
+        run: docker build --tag tacticsjournal-board:ci .

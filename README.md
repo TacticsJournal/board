@@ -1,11 +1,77 @@
 # Tactics Journal Board
 
+```bash
+docker run --rm -p 8080:8080 ghcr.io/tacticsjournal/board:latest
+```
+
+Open <http://localhost:8080> in a browser.
+
 Tactics Journal Board is a mobile-friendly editor for football tactics diagrams. Add players, balls, arrows, zones, labels, and a pitch, then export a PNG, GIF, or video.
 
-- Version: `0.1.0`
-- Release date: 2026-08-26
-- Repository: [github.com/TacticsJournal/board](https://github.com/TacticsJournal/board)
-- Hosted app: [board.tacticsjournal.com](https://board.tacticsjournal.com)
+## Run locally
+
+Docker is the easiest local install. The container listens as an unprivileged user on port 8080.
+
+From a checkout that includes `compose.yaml`, run:
+
+```bash
+docker compose up
+```
+
+Then open <http://localhost:8080>. Stop it with `Ctrl-C`.
+
+The self-hosted app keeps boards and uploaded files in the browser's local storage and IndexedDB. They stay in that browser profile. A container restart does not create a server-side backup.
+
+A self-hosted copy does not include Tactics Journal accounts, Pro entitlements, cloud sync, collaboration, agent links, billing, or the hosted service APIs. Team search can still contact TheSportsDB and Wikipedia from the browser. Those services can be blocked by a network or change their terms.
+
+## Prebuilt archive
+
+Download the latest `.zip` or `.tar.gz` archive from [GitHub releases](https://github.com/TacticsJournal/board/releases). Extract it and serve the extracted directory with a web server that falls back to `index.html` for application routes. Keep the included `LICENSE`, `TRADEMARKS.md`, `THIRD_PARTY_NOTICES.md`, and `README.md` files with the site.
+
+For a quick local check only, extract the archive and serve the files with Python:
+
+```bash
+mkdir extracted-board
+tar -xzf tacticsjournal-board-0.1.1.tar.gz -C extracted-board
+python3 -m http.server 8080 --directory extracted-board
+```
+
+A production deployment should use HTTPS and the security settings of its web server. Do not add HSTS unless the site is always served over HTTPS.
+
+## Build from source
+
+Use Node 24. The repository records this in [.nvmrc](.nvmrc).
+
+```bash
+nvm install
+nvm use
+npm ci
+npm run build:self-hosted
+```
+
+The self-host bundle is in `dist/`. Check it with:
+
+```bash
+npm run preview
+```
+
+The Vite preview server listens on all interfaces. Do not expose it to an untrusted network.
+
+For the full test suite and both production bundles:
+
+```bash
+npm test
+npm run build
+npm run build:self-hosted
+```
+
+To create release archives and checksums after installing `zip` and `tar`:
+
+```bash
+bash scripts/package-release.sh
+```
+
+The archives are written to `release/` and use the version from `package.json`.
 
 ## License boundary
 
@@ -16,66 +82,8 @@ Some files and data have separate terms. [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NO
 - `scripts/fixtures/match-real.jpg` is a CC BY-SA 2.0 fixture by Bill Boaden.
 - `public/LICENSE-icons` covers the Tabler icons used by the interface.
 - `public/teams-index.json` contains data copied and modified from TheSportsDB API responses. It includes source credit. Squad data from Wikipedia is requested at runtime and is not bundled.
+
 The release source does not include the unlicensed model, copied runtime files, or broadcast screenshots from earlier private development. Screenshot import uses browser heuristics plus manual mark and corner mapping.
-
-## Install and develop
-
-Use Node 24. The repository records this in [.nvmrc](.nvmrc).
-
-```bash
-nvm install
-nvm use
-npm ci
-npm run dev
-```
-
-Open <http://localhost:5173>. The development server listens on all interfaces, so do not expose it to an untrusted network.
-
-Run the focused test suite and the two production builds with these exact commands:
-
-```bash
-npm test
-npm run build
-npm run build:self-hosted
-```
-
-`npm run build` creates the hosted-mode bundle in `dist/`. `npm run build:self-hosted` sets `BOARD_SELF_HOSTED=true` and includes approved local extensions. Neither command deploys anything.
-
-## Self-hosting
-
-The self-host build is a static site. Build it, then serve `dist/` from an HTTPS site or a local static server:
-
-```bash
-npm run build:self-hosted
-npm run preview
-```
-
-For a production deployment, configure the web server to serve `dist/index.html` for the application route and to pass through the generated asset files. See [docs/self-hosting.md](docs/self-hosting.md).
-
-A static self-host does not provide Tactics Journal accounts, Pro entitlements, cloud sync, collaboration, agent links, billing, or the hosted service's other APIs. Boards and uploaded files stay in the browser's local storage and IndexedDB. Team search still contacts TheSportsDB and Wikipedia unless those calls are blocked by the browser or network. The release does not include the optional detection model or copied runtime.
-
-Extensions are local files packaged at build time. To develop them with Vite:
-
-```bash
-BOARD_SELF_HOSTED=true npm run dev
-```
-
-See [docs/extensions.md](docs/extensions.md) and [docs/configuration.md](docs/configuration.md).
-
-## Optional backend
-
-The repository contains a small FastAPI backend for experiments around screenshot mapping. The browser already performs the four-corner homography mapping, so the backend is not required by the static app and the app does not connect to it automatically.
-
-Install its ordinary dependencies and start it with:
-
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -r requirements.txt
-npm run api
-```
-
-The optional service listens on `http://localhost:8000` and provides health and point-mapping endpoints. See [docs/configuration.md](docs/configuration.md).
 
 ## Documentation
 

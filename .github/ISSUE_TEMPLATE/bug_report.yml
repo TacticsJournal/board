@@ -13,7 +13,7 @@ body:
     attributes:
       label: Version or commit
       description: Which release or commit shows the problem?
-      placeholder: 0.1.0 or abc1234
+      placeholder: 0.1.1 or abc1234
     validations:
       required: true
   - type: textarea
