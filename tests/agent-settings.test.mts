@@ -3,14 +3,18 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
+const icons = readFileSync(new URL('../src/icons.ts', import.meta.url), 'utf8')
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 
-test('Settings groups Skills and the Pro agent connection under Agents', () => {
+test('Settings groups Skills and Extensions and the Pro agent connection under Agents', () => {
   const start = main.indexOf('<div class="setGroupHead">Agents</div>')
   const end = main.indexOf('${BOARD_SELF_HOSTED ? `<div class="setGroupHead">Hosting</div>')
   assert.ok(start > -1 && end > start)
   const agents = main.slice(start, end)
   assert.ok(agents.indexOf('data-goto="skills"') < agents.indexOf('data-goto="agents"'))
+  assert.match(agents, /data-goto="skills"[\s\S]*?icon\('skills'\)[\s\S]*?<span class="setItemLabel">Skills and Extensions<\/span>/)
+  assert.match(icons, /'skills': `<path d="M0 0h16v16H0z" fill="none"\/><path fill="currentColor" d="M9 1a2 2/)
+  assert.match(icons, /name === 'skills' \? '0 0 16 16' : '0 0 24 24'/)
   assert.match(agents, /data-goto="agents"[\s\S]*?icon\('prompt'\)[\s\S]*?Connect Claude or ChatGPT/)
   assert.match(agents, /setTag setTagPro" data-lock-tag="agents">Pro/)
   assert.match(main, /type SetScreen =[^\n]*'agents'/)
@@ -64,5 +68,5 @@ test('agent setup styles wrap the URL and keep static steps out of the tab order
   assert.match(main, /setStepNum">1<\/span><span class="setItemLabel">Open Customize/)
   assert.doesNotMatch(main, /<button[^>]*setStepNum/)
   assert.match(styles, /\.sheet \.setProviderAction \{[\s\S]*?padding-left: 45px;[\s\S]*?text-decoration: none;/)
-  assert.match(readFileSync(new URL('../src/icons.ts', import.meta.url), 'utf8'), /'external-link'/)
+  assert.match(icons, /'external-link'/)
 })

@@ -6,7 +6,7 @@ import test from 'node:test'
 import {
   AgentImportError, agentImportFile, agentImportSource, boardImportReadyRows, createBoardImportUrl, createProjectImportUrl,
   createStoredProjectImportUrl, decodeAgentImport, fetchAgentImport, MAX_AGENT_IMPORT_PAYLOAD_CHARS,
-  STORED_PROJECT_IMPORT_LIMITS,
+  projectImportReadyRows, STORED_PROJECT_IMPORT_LIMITS,
 } from '../src/agent-import.ts'
 import { addBoard, newProject } from '../src/projects.ts'
 
@@ -24,12 +24,6 @@ function deterministicBase64(size: number): string {
     bytes[index] = state >>> 24
   }
   return base64Url(bytes)
-}
-
-function patternedNote(lineCount: number): string {
-  return Array.from({ length: lineCount }, (_, index) =>
-    `Pattern ${String(index).padStart(4, '0')}: ${index % 997} ${'abcdefghij'[index % 10]}`,
-  ).join('\n')
 }
 
 async function encoded(value: unknown): Promise<string> {
@@ -69,38 +63,35 @@ test('import locations accept short board queries and legacy fragments and nothi
   assert.equal(agentImportSource({ pathname: '/import', search: '', hash: '#draft=not.valid' } as Location), null)
 })
 
-test('a board link carries an immutable copy in its fragment without granting source access', async () => {
+test('a board copy is stored behind a short link without granting source access', async () => {
   const project = newProject(scene as never, 'Pressing trigger')
   project.boards[0].title = 'Jump to the full-back'
-  const url = new URL(await createBoardImportUrl('Pressing trigger', project, 'https://board.tacticsjournal.com'))
+  const preview = 'data:image/jpeg;base64,/9j/2Q=='
+  let request: Request | null = null
+  const url = new URL(await createBoardImportUrl(
+    'Pressing trigger', project, preview, 'https://board.tacticsjournal.com',
+    (async (input, init) => {
+      request = input instanceof Request ? input : new Request(new URL(String(input), 'https://board.tacticsjournal.com'), init)
+      return Response.json({ id: 'b'.repeat(22) }, { status: 201 })
+    }) as typeof fetch,
+  ))
   assert.equal(url.pathname, '/import')
-  assert.equal(url.search, '')
-  assert.match(url.hash, /^#board=[A-Za-z0-9_-]+$/)
-  assert.ok(url.href.length < 4300)
+  assert.equal(url.search, `?board=${'b'.repeat(22)}`)
+  assert.equal(url.hash, '')
+  assert.ok(url.href.length < 100)
+  assert.equal(request!.method, 'POST')
+  const stored = await request!.json() as { payload: string; preview: string }
+  assert.equal(stored.preview, preview)
   const source = agentImportSource({ pathname: url.pathname, search: url.search, hash: url.hash } as Location)
-  assert.equal(source?.kind, 'board')
-  const draft = await decodeAgentImport(source!.value)
+  assert.equal(source?.kind, 'stored-board')
+  const draft = await decodeAgentImport(stored.payload)
   assert.equal(draft.name, 'Pressing trigger')
   assert.equal(draft.boardCount, 1)
   assert.ok('boards' in draft.document)
   assert.equal(draft.document.boards[0].title, 'Jump to the full-back')
 })
 
-test('a generated inline link can exceed the old payload cap and still round-trip', async () => {
-  const project = newProject(scene as never, 'Large board')
-  project.boards[0].note = patternedNote(700)
-  const url = new URL(await createBoardImportUrl(project.name, project, 'https://board.tacticsjournal.com'))
-  const source = agentImportSource({ pathname: url.pathname, search: url.search, hash: url.hash } as Location)
-  assert.equal(source?.kind, 'board')
-  assert.ok(source!.value.length > 4000)
-  assert.ok(source!.value.length <= MAX_AGENT_IMPORT_PAYLOAD_CHARS)
-  assert.ok(url.href.length < 8200)
-  const draft = await decodeAgentImport(source!.value)
-  assert.ok('boards' in draft.document)
-  assert.equal(draft.document.boards[0].note, project.boards[0].note)
-})
-
-test('a project copy link preserves every board while remaining distinct from stored project links', async () => {
+test('a project copy link preserves every board behind a short id', async () => {
   const project = newProject(scene as never, 'Pressing patterns')
   project.boards[0].title = 'High press'
   project.boards[0].note = 'Lock play outside.'
@@ -109,11 +100,21 @@ test('a project copy link preserves every board while remaining distinct from st
   second.note = 'Protect the centre.'
   second.link = { dur: 1800, ease: 'linear' }
 
-  const url = new URL(await createProjectImportUrl(project.name, project, 'https://board.tacticsjournal.com'))
-  assert.match(url.hash, /^#project=[A-Za-z0-9_-]+$/)
+  let request: Request | null = null
+  const url = new URL(await createProjectImportUrl(
+    project.name, project, 'https://board.tacticsjournal.com',
+    (async (input, init) => {
+      request = input instanceof Request ? input : new Request(new URL(String(input), 'https://board.tacticsjournal.com'), init)
+      return Response.json({ id: 'p'.repeat(22) }, { status: 201 })
+    }) as typeof fetch,
+  ))
+  assert.equal(url.hash, `#project-copy=${'p'.repeat(22)}`)
+  assert.ok(url.href.length < 100)
   const source = agentImportSource({ pathname: url.pathname, search: url.search, hash: url.hash } as Location)
-  assert.equal(source?.kind, 'project-copy')
-  const draft = await decodeAgentImport(source!.value)
+  assert.equal(source?.kind, 'stored-project-copy')
+  const stored = await request!.json() as { payload: string }
+  assert.deepEqual(Object.keys(stored), ['payload'])
+  const draft = await decodeAgentImport(stored.payload)
   assert.equal(draft.boardCount, 2)
   assert.ok('boards' in draft.document)
   assert.deepEqual(draft.document.boards.map(board => board.title), ['High press', 'Mid-block'])
@@ -121,7 +122,7 @@ test('a project copy link preserves every board while remaining distinct from st
   assert.deepEqual(draft.document.boards[1].link, { dur: 1800, ease: 'linear' })
 
   await assert.rejects(
-    () => createBoardImportUrl(project.name, project, 'https://board.tacticsjournal.com'),
+    () => createBoardImportUrl(project.name, project, 'data:image/jpeg;base64,/9j/2Q==', 'https://board.tacticsjournal.com'),
     /board could not be linked/,
   )
 })
@@ -143,11 +144,32 @@ test('a capped free user is led to an existing project instead of a failing new 
   assert.equal(available[1].primary, false)
 })
 
+test('a free account can add a shared project to an existing project when its project limit is full', () => {
+  assert.deepEqual(projectImportReadyRows('Pressing patterns', 3, 3, false), [
+    {
+      label: 'Existing project', detail: 'Adds all 3 boards to one of 3 projects', action: 'existing', primary: true, chevron: true,
+    },
+    {
+      label: 'New project', detail: 'Free keeps three projects. Take a licence for more', action: 'pro',
+    },
+  ])
+
+  const available = projectImportReadyRows('Pressing patterns', 3, 2, true)
+  assert.deepEqual(available, [
+    {
+      label: 'New project', detail: 'Creates “Pressing patterns” with 3 boards', action: 'new-project', primary: true,
+    },
+    {
+      label: 'Existing project', detail: 'Adds all 3 boards to one of 2 projects', action: 'existing', primary: false, chevron: true,
+    },
+  ])
+})
+
 test('a board link rejects a payload too large for reliable URLs', async () => {
   const project = newProject(scene as never, 'Oversized board')
   project.boards[0].note = deterministicBase64(6000)
   await assert.rejects(
-    () => createBoardImportUrl('Oversized board', project, 'https://board.tacticsjournal.com'),
+    () => createBoardImportUrl('Oversized board', project, 'data:image/jpeg;base64,/9j/2Q==', 'https://board.tacticsjournal.com'),
     /too large for a reliable link/,
   )
 })
@@ -232,8 +254,10 @@ test('the import prompt preserves its fragment for browser handoff, then clears 
   assert.match(ui, /boardImportReadyRows\(draft\.name, destinations\.length, options\.canCreateProject\(\)\)/)
   assert.match(ui, /const projectCopyLink = source\?\.kind === 'project-copy'/)
   assert.match(ui, /copyLink \? 'ready'/)
-  assert.match(ui, /options\.canCreateProject\(\)[\s\S]*This shared project has not been added\.[\s\S]*Delete a project to make room/)
-  assert.match(ui, /projectCopyLink \? options\.addProject\(draft\) : options\.addBoard\(draft, projectId\)/)
+  assert.match(ui, /projectImportReadyRows\(draft\.name, draft\.boardCount, destinations\.length, options\.canCreateProject\(\)\)/)
+  assert.match(ui, /projectCopyLink \? options\.addProject\(draft, projectId\) : options\.addBoard\(draft, projectId\)/)
+  assert.match(ui, /projectId && copyLink/)
+  assert.match(ui, /copyLink && action === 'existing'/)
   assert.match(ui, /projectCopyLink && !\('boards' in value\.document\)/)
   assert.match(ui, /stored-project-copy/)
   assert.match(ui, /STORED_PROJECT_IMPORT_LIMITS/)

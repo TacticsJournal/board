@@ -4,6 +4,11 @@ const STABLE_PAGES_HOST = 'tactics-board-mapper.pages.dev';
 const BRANCH_PREVIEW_HOST = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.tactics-board-mapper\.pages\.dev$/;
 
 /** The account origin is selected by this deployment, never by a caller. */
+/** Shared-link storage is product data, not billing sandbox data. */
+export function boardDraftOrigin() {
+  return PRODUCTION;
+}
+
 export function accountOrigin(request) {
   try {
     return BRANCH_PREVIEW_HOST.test(new URL(request.url).hostname) ? SANDBOX : PRODUCTION;

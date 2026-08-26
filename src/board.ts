@@ -1923,22 +1923,9 @@ export class Board {
       return
     }
 
-    // A plain oval or triangle keeps the Transformer until its nodes are
-    // materialized. Its pencil sits beyond the bottom-right resize anchor.
-    if (sel.type === 'box' && !sel.corners) {
-      const node = this.objLayer.findOne(`#${sel.id}`)
-      if (!node) { this.transformer.nodes([]); return }
-      this.transformer.setAttrs({
-        enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center'],
-        rotateEnabled: true,
-        keepRatio: false,
-      })
-      this.transformer.nodes([node as any])
-      this.addEditIcon(sel, 20 / this.screenScale())
-      return
-    }
-
-    // everything else: dashed outline + resize node + edit icon (if applicable)
+    // Dashed outline, resize node, and edit icon where supported. Every zone
+    // uses these controls. Ovals and triangles keep their exact native shape
+    // until the pencil materializes their edit nodes.
     this.transformer.nodes([])
     this.addSelectionOutline(sel)
     this.addResizeNode(sel)
@@ -2202,8 +2189,9 @@ export class Board {
   }
 
   /** Pencil icon at bottom-right of selection box; tap enters node editing. */
-  private addEditIcon(sel: SceneObj, pad = 5) {
+  private addEditIcon(sel: SceneObj) {
     const rect = this.objectRect(sel)
+    const pad = 5
     const r = Math.min(16, Math.max(8, 12 / this.screenScale()))
     // generous hit area: at least 24px in screen space
     const hitR = Math.max(r * 2, 24 / this.screenScale())
@@ -3751,10 +3739,26 @@ export class Board {
     this.rebuild()
   }
 
-  toFrameCanvas(width: number, view?: { x: number; y: number; w: number; h: number }): HTMLCanvasElement {
+  /**
+   * `opacity` dims individual objects for this capture alone — an animation
+   * export uses it to fade an object out as the next board drops it, the way
+   * the player does. Every entry is put back before the canvas is returned.
+   */
+  toFrameCanvas(
+    width: number,
+    view?: { x: number; y: number; w: number; h: number },
+    opacity?: Map<string, number>,
+  ): HTMLCanvasElement {
     // Captures are always the durable local board, never a translucent local
     // layer under a received visual frame.
     this.clearRemotePreview()
+    const dimmed: { node: Konva.Node; was: number }[] = []
+    opacity?.forEach((value, id) => {
+      const node = this.objLayer.findOne(`#${id}`)
+      if (!node) return
+      dimmed.push({ node, was: node.opacity() })
+      node.opacity(Math.max(0, Math.min(1, value)))
+    })
     const prevScale = this.stage.scale()
     const prevPos = this.stage.position()
     const prevSize = this.stage.size()
@@ -3773,6 +3777,7 @@ export class Board {
     this.stage.position(prevPos)
     this.uiLayer.visible(true)
     this.noteLayer.visible(true)
+    for (const { node, was } of dimmed) node.opacity(was)
     return canvas
   }
 

@@ -59,6 +59,9 @@ const view = await page.evaluate(() => {
   }
   const input = document.querySelector('[data-tm="query"]')
   const row = document.querySelector('.tmTeam')
+  const modal = document.querySelector('.modal:not(.hidden)')
+  const sheet = modal?.querySelector('.sheet')
+  const keyboardFill = modal ? getComputedStyle(modal, '::after') : null
   const hit = row ? (() => {
     const r = row.getBoundingClientRect()
     const el = document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height, 40) / 2)
@@ -67,6 +70,12 @@ const view = await page.evaluate(() => {
   return {
     top,
     bottom,
+    bottomGap: Math.max(0, window.innerHeight - bottom),
+    keyboardFill: keyboardFill && sheet ? {
+      height: parseFloat(keyboardFill.height),
+      background: keyboardFill.backgroundColor,
+      sheetBackground: getComputedStyle(sheet).backgroundColor,
+    } : null,
     kbOpen: document.body.classList.contains('kb-open'),
     focused: document.activeElement === input,
     value: input?.value ?? '',
@@ -90,6 +99,11 @@ if (!visible(view.input)) errors.push(`the query is off screen: ${JSON.stringify
 if (!visible(view.row)) errors.push(`the first result is off screen: ${JSON.stringify(view.row)}`)
 if (!view.hit) errors.push('the first result is not the element at its own centre')
 if (view.sideTag !== 'Away' || !view.sideTagVisible) errors.push(`the side of the field is not shown: ${view.sideTag}`)
+if (!view.keyboardFill || view.keyboardFill.height < view.bottomGap) {
+  errors.push(`the sheet does not cover the keyboard gap: ${JSON.stringify(view.keyboardFill)}`)
+} else if (view.keyboardFill.background !== view.keyboardFill.sheetBackground) {
+  errors.push(`the keyboard gap does not match the sheet: ${JSON.stringify(view.keyboardFill)}`)
+}
 
 // tapping the first row with the keyboard still up starts that squad load
 const picked = view.rowName

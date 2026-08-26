@@ -1,4 +1,4 @@
-import { accountOrigin, boardOrigin } from './lib/board-origin.js';
+import { accountOrigin, boardDraftOrigin, boardOrigin } from './lib/board-origin.js';
 import { publicProjectSchema, publicSceneSchema } from './lib/board-creation-schemas.js';
 
 const MAX_REQUEST_BYTES = 384 * 1024;
@@ -181,7 +181,7 @@ async function gzip(bytes) {
 async function storeImportDraft(payload, context) {
   let response;
   try {
-    response = await fetch(`${accountOrigin(context.request)}/api/board/import-drafts`, {
+    response = await fetch(`${boardDraftOrigin()}/api/board/import-drafts`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

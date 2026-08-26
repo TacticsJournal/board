@@ -5,6 +5,7 @@ import {
   FREE_PROJECT_LIMIT,
   addBoard,
   appendBoardCopy,
+  appendProjectCopy,
   boardLabel,
   boardName,
   canAnimate,
@@ -17,13 +18,16 @@ import {
   pointOnArrow,
   tweenScene,
   freshDeviceDestination,
+  loadLibrary,
   migrateLibrary,
   rememberBoard,
+  saveLibrary,
   storedBoardIndex,
   migrateProject,
   moveBoard,
   newProject,
   newProjectFromBoard,
+  newProjectFromProjectCopy,
   normalizeBoardDocument,
   normalizeDocumentArrowLegends,
   noteBody,
@@ -224,6 +228,24 @@ test('a shared board can start a project or join one without reusing its board i
   assert.equal(appended.link.dur, 1200)
 })
 
+test('a whole-project copy gets new board ids and keeps its sequence timings', () => {
+  const source = newProject(scene(), 'Shared sequence')
+  source.boards[0].link = { dur: 2200, ease: 'linear' }
+  const second = addBoard(source, 0, true)
+  second.link = { dur: 600, ease: 'out' }
+
+  const created = newProjectFromProjectCopy(source)
+  assert.notEqual(created.id, source.id)
+  assert.deepEqual(created.boards.map(board => board.link), source.boards.map(board => board.link))
+  assert.notDeepEqual(created.boards.map(board => board.id), source.boards.map(board => board.id))
+
+  const existing = newProject(scene(), 'Existing')
+  const appended = appendProjectCopy(existing, source)
+  assert.equal(existing.boards.length, 3)
+  assert.deepEqual(appended.map(board => board.link), source.boards.map(board => board.link))
+  assert.notDeepEqual(appended.map(board => board.id), source.boards.map(board => board.id))
+})
+
 test('a board takes its link with it when it moves', () => {
   const project = newProject(scene())
   addBoard(project, 0, true)
@@ -284,6 +306,44 @@ test('a library with an unknown current project falls back to the first', () => 
   assert.equal(lib!.currentId, lib!.projects[0].id)
   assert.equal(migrateLibrary({ version: 2, currentId: 'x', projects: [] }), null)
   assert.equal(migrateLibrary(null), null)
+})
+
+test('the last opened project survives a failed full-library write', () => {
+  const storageKey = 'test-project-library'
+  const values = new Map<string, string>()
+  let rejectLibraryWrite = false
+  const storage = {
+    get length() { return values.size },
+    clear() { values.clear() },
+    getItem(key: string) { return values.get(key) ?? null },
+    key(index: number) { return Array.from(values.keys())[index] ?? null },
+    removeItem(key: string) { values.delete(key) },
+    setItem(key: string, value: string) {
+      if (rejectLibraryWrite && key === storageKey) throw new Error('quota exceeded')
+      values.set(key, value)
+    },
+  }
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage })
+  try {
+    const lib = libraryOf(2)
+    const firstId = lib.projects[0].id
+    const secondId = lib.projects[1].id
+    saveLibrary(lib, storageKey)
+
+    lib.currentId = secondId
+    rejectLibraryWrite = true
+    saveLibrary(lib, storageKey)
+
+    assert.equal(JSON.parse(values.get(storageKey)!).currentId, firstId, 'the large value stayed stale')
+    assert.equal(loadLibrary(storageKey, 'unused-legacy')!.currentId, secondId)
+
+    values.set(`${storageKey}:active-project`, 'deleted-project')
+    assert.equal(loadLibrary(storageKey, 'unused-legacy')!.currentId, firstId, 'a stale pointer is ignored')
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'localStorage', previous)
+    else delete (globalThis as { localStorage?: unknown }).localStorage
+  }
 })
 
 test('a library keeps the last board of each project it still has', () => {

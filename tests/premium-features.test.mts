@@ -15,6 +15,7 @@ import {
 } from '../src/entitlements.ts'
 
 import { PITCHES } from '../src/pitches.ts'
+import { tacticsJournalOrigin } from '../src/origin.ts'
 
 import {
   FREE_EDITABLE_BOARD_LIMIT,
@@ -380,14 +381,15 @@ test('production sells the Licence and Pro', () => {
   assert.match(checkout, /reason: 'unavailable'/)
 })
 
-test('a preview board talks to the sandbox, and production never does', () => {
+test('previews may use sandbox billing but the canonical Board host always uses live Polar', () => {
   const origin = readFileSync(new URL('../src/origin.ts', import.meta.url), 'utf8')
 
-  // Production is the default and the fallback. An unrecognised host, or any
-  // failure reading the build context, must resolve to the real site rather
-  // than to a sandbox that would quietly show the wrong entitlements.
-  assert.match(origin, /catch \{\s*return false\s*\}/)
-  assert.match(origin, /isPreviewBuild\(\) \? SANDBOX : PRODUCTION/)
+  assert.equal(tacticsJournalOrigin('board.tacticsjournal.com'), 'https://tacticsjournal.com')
+  assert.equal(tacticsJournalOrigin('board.tacticsjournal.com', true), 'https://tacticsjournal.com')
+  assert.equal(tacticsJournalOrigin('branch.tactics-board-mapper.pages.dev'), 'https://billing-sandbox.tacticsjournal.pages.dev')
+  assert.equal(tacticsJournalOrigin('localhost', true), 'https://billing-sandbox.tacticsjournal.pages.dev')
+  assert.equal(tacticsJournalOrigin('tactics-board-mapper.pages.dev'), 'https://tacticsjournal.com')
+  assert.equal(tacticsJournalOrigin('unknown.example'), 'https://tacticsjournal.com')
 
   // Every call to the site goes through it: no origin is hardcoded any more.
   for (const file of ['main.ts', 'tjheader.ts', 'tjsearch.ts', 'sync.ts']) {

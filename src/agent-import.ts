@@ -63,6 +63,30 @@ export function boardImportReadyRows(name: string, destinationCount: number, can
   return canCreateProject ? [fresh, existing] : [existing, fresh]
 }
 
+export function projectImportReadyRows(
+  name: string,
+  boardCount: number,
+  destinationCount: number,
+  canCreateProject: boolean,
+): BoardImportReadyRow[] {
+  const existing: BoardImportReadyRow = {
+    label: 'Existing project',
+    detail: destinationCount === 0
+      ? 'No projects yet'
+      : `Adds all ${boardCount} board${boardCount === 1 ? '' : 's'} to ${destinationCount === 1 ? 'your project' : `one of ${destinationCount} projects`}`,
+    action: 'existing',
+    primary: !canCreateProject,
+    chevron: true,
+  }
+  const fresh: BoardImportReadyRow = canCreateProject
+    ? { label: 'New project', detail: `Creates “${name}” with ${boardCount} board${boardCount === 1 ? '' : 's'}`, action: 'new-project', primary: true }
+    : { label: 'New project', detail: 'Free keeps three projects. Take a licence for more', action: 'pro' }
+  const rows = canCreateProject ? [fresh] : []
+  if (destinationCount > 0) rows.push(existing)
+  if (!canCreateProject) rows.push(fresh)
+  return rows
+}
+
 export type AgentImportSource = { kind: 'inline' | 'stored' | 'board' | 'stored-board' | 'project-copy' | 'stored-project-copy'; value: string }
 
 export function agentImportSource(location: Pick<Location, 'pathname' | 'search' | 'hash'>): AgentImportSource | null {
@@ -124,6 +148,11 @@ const INLINE_IMPORT_LIMITS: AgentImportDecodeLimits = {
   maxJsonBytes: MAX_AGENT_IMPORT_JSON_BYTES,
 }
 
+const TEMPORARY_IMPORT_LIMITS: AgentImportDecodeLimits = {
+  ...INLINE_IMPORT_LIMITS,
+  maxPayloadChars: 4000,
+}
+
 export const STORED_PROJECT_IMPORT_LIMITS: AgentImportDecodeLimits = {
   maxPayloadChars: MAX_STORED_AGENT_IMPORT_PAYLOAD_CHARS,
   maxGzipBytes: MAX_STORED_AGENT_IMPORT_GZIP_BYTES,
@@ -171,23 +200,56 @@ async function createCompressedPayload(
   return payload
 }
 
-/** Put an immutable copy in the URL fragment so the link does not expire or expose its source. */
-async function createCopyImportUrl(
+async function storeTemporaryCopy(
   scope: CopyImportScope,
   name: string,
   document: BoardDocument,
+  preview: string | null,
   origin: string,
+  fetcher: typeof fetch,
 ): Promise<string> {
-  const payload = await createCompressedPayload(scope, name, document, INLINE_IMPORT_LIMITS)
-  return `${origin.replace(/\/$/, '')}/import#${scope}=${payload}`
+  if (preview !== null && (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(preview) || preview.length > 500_000)) {
+    throw new AgentImportError('This board preview could not be created.')
+  }
+  const payload = await createCompressedPayload(scope, name, document, TEMPORARY_IMPORT_LIMITS)
+  let response: Response
+  try {
+    response = await fetcher('/api/board/import-drafts', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(preview === null ? { payload } : { payload, preview }),
+    })
+  } catch { throw new AgentImportError(`This ${scope} link could not be created. Try again.`) }
+  if (response.status === 429) throw new AgentImportError(`Too many ${scope} links have been created. Try again later.`)
+  if (!response.ok) throw new AgentImportError(`This ${scope} link could not be created. Try again.`)
+  let body: unknown
+  try { body = await response.json() } catch { throw new AgentImportError(`This ${scope} link could not be created. Try again.`) }
+  if (!isRecord(body) || typeof body.id !== 'string' || !STORED_DRAFT_ID.test(body.id)) {
+    throw new AgentImportError(`This ${scope} link could not be created. Try again.`)
+  }
+  const root = origin.replace(/\/$/, '')
+  return scope === 'board' ? `${root}/import?board=${body.id}` : `${root}/import#project-copy=${body.id}`
 }
 
-export function createBoardImportUrl(name: string, document: BoardDocument, origin = window.location.origin): Promise<string> {
-  return createCopyImportUrl('board', name, document, origin)
+/** Store a board copy behind a short-lived id so the share URL stays short. */
+export function createBoardImportUrl(
+  name: string,
+  document: BoardDocument,
+  preview: string,
+  origin = window.location.origin,
+  fetcher: typeof fetch = fetch,
+): Promise<string> {
+  return storeTemporaryCopy('board', name, document, preview, origin, fetcher)
 }
 
-export function createProjectImportUrl(name: string, document: BoardDocument, origin = window.location.origin): Promise<string> {
-  return createCopyImportUrl('project', name, document, origin)
+/** Store a project copy behind a short-lived id so free shares also have short URLs. */
+export function createProjectImportUrl(
+  name: string,
+  document: BoardDocument,
+  origin = window.location.origin,
+  fetcher: typeof fetch = fetch,
+): Promise<string> {
+  return storeTemporaryCopy('project', name, document, null, origin, fetcher)
 }
 
 export async function createStoredProjectImportUrl(

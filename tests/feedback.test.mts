@@ -8,7 +8,7 @@ const icons = readFileSync(new URL('../src/icons.ts', import.meta.url), 'utf8')
 
 test('Settings Help opens a complete feedback form', () => {
   const helpGroup = main.slice(main.indexOf('<div class="setGroupHead">Help</div>'), main.indexOf('data-pane="howto"'))
-  assert.ok(helpGroup.indexOf('Data, copyright and terms') < helpGroup.indexOf('data-goto="feedback"'))
+  assert.ok(helpGroup.indexOf('Privacy, data and terms') < helpGroup.indexOf('data-goto="feedback"'))
   assert.match(helpGroup, /data-goto="feedback"[\s\S]*?>Feedback</)
 
   const pane = main.slice(main.indexOf('data-pane="feedback"'), main.indexOf('data-pane="teams"'))

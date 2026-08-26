@@ -1,4 +1,4 @@
-import { accountOrigin, boardOrigin } from '../../lib/board-origin.js';
+import { accountOrigin, boardDraftOrigin, boardOrigin } from '../../lib/board-origin.js';
 
 const ALLOWED = new Set(['sync', 'skills', 'assets', 'libraries', 'shares', 'user-search', 'invitations', 'invitation', 'presence', 'transfer', 'agent-links', 'agent', 'live', 'collaboration', 'import-drafts']);
 const IMPORT_PAYLOAD = /^[A-Za-z0-9_-]+$/;
@@ -39,7 +39,10 @@ export function upstreamRequest(request, params = {}) {
   // public Community search. Keep Board on that endpoint rather than adding a
   // second query with subtly different visibility rules.
   const upstreamPath = path === 'user-search' ? '/api/community/user-search' : `/api/board/${path}`;
-  const target = new URL(upstreamPath, accountOrigin(request));
+  // The billing sandbox does not own shared-link storage. Preview builds use
+  // the production draft store, whose entries are bounded and expire in 24 hours.
+  const upstreamOrigin = path === 'import-drafts' ? boardDraftOrigin() : accountOrigin(request);
+  const target = new URL(upstreamPath, upstreamOrigin);
   target.search = incoming.search;
   const headers = new Headers(request.headers);
   headers.delete('Host');
@@ -111,7 +114,9 @@ async function browserImportPayload(request) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
   const keys = Object.keys(body).sort().join(',');
   if (keys === 'payload') {
-    if (typeof body.payload !== 'string' || body.payload.length > MAX_STORED_IMPORT_PAYLOAD_CHARS || !IMPORT_PAYLOAD.test(body.payload)) return null;
+    const scope = request.headers.get(PROJECT_COPY_SCOPE_HEADER);
+    const limit = scope === 'project-copy' ? MAX_STORED_IMPORT_PAYLOAD_CHARS : MAX_IMPORT_PAYLOAD_CHARS;
+    if (typeof body.payload !== 'string' || body.payload.length > limit || !IMPORT_PAYLOAD.test(body.payload)) return null;
     return { payload: body.payload };
   }
   if (keys !== 'payload,preview') return null;
@@ -127,8 +132,7 @@ async function authorizeBrowserImport(request) {
   const scope = request.headers.get(PROJECT_COPY_SCOPE_HEADER);
   if (scope !== null && scope !== 'project-copy') return importError('Send one bounded project payload.', 400);
   const draft = await browserImportPayload(request);
-  if (!draft || (scope === null && !('preview' in draft))
-    || (scope === 'project-copy' && 'preview' in draft)) {
+  if (!draft || (scope === 'project-copy' && 'preview' in draft)) {
     return importError('Send one bounded project payload.', 400);
   }
   return true;

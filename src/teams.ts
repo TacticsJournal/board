@@ -2,6 +2,7 @@ import { Store } from './store'
 import { ToolDefaults } from './board'
 import { PlayerObj, SceneObj, BOARD_W, emptyMatch, normalizeHex, uid, insertByTier } from './types'
 import { icon } from './icons'
+import { rosterByNumber } from './roster'
 import type { PathNode } from './path-nodes'
 import type { LibrarySyncStore, SyncedLibraryRecord } from './library-sync.ts'
 
@@ -1031,10 +1032,10 @@ export class TeamPanel {
     const trimmed = typeof teamName === 'string' ? teamName.trim() : ''
     if (trimmed) {
       const team = this.loaded.find(t => t.name === trimmed)
-      if (team) return rosterAttackersFirst(team.roster).map(p => ({ ...p, team: team.name }))
+      if (team) return rosterByNumber(team.roster).map(p => ({ ...p, team: team.name }))
     }
-    if (this.roster.length) return rosterAttackersFirst(this.roster).map(p => ({ ...p, team: this.teamName || 'Team' }))
-    return this.loaded.flatMap(t => rosterAttackersFirst(t.roster).map(p => ({ ...p, team: t.name })))
+    if (this.roster.length) return rosterByNumber(this.roster).map(p => ({ ...p, team: this.teamName || 'Team' }))
+    return this.loaded.flatMap(t => rosterByNumber(t.roster).map(p => ({ ...p, team: t.name })))
   }
 
   /** Quick-switch from the Player menu chips: makes that team's color the default. */

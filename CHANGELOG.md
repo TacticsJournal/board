@@ -4,6 +4,11 @@
 
 - Added the official 3D View extension with full-circle mouse and touch orbit controls, camera zoom, and the editable live board.
 - Added a bundled official extension registry separate from sandboxed self-hosted extensions.
+- Added a self-host settings page and clarified that Board does not use tracking or analytics.
+- Shortened Board share links and let free users import shared projects.
+- Sorted the player picker by shirt number and remembered the last opened project separately.
+- Fixed animation export fades, duplicated arrow alignment, broadcast arrow previews, shape controls, and shape refreshes after switching project type.
+- Kept the board hidden behind the mobile keyboard toolbar.
 
 ## [0.1.1] - 2026-08-26
 
