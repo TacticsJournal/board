@@ -59,7 +59,7 @@ test('Agents, Account, and Help keep every existing destination discoverable', (
     '<div class="setGroupHead">Agents</div>',
     '${BOARD_SELF_HOSTED ? `<div class="setGroupHead">Hosting</div>',
   )
-  assert.match(agents, /data-goto="skills"[\s\S]*?>Skills</)
+  assert.match(agents, /data-goto="skills"[\s\S]*?>Skills and Extensions</)
   assert.match(agents, /BOARD_SELF_HOSTED \? '' : `<button class="setItem" data-goto="agents">[\s\S]*?>Connect Claude or ChatGPT</)
 
   const account = sliceBetween(

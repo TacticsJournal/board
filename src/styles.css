@@ -54,6 +54,11 @@
   --dropdown-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --tabs-dur: 250ms;
   --tabs-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --tilt-dur: 250ms;
+  --tilt-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* The mat the 3D board stands on. Neutral and a shade off the page, so the
+     white touchline reads as the edge of the pitch and not as the page. */
+  --board-3d-space: #dde1e6;
   --toast-open: 350ms;
   --toast-close: 250ms;
   --toast-distance: 16px;
@@ -89,6 +94,7 @@ html[data-theme-resolved="dark"] {
   --track: #2c2c2e;
   --band-ink: #98989d;
   --panel: #1c1c1e;
+  --board-3d-space: #16181b;
 }
 html[data-theme-resolved="dark"] header.site-header,
 html[data-theme-resolved="dark"] .site-menu-panel { background: var(--bg); }
@@ -567,6 +573,21 @@ header.site-header {
 .actionRow button:hover { opacity: 0.6; }
 .iconBtn { width: 22px; min-height: 44px; }
 .iconBtn.active { color: var(--orange); }
+/* The 3D toggle is pressed as often as it is glanced at, so it carries a full
+   44px hit area. The mark stays 22px like its neighbours; only the reach grows,
+   and by less than the smallest gap in the row, so it never steals a
+   neighbour's tap. */
+/* Official toolbar controls use the same compact icon and a full-size touch target. */
+.iconBtn.extBtn { position: relative; }
+.iconBtn.extBtn::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
 .iconBtn svg {
   width: 22px;
   height: 22px;
@@ -586,6 +607,96 @@ header.site-header {
 /* ---------- stage + floating controls ---------- */
 .stageWrap { flex: 1; min-height: 0; position: relative; }
 #stage { position: absolute; inset: 0; touch-action: none; }
+
+/* ---------- the 3D view ----------
+   The board is one physical object seen from a camera that gestures move. It
+   is the same stage, the same canvases and the same handles - only the element
+   they live in is turned, so everything stays editable. Nothing outside the
+   stage turns; the action row, the toolbar and every floating control stay
+   square to the screen where they can still be read and tapped.
+
+   Every number here comes from Board.recomputeCamera, which measures the four
+   projected pitch corners and picks the scale that keeps all of them inside
+   the board area. There is no fixed angle and no phone-only fudge factor: the
+   camera is state, and the CSS is only how it is drawn.
+
+   Perspective sits on #stage so its one child, the Konva content element, is
+   the thing in depth, and its origin is the same point the board turns about,
+   which is what makes the projection symmetrical about the pitch centre.
+   Board hides the transformed surround in this mode, so only the pitch and its
+   existing Konva shadow read as the turned plane. */
+#stage.is3d {
+  perspective: var(--cam-persp, 1400px);
+  perspective-origin: var(--cam-origin-x, 50%) var(--cam-origin-y, 58%);
+}
+#stage .konvajs-content {
+  transform-origin: var(--cam-origin-x, 50%) var(--cam-origin-y, 62%);
+}
+/* Camera transforms are immediate. Easing would lag behind a gesture and can
+   briefly put a projected corner outside the measured fit. */
+#stage.is3d .konvajs-content {
+  transform: rotateX(var(--cam-tilt, 38deg)) rotateZ(var(--cam-yaw, 0deg)) scale(var(--cam-scale, 0.85));
+}
+/* The mat lives on the board area, outside the transformed element, so it can
+   never turn into a white plane lying over the pitch. */
+.boardArea.is3d { background: var(--board-3d-space); }
+
+/* One reset, out of the way and out of the transform, for when an orbit has
+   gone somewhere unhelpful. Gestures are the way the camera moves; this is
+   only the way back. */
+.boardReset {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 16;
+  display: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--bar) 92%, transparent);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  backdrop-filter: blur(8px);
+}
+.boardArea.is3d .boardReset { display: block; }
+.boardReset:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--action) 72%, transparent);
+  outline-offset: 2px;
+}
+
+/* A first-use hint, not a control panel: it never takes a tap, and it goes as
+   soon as the first gesture proves it was read. */
+.boardHint {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  z-index: 15;
+  display: none;
+  margin: 0;
+  padding: 6px 12px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bar) 88%, transparent);
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity var(--tilt-dur) var(--tilt-ease);
+}
+.boardArea.is3d .boardHint { display: block; }
+.boardArea.is3d .boardHint.used { opacity: 0; }
+@media (max-width: 700px) {
+  .boardReset { top: 8px; right: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .boardHint { transition: none; }
+}
 .liveEditChip {
   position: absolute;
   top: 10px;

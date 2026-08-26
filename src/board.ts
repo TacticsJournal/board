@@ -15,6 +15,7 @@ import { getAsset } from './assets'
 import { canPlaceCone } from './entitlements'
 import { arrowHeadSize, ballSrc, coneSrc, goalFullSrc, goalSmallSrc, CONE_ASPECT, GOAL_ASPECT } from './board-art'
 import { boardNoteText } from './board-note'
+import { applyHomography, homographyFromBox, invertHomography, type Homography, type Quad } from './perspective'
 
 export { ballSrc, coneSrc, goalFullSrc, goalSmallSrc, CONE_ASPECT, GOAL_ASPECT } from './board-art'
 export { arrowHeadSize, arrowMediumWidth, ARROW_WIDTH_MEDIUM, ARROW_WIDTH_MEDIUM_LIVE } from './board-art'
@@ -39,6 +40,59 @@ export const LIVE_MARKER_ELLIPSE = {
 }
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 6
+
+/* ---------- the 3D camera ----------
+   In 3D the board is one physical object standing still in the middle of the
+   board area, and the only thing that moves is the camera looking at it. So
+   the camera is all the state there is: how far round the board it has walked
+   (yaw), how high its eye is above the near touchline (tilt), and how much of
+   the room the board fills (zoom).
+
+   Zoom is deliberately a fraction, not a scale. One is "as large as this board
+   can be drawn with all four corners still inside the board area at this yaw
+   and tilt", and that fitting scale is re-measured from the real projected
+   corners after every camera change, so no gesture can put a corner off the
+   board - it can only make the board smaller. */
+export const BOARD_3D_CAMERA = {
+  tiltMin: 0, tiltMax: 66, tiltDefault: 38,
+  yawDefault: 0,
+  zoomMin: 0.4, zoomMax: 1, zoomDefault: 0.95,
+} as const
+
+/** Keep equivalent full-circle headings small without limiting rotation. */
+function wrapCameraYaw(degrees: number) {
+  const wrapped = ((degrees + 180) % 360 + 360) % 360 - 180
+  return Object.is(wrapped, -0) ? 0 : wrapped
+}
+
+/** Degrees of camera movement per pixel of drag. */
+const ORBIT_YAW_PER_PX = 0.28
+const ORBIT_TILT_PER_PX = 0.24
+/** A drag is an orbit, not a tap, once it has gone this far in screen pixels. */
+const ORBIT_SLOP = 6
+
+/* ---------- the 3D view ----------
+   3D is the same board, tilted. The CSS below leans the one Konva content
+   element back in perspective; nothing is copied, redrawn or frozen, so every
+   tool, handle and gesture still acts on the live stage. What does have to
+   change is how a finger or a cursor becomes a board coordinate: Konva turns a
+   client point into a stage point by splitting the content element's bounding
+   box into even X and Y steps, and a tilted board is a trapezoid, where even
+   steps are wrong everywhere except the middle. These four markers sit at the
+   element's logical corners, so their screen positions are the trapezoid, and
+   the inverse of the projective map through it is the true client-to-stage
+   map. */
+const TILT_CORNERS: [string, string][] = [['0', '0'], ['100%', '0'], ['100%', '100%'], ['0', '100%']]
+/** Corners only move in whole-ish pixels; below this the solved map still holds. */
+const TILT_CORNER_EPS = 0.02
+
+function sameTiltCorners(a: Quad, b: Quad): boolean {
+  for (let i = 0; i < 4; i++) {
+    if (Math.abs(a[i].x - b[i].x) > TILT_CORNER_EPS) return false
+    if (Math.abs(a[i].y - b[i].y) > TILT_CORNER_EPS) return false
+  }
+  return true
+}
 
 // cap canvas density: 3x phones repaint 2.25x the pixels of 2x with no
 // visible gain, which is the main source of drag jank (export sets its own)
@@ -417,6 +471,24 @@ export class Board {
   private hoverTarget: Konva.Node | null = null
   private renderingScene: Scene | null = null
   private remotePreviewActive = false
+  /** True while the board is tilted into the 3D view. */
+  private tilted = false
+  /** Zero-size probes at the content element's logical corners. */
+  private tiltMarkers: HTMLElement[] | null = null
+  /** The solved client-to-stage map, kept until the corners actually move. */
+  private tiltMap: { w: number; h: number; corners: Quad; inverse: Homography } | null = null
+  /** Where the 3D camera stands. Degrees, degrees, and a fraction of the fit. */
+  private cam = {
+    yaw: BOARD_3D_CAMERA.yawDefault,
+    tilt: BOARD_3D_CAMERA.tiltDefault,
+    zoom: BOARD_3D_CAMERA.zoomDefault,
+  }
+  /** An empty-space drag that is turning into an orbit. Screen pixels. */
+  private orbitArm: { x0: number; y0: number; yaw: number; tilt: number; began: boolean } | null = null
+  /** A two-finger camera zoom. Screen pixels, never mapped through the tilt. */
+  private camPinch: { ids: [number, number]; startDist: number; startZoom: number } | null = null
+  /** Fires the first time a camera gesture moves the camera, for the hint. */
+  onCameraGesture: () => void = () => {}
 
   constructor(private store: Store, container: HTMLDivElement, defaults: ToolDefaults) {
     this.container = container
@@ -507,7 +579,7 @@ export class Board {
     // Konva's Transformer manages its own resize cursors on its anchors
     if (t?.findAncestor?.('Transformer')) return
     const style = this.container.style
-    if (this.panArm?.began || this.moveArm?.began) {
+    if (this.panArm?.began || this.moveArm?.began || this.orbitArm?.began) {
       style.cursor = 'grabbing'
       return
     }
@@ -738,13 +810,23 @@ export class Board {
    * full container - opening a panel must never resize or move the board - so
    * fitting centres the board in what is left visible above it.
    */
-  bottomInset = 0
+  private inset = 0
+  get bottomInset() { return this.inset }
+  set bottomInset(v: number) {
+    const next = Number.isFinite(v) ? Math.max(0, v) : 0
+    if (next === this.inset) return
+    this.inset = next
+    // The board area just changed shape. In 3D that has to refit the camera or
+    // the pitch can end up behind the panel, which is the whole failure this
+    // camera exists to prevent.
+    if (this.container.clientWidth) this.fit()
+  }
 
   fit() {
     const cw = this.container.clientWidth, full = this.container.clientHeight
     if (!cw || !full) return
     this.stage.size({ width: cw, height: full })
-    const ch = Math.max(120, full - this.bottomInset)
+    const ch = Math.max(120, full - this.inset)
     const base = Math.min(cw / BOARD_W, ch / this.contentH())
     const scale = base * this.zoom
     const old = this.stage.scaleX()
@@ -753,22 +835,312 @@ export class Board {
       this.stage.position({ x: (cw - BOARD_W * scale) / 2, y: (ch - this.contentH() * scale) / 2 })
     }
     this.clampPan()
+    this.invalidateTilt()
+    // A resize or an orientation change lands here, so refitting the camera
+    // from the new board area is what keeps the whole pitch visible.
+    if (this.tilted) { this.recomputeCamera(); return }
     this.stage.batchDraw()
     this.onViewChange()
   }
 
-  resetView() { this.clearRemotePreview(); this.zoom = 1; this.fit() }
+  /* ---------- the 3D view ---------- */
 
-  /** Keyboard zoom: scale around the viewport center. */
+  /**
+   * Lean the live board back in perspective, or set it flat again. This is a
+   * view state and nothing else: the scene is untouched, so it is never saved,
+   * exported or sent to anyone else as 3D.
+   */
+  set3D(on: boolean) {
+    if (on === this.tilted) return
+    this.tilted = on
+    this.container.classList.toggle('is3d', on)
+    // The contrasting mat belongs to the board area, outside the transformed
+    // element, so it can never become a white slab lying over the pitch.
+    this.container.parentElement?.classList.toggle('is3d', on)
+    this.drawBackground()
+    if (this.remoteScene) this.drawRemoteBackground(this.remoteScene)
+    this.orbitArm = null
+    this.camPinch = null
+    this.panArm = null
+    if (on) {
+      this.mountTiltMarkers()
+      this.cam = { yaw: BOARD_3D_CAMERA.yawDefault, tilt: BOARD_3D_CAMERA.tiltDefault, zoom: BOARD_3D_CAMERA.zoomDefault }
+      // The Konva stage keeps the plain fit view in 3D. Everything the camera
+      // does happens in the CSS transform, which is the only way the whole
+      // board can be guaranteed visible: a panned or zoomed stage crops.
+      this.zoom = 1
+      this.fit()
+    } else {
+      // Switching flat is immediate. A transform transition would leave the
+      // drawing between two camera matrices while pointer mapping has already
+      // changed, which makes the first 2D tap miss.
+      this.tiltMap = null
+      this.zoom = 1
+      this.fit()
+    }
+    this.invalidateTilt()
+    this.attachSelectionUi()
+    this.stage.batchDraw()
+  }
+
+  is3D() { return this.tilted }
+
+  /* ---------- the 3D camera ---------- */
+
+  /** Where the camera stands right now. */
+  get3DCamera() { return { ...this.cam } }
+
+  /**
+   * Move the camera. Tilt and zoom are clamped, yaw wraps through a full turn,
+   * and the whole board is refitted afterwards. No camera heading can lose a
+   * corner; a demanding angle only makes the fitted board smaller.
+   */
+  set3DCamera(next: Partial<{ yaw: number; tilt: number; zoom: number }>) {
+    const c = BOARD_3D_CAMERA
+    const clamp = (v: number, lo: number, hi: number, fallback: number) =>
+      Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback
+    const yawValue = next.yaw ?? this.cam.yaw
+    const yaw = Number.isFinite(yawValue) ? wrapCameraYaw(yawValue) : this.cam.yaw
+    const tilt = clamp(next.tilt ?? this.cam.tilt, c.tiltMin, c.tiltMax, this.cam.tilt)
+    const zoom = clamp(next.zoom ?? this.cam.zoom, c.zoomMin, c.zoomMax, this.cam.zoom)
+    if (yaw === this.cam.yaw && tilt === this.cam.tilt && zoom === this.cam.zoom) return
+    this.cam = { yaw, tilt, zoom }
+    if (this.tilted) this.recomputeCamera()
+  }
+
+  /** Walk the camera round and up by a gesture's worth of degrees. */
+  orbit3D(dYaw: number, dTilt: number) {
+    this.set3DCamera({ yaw: this.cam.yaw + dYaw, tilt: this.cam.tilt + dTilt })
+  }
+
+  /** Camera zoom, as a multiplier on the current fraction of the fit. */
+  zoom3D(factor: number) {
+    if (!Number.isFinite(factor) || factor <= 0) return
+    this.set3DCamera({ zoom: this.cam.zoom * factor })
+  }
+
+  /** Put the camera back where entering 3D leaves it. The scene is untouched. */
+  reset3DCamera() {
+    this.clearRemotePreview()
+    this.cam = { yaw: BOARD_3D_CAMERA.yawDefault, tilt: BOARD_3D_CAMERA.tiltDefault, zoom: BOARD_3D_CAMERA.zoomDefault }
+    this.zoom = 1
+    this.fit()
+  }
+
+  /**
+   * The board area the whole pitch has to stay inside, the pitch rectangle in
+   * the transformed element's own pixels, and the point the camera turns
+   * about. Null before the board has a size.
+   */
+  private cameraGeometry() {
+    const cw = this.container.clientWidth
+    const full = this.container.clientHeight
+    if (!cw || !full) return null
+    const usableH = Math.max(120, full - this.inset)
+    const s = this.stage.scaleX() || 1
+    // The pitch carries a drawn shadow past its own touchlines, and objects
+    // sit near the edges, so the rectangle that has to stay visible is a
+    // little larger than the pitch itself.
+    const pad = BOARD_W * 0.01 * s
+    const x0 = this.stage.x() - pad, x1 = this.stage.x() + BOARD_W * s + pad
+    const y0 = this.stage.y() - pad, y1 = this.stage.y() + this.boardH * s + pad
+    const corners: Pt[] = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]
+    const margin = Math.max(6, Math.min(cw, usableH) * 0.018)
+    return {
+      corners,
+      origin: { x: (x0 + x1) / 2, y: (y0 + y1) / 2 },
+      room: {
+        w: Math.max(40, cw - margin * 2),
+        h: Math.max(40, usableH - margin * 2),
+        cx: cw / 2,
+        cy: usableH / 2,
+      },
+      // A shallower box wants a nearer eye, or the tilt reads as a flat skew.
+      persp: Math.max(1300, Math.min(2600, Math.min(cw, usableH) * 3.4)),
+    }
+  }
+
+  /**
+   * The same arithmetic the browser does for
+   * `perspective(d) rotateX(tilt) rotateZ(yaw) scale(s)` about one origin.
+   * Null for a point at or behind the horizon, where there is no finite answer
+   * and so no honest way to say it is on screen.
+   */
+  private projectCamera(p: Pt, origin: Pt, scale: number, tilt: number, yaw: number, persp: number): Pt | null {
+    const qx = (p.x - origin.x) * scale, qy = (p.y - origin.y) * scale
+    const cz = Math.cos(yaw), sz = Math.sin(yaw)
+    const rx = qx * cz - qy * sz
+    const ry = qx * sz + qy * cz
+    const w = 1 - (ry * Math.sin(tilt)) / persp
+    if (!(w > 0.02) || !Number.isFinite(w)) return null
+    const x = origin.x + rx / w
+    const y = origin.y + (ry * Math.cos(tilt)) / w
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null
+  }
+
+  /** The projected pitch's screen box at one camera scale, or null off-horizon. */
+  private cameraSpan(g: NonNullable<ReturnType<Board['cameraGeometry']>>, scale: number, tilt: number, yaw: number) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const c of g.corners) {
+      const q = this.projectCamera(c, g.origin, scale, tilt, yaw, g.persp)
+      if (!q) return null
+      if (q.x < minX) minX = q.x
+      if (q.x > maxX) maxX = q.x
+      if (q.y < minY) minY = q.y
+      if (q.y > maxY) maxY = q.y
+    }
+    return { w: maxX - minX, h: maxY - minY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 }
+  }
+
+  /**
+   * The largest camera scale whose projected pitch still fits the board area
+   * at this yaw and tilt. Found by bisection on the real projected corners
+   * rather than by a guessed factor, because the perspective divide makes the
+   * near edge grow faster than the far edge shrinks.
+   */
+  private cameraFitScale(g: NonNullable<ReturnType<Board['cameraGeometry']>>, tilt: number, yaw: number) {
+    const fits = (scale: number) => {
+      const b = this.cameraSpan(g, scale, tilt, yaw)
+      return !!b && b.w <= g.room.w && b.h <= g.room.h
+    }
+    let lo = 0.02, hi = 4
+    if (!fits(lo)) return lo
+    for (let i = 0; i < 32; i++) {
+      const mid = (lo + hi) / 2
+      if (fits(mid)) lo = mid
+      else hi = mid
+    }
+    return lo
+  }
+
+  /**
+   * Fit the board to the camera and hand the result to CSS. The centring is
+   * done by moving the Konva stage rather than by a CSS translate: a shift of
+   * the stage moves the turning point and the corners together, so it comes
+   * out as an exact screen-space translation instead of the shear a translate
+   * inside the perspective would give.
+   */
+  private recomputeCamera() {
+    const g = this.cameraGeometry()
+    if (!g) return
+    const tilt = (this.cam.tilt * Math.PI) / 180
+    const yaw = (this.cam.yaw * Math.PI) / 180
+    const scale = this.cameraFitScale(g, tilt, yaw) * this.cam.zoom
+    const box = this.cameraSpan(g, scale, tilt, yaw)
+    let origin = g.origin
+    if (box) {
+      const dx = g.room.cx - box.cx, dy = g.room.cy - box.cy
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+        this.stage.position({ x: this.stage.x() + dx, y: this.stage.y() + dy })
+        origin = { x: origin.x + dx, y: origin.y + dy }
+      }
+    }
+    const vars: [string, string][] = [
+      ['--cam-tilt', `${this.cam.tilt}deg`],
+      ['--cam-yaw', `${this.cam.yaw}deg`],
+      ['--cam-scale', String(Math.round(scale * 10000) / 10000)],
+      ['--cam-origin-x', `${Math.round(origin.x * 100) / 100}px`],
+      ['--cam-origin-y', `${Math.round(origin.y * 100) / 100}px`],
+      ['--cam-persp', `${Math.round(g.persp)}px`],
+    ]
+    for (const [k, v] of vars) this.container.style.setProperty(k, v)
+    // Safari composites the transform from the element that carries it, so put
+    // the same values there too: without this a gesture can lag a frame behind.
+    const content = this.contentEl()
+    if (content) for (const [k, v] of vars) content.style.setProperty(k, v)
+    this.invalidateTilt()
+    this.stage.batchDraw()
+    this.onViewChange()
+  }
+
+  /** True while screen positions on this board are projective, not affine. */
+  private tiltActive() { return this.tilted }
+
+  private invalidateTilt() { this.tiltMap = null }
+
+  private contentEl(): HTMLElement | null {
+    return this.container.querySelector<HTMLElement>('.konvajs-content')
+  }
+
+  private mountTiltMarkers() {
+    const content = this.contentEl()
+    if (!content) return
+    if (!this.tiltMarkers) {
+      this.tiltMarkers = TILT_CORNERS.map(([left, top]) => {
+        const el = document.createElement('div')
+        el.className = 'boardTiltMark'
+        el.setAttribute('aria-hidden', 'true')
+        el.style.cssText = `position:absolute;left:${left};top:${top};width:0;height:0;pointer-events:none;`
+        return el
+      })
+    }
+    for (const el of this.tiltMarkers) if (el.parentElement !== content) content.appendChild(el)
+  }
+
+  /**
+   * Where a client point lands in untransformed stage pixels, or null when the
+   * board is flat or the map cannot be solved. The corners are measured on
+   * every call because a page scroll moves them with no event of ours; the
+   * eight-unknown solve behind them only runs again once they have moved.
+   */
+  private tiltPoint(clientX: number, clientY: number): Pt | null {
+    if (!this.tiltActive()) return null
+    if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null
+    const content = this.contentEl()
+    let markers = this.tiltMarkers
+    if (!content) return null
+    if (!markers || markers[0].parentElement !== content) {
+      this.mountTiltMarkers()
+      markers = this.tiltMarkers
+    }
+    if (!markers || markers.length !== 4) return null
+    const corners = markers.map(el => {
+      const r = el.getBoundingClientRect()
+      return { x: r.left, y: r.top }
+    }) as unknown as Quad
+    const w = content.clientWidth, h = content.clientHeight
+    const cached = this.tiltMap
+    if (!cached || cached.w !== w || cached.h !== h || !sameTiltCorners(cached.corners, corners)) {
+      const forward = homographyFromBox(w, h, corners)
+      const inverse = forward ? invertHomography(forward) : null
+      this.tiltMap = inverse ? { w, h, corners, inverse } : null
+    }
+    return this.tiltMap ? applyHomography(this.tiltMap.inverse, { x: clientX, y: clientY }) : null
+  }
+
+  /** A client point in stage-element pixels, through the tilt when it is on. */
+  private clientToStage(clientX: number, clientY: number): Pt | null {
+    if (this.tiltActive()) return this.tiltPoint(clientX, clientY)
+    const rect = this.container.getBoundingClientRect()
+    const p = { x: clientX - rect.left, y: clientY - rect.top }
+    return Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null
+  }
+
+  resetView() { this.clearRemotePreview()
+    // In 3D the stage is always at fit already; what "fit" means there is the
+    // camera, so this is the same reset the toolbar's Reset button performs.
+    if (this.tilted) { this.reset3DCamera(); return }
+    this.zoom = 1; this.fit()
+  }
+
+  /** Keyboard zoom: the camera in 3D, the stage when the board is flat. */
   zoomBy(factor: number) {
     this.clearRemotePreview()
+    if (this.tilted) { this.zoom3D(factor); return }
     this.zoomAt({ x: this.stage.width() / 2, y: this.stage.height() / 2 }, factor)
   }
 
   isFitView(): boolean {
+    if (this.tilted) {
+      // In 3D the stage never leaves its fit; the view is the camera, so this
+      // is the question the Fit control is really asking.
+      return this.cam.yaw === BOARD_3D_CAMERA.yawDefault
+        && this.cam.tilt === BOARD_3D_CAMERA.tiltDefault
+        && this.cam.zoom === BOARD_3D_CAMERA.zoomDefault
+    }
     const cw = this.container.clientWidth, full = this.container.clientHeight
     if (!cw || !full || Math.abs(this.zoom - 1) > 0.001) return false
-    const ch = Math.max(120, full - this.bottomInset)
+    const ch = Math.max(120, full - this.inset)
     const scale = Math.min(cw / BOARD_W, ch / this.contentH())
     return Math.abs(this.stage.x() - (cw - BOARD_W * scale) / 2) < 1
       && Math.abs(this.stage.y() - (ch - this.contentH() * scale) / 2) < 1
@@ -897,7 +1269,7 @@ export class Board {
   private drawBackground() {
     const bh = this.boardH
     this.bgLayer.destroyChildren()
-    this.bgLayer.add(new Konva.Rect({ x: -2000, y: -2000, width: BOARD_W + 4000, height: bh + 4000, fill: this.surround }))
+    this.bgLayer.add(new Konva.Rect({ x: -2000, y: -2000, width: BOARD_W + 4000, height: bh + 4000, fill: this.tilted ? 'rgba(0,0,0,0)' : this.surround }))
     this.bgLayer.add(new Konva.Rect({ x: 0, y: 0, width: BOARD_W, height: bh, fill: '#ffffff', shadowColor: 'rgba(0,0,0,0.16)', shadowBlur: 14 }))
     const style = pitchById(this.store.scene.pitch)
     if (this.pitchImg.complete && this.pitchImg.naturalWidth) {
@@ -929,7 +1301,7 @@ export class Board {
     const style = pitchById(scene.pitch)
     const bh = style.live ? (scene.board?.h || style.boardH) : style.boardH
     this.remoteBackgroundLayer.destroyChildren()
-    this.remoteBackgroundLayer.add(new Konva.Rect({ x: -2000, y: -2000, width: BOARD_W + 4000, height: bh + 4000, fill: this.surround }))
+    this.remoteBackgroundLayer.add(new Konva.Rect({ x: -2000, y: -2000, width: BOARD_W + 4000, height: bh + 4000, fill: this.tilted ? 'rgba(0,0,0,0)' : this.surround }))
     this.remoteBackgroundLayer.add(new Konva.Rect({ x: 0, y: 0, width: BOARD_W, height: bh, fill: '#ffffff', shadowColor: 'rgba(0,0,0,0.16)', shadowBlur: 14 }))
     if (style.src) {
       const key = `${style.id}:${style.src}`
@@ -2338,8 +2710,11 @@ export class Board {
     } else if (!this.objLayer.listening()) {
       this.objLayer.listening(true)
       this.uiLayer.listening(true)
-      this.objLayer.batchDraw()
-      this.uiLayer.batchDraw()
+      // Camera movement redraws layers while hit testing is paused. Rebuild
+      // the hit canvases now, not on the next animation frame, so the first
+      // click after an orbit can hit an object.
+      this.objLayer.drawHit()
+      this.uiLayer.drawHit()
     }
   }
 
@@ -2482,8 +2857,189 @@ export class Board {
     return this.tool === 'arrow' || this.tool === 'box' || (this.tool === 'ball' && this.defaults.place === 'measure')
   }
 
+  /**
+   * A drag that started on empty space and belongs to the view rather than to
+   * anything on the board. In 3D that walks the camera round the pitch; when
+   * the board is flat it is the pan it has always been.
+   */
+  private beginViewGesture(ev: { clientX: number; clientY: number } | null) {
+    if (this.tilted) {
+      if (this.orbitArm || !ev) return
+      if (!Number.isFinite(ev.clientX) || !Number.isFinite(ev.clientY)) return
+      this.orbitArm = { x0: ev.clientX, y0: ev.clientY, yaw: this.cam.yaw, tilt: this.cam.tilt, began: false }
+      return
+    }
+    const sp = this.stage.getPointerPosition()
+    if (sp) this.panArm = { start: sp, origin: this.stage.position(), began: false }
+  }
+
+  /**
+   * The camera gestures live on the stage element, not on the Konva stage.
+   *
+   * Konva listens on the content element, and in 3D that element is turned:
+   * once the board has been orbited any distance its rendered quad no longer
+   * covers the board area, so a press in the corner of the screen never
+   * reaches Konva at all, and a drag that starts on the board and leaves the
+   * quad stops being delivered halfway through. Both make an orbit feel
+   * broken. The stage element is square to the screen and covers the whole
+   * board area, so it is the honest place for a gesture about the camera.
+   *
+   * Editing is untouched: a press that lands on the turned canvas is Konva's,
+   * and this only arms an orbit for presses that missed it. Once an orbit has
+   * really begun the pointer is captured here, because from that moment the
+   * gesture is about the camera and nothing else.
+   */
+  private bindCameraGestures() {
+    const el = this.container
+
+    el.addEventListener('pointerdown', (e) => {
+      if (!this.tilted || this.orbitArm) return
+      // A press that hit the turned canvas has already been through Konva,
+      // which arms the orbit itself when the press was on empty space. This
+      // is only for the board area around it.
+      if (e.target !== el) return
+      if (this.moveArm || this.nodeArm || this.creating || this.selecting || this.tapTargetId) return
+      this.beginViewGesture(e)
+    })
+
+    el.addEventListener('pointermove', (e) => {
+      const a = this.orbitArm
+      if (!a || !this.tilted) return
+      const dx = e.clientX - a.x0, dy = e.clientY - a.y0
+      if (!Number.isFinite(dx) || !Number.isFinite(dy)) return
+      if (!a.began) {
+        if (Math.hypot(dx, dy) <= ORBIT_SLOP) return
+        a.began = true
+        if (this.holdTimer !== null) { clearTimeout(this.holdTimer); this.holdTimer = null }
+        this.tapTargetId = null
+        this.clearRemotePreview()
+        this.pauseHit(true)
+        this.syncCursor()
+        this.onCameraGesture()
+        // From here the gesture belongs to the camera, so keep every later
+        // move even when the finger leaves the turned canvas or the window.
+        try { el.setPointerCapture(e.pointerId) } catch { /* no capture, no harm */ }
+      }
+      // Direct manipulation: the near touchline follows the finger round, and
+      // pulling down lays the board flatter towards a plan view.
+      this.set3DCamera({
+        yaw: a.yaw - dx * ORBIT_YAW_PER_PX,
+        tilt: a.tilt - dy * ORBIT_TILT_PER_PX,
+      })
+    })
+
+    const endOrbit = (e: PointerEvent) => {
+      const a = this.orbitArm
+      if (!a) return
+      this.orbitArm = null
+      if (!a.began) return
+      try { el.releasePointerCapture(e.pointerId) } catch { /* already gone */ }
+      // Konva never saw this pointerup, because the capture was here.
+      this.pauseHit(false)
+      this.tapStart = null
+      this.tapTargetId = null
+      this.onPointerActivity(false)
+      this.syncCursor()
+    }
+    el.addEventListener('pointerup', endOrbit)
+    el.addEventListener('pointercancel', endOrbit)
+
+    el.addEventListener('wheel', (e) => {
+      if (!this.tilted) return
+      e.preventDefault()
+      this.clearRemotePreview()
+      const unit = e.deltaMode === 1 ? 16 : 1
+      const dy = Math.max(-60, Math.min(60, ((e.deltaY || 0) + (e.deltaX || 0) * 0.2) * unit))
+      if (!dy) return
+      this.onCameraGesture()
+      this.zoom3D(Math.exp(-dy * 0.006))
+    }, { passive: false })
+
+    /* Two fingers on a 3D board are camera zoom and nothing else. The distance
+       is taken in screen pixels rather than through the tilt: the camera is
+       what the gesture is changing, so mapping the fingers through it would
+       feed the gesture its own output. A two-finger drag is deliberately
+       ignored - the board is centred by definition, and letting fingers
+       translate it is exactly how it used to end up half off the screen. */
+    el.addEventListener('touchmove', (e) => {
+      if (!this.tilted) return
+      const t = e.touches
+      if (t.length !== 2) { this.camPinch = null; return }
+      e.preventDefault()
+      this.orbitArm = null
+      this.cancelMoveArm(true)
+      this.panArm = null
+      this.tapTargetId = null
+      if (this.creating) { this.creating.node.destroy(); this.creating = null; this.uiLayer.batchDraw() }
+      this.pauseHit(true)
+      const dist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+      const ids: [number, number] = [t[0].identifier, t[1].identifier]
+      const same = !!this.camPinch && this.camPinch.ids.includes(ids[0]) && this.camPinch.ids.includes(ids[1])
+      if (!same || !(dist > 24) || !Number.isFinite(dist)) {
+        this.camPinch = { ids, startDist: Math.max(1, dist), startZoom: this.cam.zoom }
+        return
+      }
+      this.onCameraGesture()
+      this.set3DCamera({ zoom: this.camPinch.startZoom * (dist / this.camPinch.startDist) })
+    }, { passive: false })
+
+    const endPinch = (e: TouchEvent) => {
+      if (e.touches.length >= 2) return
+      this.camPinch = null
+      if (e.touches.length === 0 && this.tilted) this.pauseHit(false)
+    }
+    el.addEventListener('touchend', endPinch)
+    el.addEventListener('touchcancel', endPinch)
+  }
+
   private bindStage() {
     const stage = this.stage
+    this.bindCameraGestures()
+
+    /* Konva turns a client point into a stage point by splitting the content
+       element's bounding box into even X and Y steps. That is exact for a
+       rectangle and wrong everywhere but the centre of a tilted one, so while
+       3D is on, re-derive every point Konva just registered from the same
+       client coordinates through the inverse perspective map. Ids, ordering
+       and the changedTouches bookkeeping stay as Konva built them - only the
+       coordinates change - and a point the map cannot place is left alone
+       rather than replaced with a guess. */
+    const registerPointers = stage.setPointersPositions.bind(stage)
+    const bookkeeping = stage as unknown as {
+      pointerPos: Pt | null
+      _pointerPositions: (Pt & { id: number })[]
+      _changedPointerPositions: (Pt & { id: number })[]
+    }
+    type ClientPoint = { clientX: number; clientY: number }
+    ;(stage as unknown as { setPointersPositions: (evt: any) => void }).setPointersPositions = (evt: any) => {
+      registerPointers(evt)
+      if (!this.tiltActive()) return
+      const source = evt ?? window.event
+      if (!source) return
+      const place = (list: (Pt & { id: number })[] | undefined, touches: ArrayLike<ClientPoint> | null) => {
+        if (!list) return
+        for (let i = 0; i < list.length; i++) {
+          const from: ClientPoint | undefined = touches ? touches[i] : source
+          if (!from) continue
+          const p = this.tiltPoint(from.clientX, from.clientY)
+          if (!p) continue
+          list[i].x = p.x
+          list[i].y = p.y
+        }
+      }
+      if (source.touches !== undefined) {
+        place(bookkeeping._pointerPositions, source.touches)
+        place(bookkeeping._changedPointerPositions, source.changedTouches ?? source.touches)
+        const first = bookkeeping._pointerPositions[0] ?? bookkeeping._changedPointerPositions[0]
+        if (first) bookkeeping.pointerPos = { x: first.x, y: first.y }
+      } else {
+        const p = this.tiltPoint(source.clientX, source.clientY)
+        if (!p) return
+        bookkeeping.pointerPos = { x: p.x, y: p.y }
+        place(bookkeeping._pointerPositions, null)
+        place(bookkeeping._changedPointerPositions, null)
+      }
+    }
 
     // hover feedback (mouse only)
     stage.on('mouseover', (e) => {
@@ -2579,6 +3135,12 @@ export class Board {
           this.startCreate(p, drawTool)
           return
         }
+        if (!hitId && this.tilted) {
+          // Empty space in 3D belongs to the camera. A still tap here still
+          // deselects on pointerup; only movement becomes an orbit.
+          this.beginViewGesture(evt)
+          return
+        }
         // press anywhere (selected object, empty space, etc.): arm move.
         // taps resolve on pointerup (deselect if empty space, no movement).
         this.armMove(this.store.selectedIds, p)
@@ -2599,7 +3161,13 @@ export class Board {
         this.startCreate(p, drawTool)
         return
       }
-      // empty space, no draw tool: hold for selection rect, pan fallback
+      // Empty space, no draw tool. In 3D that space belongs to the camera and
+      // to nothing else: a press-and-hold marquee would race the orbit, and a
+      // gesture that does one thing or the other depending on how quickly a
+      // finger got moving is not a gesture anyone can rely on. Marquee select
+      // stays exactly as it was on the flat board.
+      this.beginViewGesture(evt)
+      if (this.tilted) return
       this.holdTimer = window.setTimeout(() => {
         if (!this.tapStart) return
         this.beginSelectionRect(this.tapStart)
@@ -2608,7 +3176,8 @@ export class Board {
     })
 
     /* ---- pointermove ---- */
-    stage.on('pointermove', () => {
+    stage.on('pointermove', (e) => {
+      const moveEvt = e.evt as PointerEvent | MouseEvent
       const p = this.pointer()
       if (!p) return
 
@@ -2704,8 +3273,7 @@ export class Board {
         const dx = p.x - this.tapStart.x, dy = p.y - this.tapStart.y
         if (Math.hypot(dx, dy) > 8 / this.screenScale()) {
           this.tapTargetId = null
-          const sp = stage.getPointerPosition()
-          if (sp) this.panArm = { start: sp, origin: stage.position(), began: false }
+          this.beginViewGesture(moveEvt)
         }
       }
 
@@ -2715,16 +3283,20 @@ export class Board {
         if (Math.hypot(dx, dy) > 5 / this.screenScale()) {
           clearTimeout(this.holdTimer)
           this.holdTimer = null
-          const sp = stage.getPointerPosition()
-          if (sp) this.panArm = { start: sp, origin: stage.position(), began: false }
+          this.beginViewGesture(moveEvt)
         }
       }
 
       // selection rect
       if (this.selecting) {
+        this.orbitArm = null
         this.updateSelectionRect(p)
         return
       }
+
+      // An armed orbit is driven from the stage element, not from here; see
+      // bindCameraGestures for why.
+      if (this.orbitArm) return
 
       // pan
       if (this.panArm) {
@@ -2808,6 +3380,8 @@ export class Board {
       this.nodeArm = null
       this.grabbedHandle = null
       const pan = this.panArm
+      const orbit = this.orbitArm
+      this.orbitArm = null
       const start = this.tapStart
       const selecting = this.selecting
       const selectingKind = this.selectingKind
@@ -2874,6 +3448,7 @@ export class Board {
         return
       }
       if (pan?.began) return
+      if (orbit?.began) return
       if (this.creating && finishCreate()) return
 
       if (!p || !start) return
@@ -3008,6 +3583,8 @@ export class Board {
       this.grabbedHandle = null
       if (nodeArm?.began) { this.store.endGesture(); this.rebuild() }
       this.panArm = null
+      this.orbitArm = null
+      this.camPinch = null
       this.tapStart = null
       this.tapTargetId = null
       if (this.creating) {
@@ -3023,6 +3600,9 @@ export class Board {
       e.evt.preventDefault()
       this.clearRemotePreview()
       const unit = e.evt.deltaMode === 1 ? 16 : 1
+      // In 3D the wheel is camera zoom, and the stage element handles it for
+      // the whole board area rather than only where the turned canvas lands.
+      if (this.tilted) return
       if (e.evt.ctrlKey || e.evt.metaKey) {
         const pos = stage.getPointerPosition()
         if (!pos) return
@@ -3042,15 +3622,24 @@ export class Board {
     // pinch zoom + two-finger pan (mobile)
     stage.on('touchmove', (e) => {
       const t = e.evt.touches
-      if (t.length !== 2) { this.pinch = null; return }
+      if (t.length !== 2) { this.pinch = null; this.camPinch = null; return }
       e.evt.preventDefault()
       this.cancelMoveArm(true)
       this.panArm = null
+      this.orbitArm = null
       this.tapTargetId = null
       if (this.creating) { this.creating.node.destroy(); this.creating = null; this.uiLayer.batchDraw() }
-      const rect = this.container.getBoundingClientRect()
-      const p1 = { x: t[0].clientX - rect.left, y: t[0].clientY - rect.top }
-      const p2 = { x: t[1].clientX - rect.left, y: t[1].clientY - rect.top }
+
+      // A pinch in 3D is camera zoom, handled on the stage element so that it
+      // works anywhere in the board area, not only over the turned canvas.
+      if (this.tilted) { this.pinch = null; return }
+      // Two fingers on a tilted board are two trapezoid points; the pinch maths
+      // below is all in stage pixels, so map them the same way taps are mapped.
+      const p1 = this.clientToStage(t[0].clientX, t[0].clientY)
+      const p2 = this.clientToStage(t[1].clientX, t[1].clientY)
+      // A collapsed or horizon-crossing map must not turn a pinch into a
+      // guessed jump. Wait for a later touch frame with a valid map.
+      if (!p1 || !p2) { this.pinch = null; return }
       const center = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }
       const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y)
       const ids: [number, number] = [t[0].identifier, t[1].identifier]
@@ -3091,6 +3680,7 @@ export class Board {
     stage.on('touchend', (e) => {
       if (e.evt.touches.length < 2) {
         this.pinch = null
+        this.camPinch = null
         if (e.evt.touches.length === 0) this.pauseHit(false)
       }
     })
