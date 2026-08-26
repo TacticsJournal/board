@@ -1,0 +1,113 @@
+name: Release
+
+# GitHub-owned and Docker actions are pinned to immutable commits.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Set up Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Match tag to package version
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          test "$GITHUB_REF_NAME" = "v$version"
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build hosted bundle
+        run: npm run build
+
+      - name: Package release archives
+        run: bash scripts/package-release.sh
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f7ce87c1d6bead3e36075b2ce75da1f6cc28aaca
+
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build and push multi-architecture image
+        id: image
+        env:
+          IMAGE: ghcr.io/tacticsjournal/board
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag must contain a semantic version: $TAG"
+            exit 1
+          fi
+          major="${version%%.*}"
+          remainder="${version#*.}"
+          minor="${remainder%%.*}"
+          metadata_file="$RUNNER_TEMP/build-metadata.json"
+          tags=(--tag "$IMAGE:$version" --tag "$IMAGE:$major.$minor")
+          if [[ "$version" != *-* ]]; then
+            tags+=(--tag "$IMAGE:$major" --tag "$IMAGE:latest")
+          fi
+
+          docker buildx inspect --bootstrap
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --provenance=false \
+            --label "org.opencontainers.image.version=$version" \
+            "${tags[@]}" \
+            --metadata-file "$metadata_file" \
+            --push .
+
+          digest="$(jq -r '."containerimage.digest" // empty' "$metadata_file")"
+          test -n "$digest"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Make the container public
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method PATCH /orgs/TacticsJournal/packages/container/board -f visibility=public
+
+      - name: Generate image provenance attestation
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
+        with:
+          subject-name: ghcr.io/tacticsjournal/board
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+
+      - name: Upload release archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+          fi
+          gh release upload "$GITHUB_REF_NAME" release/*.zip release/*.tar.gz release/SHA256SUMS --clobber

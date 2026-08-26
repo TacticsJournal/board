@@ -1,6 +1,6 @@
 # Project plan archive
 
-This file is kept as a historical pointer, not as a current implementation plan. The 0.1.0 release is the maintained baseline.
+This file is kept as a historical pointer, not as a current implementation plan. The 0.1.1 release is the maintained baseline.
 
 For current instructions, read:
 

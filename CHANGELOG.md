@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.1] - 2026-08-26
+
+- Added a prebuilt Docker image, Compose configuration, and versioned self-host release archives.
+- Added a release workflow for GitHub release assets, GHCR images, and image provenance.
+- Added a CI Docker image build without registry publishing.
+
 ## [0.1.0] - 2026-08-26
 
 Initial MIT open-source release of Tactics Journal Board.
