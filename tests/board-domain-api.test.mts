@@ -72,6 +72,8 @@ test('board proxy has a fixed allowlist and preserves board request shape', asyn
   assert.equal(originlessWrite, null)
   const storedDraft = upstreamRequest(request('https://board.tacticsjournal.com/api/board/import-drafts?id=abc'), { path: 'import-drafts' })!
   assert.equal(storedDraft.url, 'https://tacticsjournal.com/api/board/import-drafts?id=abc')
+  const previewDraft = upstreamRequest(request('https://preview.tactics-board-mapper.pages.dev/api/board/import-drafts?id=abc'), { path: 'import-drafts' })!
+  assert.equal(previewDraft.url, 'https://tacticsjournal.com/api/board/import-drafts?id=abc')
   const assets = upstreamRequest(request('https://board.tacticsjournal.com/api/board/assets?id=asset-1'), { path: 'assets' })!
   assert.equal(assets.url, 'https://tacticsjournal.com/api/board/assets?id=asset-1')
   const libraries = upstreamRequest(request('https://board.tacticsjournal.com/api/board/libraries?id=bg%3Amy-pitch'), { path: 'libraries' })!
@@ -107,7 +109,7 @@ test('board proxy validates bounded same-origin browser links before storing the
   } finally { globalThis.fetch = original }
 })
 
-test('board proxy accepts a large project payload without a preview and keeps the cap', async () => {
+test('board proxy accepts temporary and durable project payloads without a preview and keeps their caps', async () => {
   const original = globalThis.fetch
   let upstream: Request | null = null
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -115,6 +117,20 @@ test('board proxy accepts a large project payload without a preview and keeps th
     return Response.json({ id: 'p'.repeat(22) }, { status: 201 })
   }) as typeof fetch
   try {
+    const temporaryPayload = 't'.repeat(4000)
+    const temporary = await proxyBoard({
+      request: request('https://board.tacticsjournal.com/api/board/import-drafts', {
+        method: 'POST',
+        headers: { Origin: 'https://board.tacticsjournal.com', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payload: temporaryPayload }),
+      }),
+      params: { path: 'import-drafts' },
+      env: {},
+    })
+    assert.equal(temporary.status, 201)
+    assert.equal(upstream!.headers.get('X-Tactics-Board-Link-Scope'), null)
+    assert.deepEqual(await upstream!.json(), { payload: temporaryPayload })
+
     const payload = 'a'.repeat(350_000)
     const response = await proxyBoard({
       request: request('https://board.tacticsjournal.com/api/board/import-drafts', {
@@ -226,8 +242,10 @@ test('capability-authenticated agent writes do not need a browser Origin', async
   } finally { globalThis.fetch = original }
 })
 
-test('board proxy selects production for stable hosts and strips upstream cookies', async () => {
+test('board proxy keeps previews on sandbox accounts, the canonical Board host live, and strips upstream cookies', async () => {
+  assert.equal(accountOrigin(request('https://branch.tactics-board-mapper.pages.dev/api/board/sync')), 'https://billing-sandbox.tacticsjournal.pages.dev')
   assert.equal(accountOrigin(request('https://tactics-board-mapper.pages.dev/api/board/sync')), 'https://tacticsjournal.com')
+  assert.equal(accountOrigin(request('https://board.tacticsjournal.com/api/board/sync')), 'https://tacticsjournal.com')
   const original = globalThis.fetch
   globalThis.fetch = (async () => new Response('{}', {
     headers: { 'Set-Cookie': 'tj_session=must-not-cross; Path=/' },
@@ -480,7 +498,7 @@ test('MCP uses the incoming canonical board origin and never returns a capabilit
     const decoded = await decodeAgentImport(storedPayloads[0])
     assert.equal(decoded.name, 'Third-man run')
     assert.equal(decoded.boardCount, 1)
-    assert.equal(draftRequests[0].url, 'https://billing-sandbox.tacticsjournal.pages.dev/api/board/import-drafts')
+    assert.equal(draftRequests[0].url, 'https://tacticsjournal.com/api/board/import-drafts')
     assert.equal(draftRequests[0].headers.get('Origin'), 'https://branch.tactics-board-mapper.pages.dev')
     assert.equal(draftRequests[0].headers.get('User-Agent'), 'TacticsBoardAgent/1.0')
     assert.equal(draftRequests[0].headers.get('X-Tactics-Board-Timestamp'), null)

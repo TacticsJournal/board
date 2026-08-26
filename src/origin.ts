@@ -18,17 +18,19 @@ const SANDBOX = 'https://billing-sandbox.tacticsjournal.pages.dev'
 
 const PREVIEW_HOST = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.tactics-board-mapper\.pages\.dev$/
 
-function isPreviewBuild(): boolean {
-  try {
-    if (import.meta.env.DEV) return true
-    return PREVIEW_HOST.test(location.hostname)
-  } catch {
-    return false
-  }
+export function tacticsJournalOrigin(hostname: string, development = false): string {
+  // The canonical Board host always uses real accounts and live Polar billing,
+  // even if a build flag is accidentally carried into its deployment.
+  if (hostname === 'board.tacticsjournal.com') return PRODUCTION
+  return development || PREVIEW_HOST.test(hostname) ? SANDBOX : PRODUCTION
+}
+
+function currentHostname(): string {
+  try { return location.hostname } catch { return '' }
 }
 
 /** The Tactics Journal origin this build should use. Resolved once. */
-export const TJ_ORIGIN: string = isPreviewBuild() ? SANDBOX : PRODUCTION
+export const TJ_ORIGIN = tacticsJournalOrigin(currentHostname(), import.meta.env?.DEV === true)
 
 /** True when the board is pointed at the billing sandbox rather than the site. */
 export function usingBillingSandbox(): boolean {

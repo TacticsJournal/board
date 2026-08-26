@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { rosterByNumber } from '../src/roster.ts'
 
 const teams = await readFile(new URL('../src/teams.ts', import.meta.url), 'utf8')
 const main = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8')
@@ -11,6 +12,26 @@ const picker = teams.slice(
   teams.indexOf('private editorBody'),
   teams.indexOf('private queryFor'),
 )
+
+test('the selected-player roster is sorted by shirt number', () => {
+  const roster = [
+    { name: 'Ten', number: '10' },
+    { name: 'Unassigned', number: '' },
+    { name: 'Two', number: '2' },
+    { name: 'Invalid', number: 'TBD' },
+    { name: 'One', number: '1' },
+  ]
+
+  assert.deepEqual(rosterByNumber(roster).map(player => player.name), [
+    'One',
+    'Two',
+    'Ten',
+    'Unassigned',
+    'Invalid',
+  ])
+  assert.deepEqual(roster.map(player => player.name), ['Ten', 'Unassigned', 'Two', 'Invalid', 'One'])
+  assert.match(teams, /getRosterForPicker[\s\S]*rosterByNumber\(team\.roster\)/)
+})
 
 test('teams use one side selector and one shared editor', () => {
   assert.match(picker, /class="tmSideSwitch" role="radiogroup"/)
@@ -109,4 +130,13 @@ test('the keyboard does not count as a screen too small for the board', () => {
   assert.match(main, /const keyboard = window\.innerHeight - height > 120 \|\| document\.body\.classList\.contains\('kb-open'\)/)
   assert.match(main, /const room = keyboard \? window\.innerHeight : height/)
   assert.match(main, /room < 300/)
+})
+
+test('the mobile sheet covers the translucent edge above the iOS keyboard', () => {
+  assert.match(main, /style\.setProperty\('--vvBottom', `\$\{Math\.max\(0, window\.innerHeight - top - height\)\}px`\)/)
+  assert.match(main, /settingsEl\.className = 'modal hidden settingsModal'/)
+  assert.match(styles, /body\.kb-open \.settingsModal:not\(\.hidden\)::after/)
+  assert.match(styles, /height: var\(--vvBottom, 0px\)/)
+  assert.match(styles, /background: var\(--settings-bg\)/)
+  assert.match(styles, /--bg: var\(--settings-bg\)/)
 })

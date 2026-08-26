@@ -1,4 +1,4 @@
-import { agentImportFile, agentImportSource, boardImportReadyRows, decodeAgentImport, fetchAgentImport, STORED_PROJECT_IMPORT_LIMITS, type AgentImportDraft, type BoardImportReadyRow } from './agent-import.ts'
+import { agentImportFile, agentImportSource, boardImportReadyRows, decodeAgentImport, fetchAgentImport, projectImportReadyRows, STORED_PROJECT_IMPORT_LIMITS, type AgentImportDraft, type BoardImportReadyRow } from './agent-import.ts'
 import { previewSvg } from './saves.ts'
 
 type ImportSaves = {
@@ -24,7 +24,7 @@ type Options = {
   boardDestinations: () => BoardImportDestination[]
   canCreateProject: () => boolean
   addBoard: (draft: AgentImportDraft, projectId: string | null) => BoardImportResult
-  addProject: (draft: AgentImportDraft) => BoardImportResult
+  addProject: (draft: AgentImportDraft, projectId: string | null) => BoardImportResult
   openProject: (id: string, boardId?: string) => void
 }
 
@@ -217,7 +217,7 @@ export function startAgentImport(options: Options): boolean {
       title.textContent = projectCopyLink ? "Couldn't add project" : "Couldn't add board"
       copy.textContent = failureMessage || 'Free some browser storage and try again.'
       setRows(
-        { label: 'Try again', detail: projectCopyLink ? 'Add it as a new project' : 'Choose where it goes', action: 'destination-back', primary: true },
+        { label: 'Try again', detail: 'Choose where it goes', action: 'destination-back', primary: true },
         { label: 'Close', detail: 'Keep browsing', action: 'close' },
       )
       focusHeading()
@@ -227,21 +227,10 @@ export function startAgentImport(options: Options): boolean {
     dialog.dataset.agentImportState = 'ready'
     title.textContent = projectCopyLink ? 'Add a copy to your projects' : 'Add a copy to your boards'
     copy.textContent = 'The original stays with whoever shared it.'
+    const destinations = options.boardDestinations()
     if (projectCopyLink) {
-      if (options.canCreateProject()) {
-        setRows({
-          label: 'New project', detail: `Creates “${draft.name}” with ${projectSummary()}`,
-          action: 'new-project', primary: true,
-        })
-      } else {
-        copy.textContent = 'Free keeps three projects. This shared project has not been added.'
-        setRows(
-          { label: 'View Projects', detail: 'Delete a project to make room', action: 'projects', primary: true },
-          { label: 'See License', detail: 'Keep unlimited projects on this device', action: 'pro' },
-        )
-      }
+      setRows(...projectImportReadyRows(draft.name, draft.boardCount, destinations.length, options.canCreateProject()))
     } else {
-      const destinations = options.boardDestinations()
       setRows(...boardImportReadyRows(draft.name, destinations.length, options.canCreateProject()))
     }
     focusHeading()
@@ -329,7 +318,7 @@ export function startAgentImport(options: Options): boolean {
     result = null
     failureMessage = ''
     render()
-    const outcome = projectCopyLink ? options.addProject(draft) : options.addBoard(draft, projectId)
+    const outcome = projectCopyLink ? options.addProject(draft, projectId) : options.addBoard(draft, projectId)
     adding = false
     result = outcome.status
     addedProjectId = outcome.projectId ?? ''
@@ -343,7 +332,7 @@ export function startAgentImport(options: Options): boolean {
   dialog.addEventListener('cancel', () => { destroy() })
   dialog.addEventListener('click', (event) => {
     const projectId = (event.target as HTMLElement).closest<HTMLElement>('[data-agent-import-project]')?.dataset.agentImportProject
-    if (projectId && boardLink) { addCopy(projectId); return }
+    if (projectId && copyLink) { addCopy(projectId); return }
     const action = (event.target as HTMLElement).closest<HTMLElement>('[data-agent-import]')?.dataset.agentImport
     if (!action || adding) return
     if (action === 'close') { dialog.close(); return }
@@ -352,7 +341,7 @@ export function startAgentImport(options: Options): boolean {
     if (action === 'pro') { dialog.close(); options.openPro(); return }
     if (action === 'signin') { closeTemporarily(); options.openSignIn(); return }
     if (copyLink && action === 'new-project') { addCopy(null); return }
-    if (boardLink && action === 'existing') { picking = true; render(); return }
+    if (copyLink && action === 'existing') { picking = true; render(); return }
     if (copyLink && action === 'destination-back') { picking = false; result = null; render(); return }
     if (action !== 'add' || !draft || access !== 'ready') return
     adding = true

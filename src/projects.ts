@@ -71,6 +71,7 @@ export const UNTITLED = 'Untitled project'
 const KEY = 'tbm-board-projects-v1'
 /** Where a single sequence lived before there were projects. */
 const LEGACY_KEY = 'tbm-sequence-v1'
+const activeProjectKey = (storageKey: string) => `${storageKey}:active-project`
 
 export function boardHeight(scene: Scene): number {
   const style = pitchById(scene.pitch)
@@ -132,6 +133,24 @@ export function appendBoardCopy(project: Project, board: Board): Board {
   project.boards.push(copy)
   touch(project)
   return copy
+}
+
+/** Copy a whole shared project with new board ids and its sequence timings intact. */
+export function newProjectFromProjectCopy(source: Project, name = source.name): Project {
+  return {
+    id: uid(),
+    name,
+    boards: source.boards.map(board => ({ ...copyBoard(board), link: { ...board.link } })),
+    updated: Date.now(),
+  }
+}
+
+/** Append every board from a shared project while preserving links inside its sequence. */
+export function appendProjectCopy(project: Project, source: Project): Board[] {
+  const copies = source.boards.map(board => ({ ...copyBoard(board), link: { ...board.link } }))
+  project.boards.push(...copies)
+  touch(project)
+  return copies
 }
 
 /**
@@ -397,7 +416,14 @@ export function loadLibrary(storageKey = KEY, legacyKey = LEGACY_KEY): Library |
   try {
     const raw = localStorage.getItem(storageKey)
     const lib = raw ? migrateLibrary(JSON.parse(raw)) : null
-    if (lib) return lib
+    if (lib) {
+      // Project documents can make the library value large enough for a write
+      // to fail. The small navigation value is written separately, so it is
+      // still authoritative when the stored library trails the last click.
+      const activeId = localStorage.getItem(activeProjectKey(storageKey))
+      if (activeId && lib.projects.some(project => project.id === activeId)) lib.currentId = activeId
+      return lib
+    }
   } catch { /* unreadable: fall through to the old single sequence */ }
   try {
     // whatever was in the sequence becomes the first project
@@ -409,6 +435,9 @@ export function loadLibrary(storageKey = KEY, legacyKey = LEGACY_KEY): Library |
 }
 
 export function saveLibrary(lib: Library, storageKey = KEY) {
+  // Write navigation first. If the larger document write hits the browser's
+  // storage limit, refresh still returns to the project the person opened.
+  try { localStorage.setItem(activeProjectKey(storageKey), lib.currentId) } catch { /* storage full or blocked */ }
   try { localStorage.setItem(storageKey, JSON.stringify(lib)) } catch { /* storage full or blocked */ }
 }
 

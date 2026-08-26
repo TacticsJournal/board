@@ -74,11 +74,22 @@ test('a pitch change moves the new-arrow default to the same rung', () => {
 test('the shelf, the canvas and the exported SVG share one head scale', () => {
   // shelf preview draws the arrow the board would draw, on the board's pitch
   assert.match(main, /arrowHeadSize\(width, live\)/)
-  assert.match(main, /arrowPreview\(dash, head, defaults\.arrow\.color, defaults\.arrow\.width, false, liveArrows\(\)\)/)
+  assert.match(main, /arrowPreview\(dash, head, shelfArrowColor\(\), defaults\.arrow\.width, false, liveArrows\(\)\)/)
   // canvas: every rendered arrow asks the scene being rendered
   assert.match(board, /makeArrowShape\(o, this\.iconScale\(\), this\.arrowsAreLive\(\)\)/)
   assert.match(board, /arrowsAreLive\(\) \{ return !!pitchById\(\(this\.renderingScene \?\? this\.store\.scene\)\.pitch\)\.live \}/)
   // export: the same medium, taken from the scene's own pitch
   assert.match(saves, /const mediumWidth = arrowMediumWidth\(sceneIsLive\(scene\)\)/)
   assert.match(saves, /\(width \/ mediumWidth\) \* 14 \* k/)
+})
+
+test('the broadcast deck shows arrows in shelf ink, but draws them white', () => {
+  // the deck preview swaps the pitch's white for the shelf's own ink, so no
+  // arrow choice arrives on a dark plate
+  assert.match(main, /const shelfArrowColor = \(\) =>\n  liveArrows\(\) && defaults\.arrow\.color === '#ffffff' \? '#111111' : defaults\.arrow\.color/)
+  // the arrow that is actually placed still defaults to white on a broadcast
+  assert.match(main, /if \(style\.live && defaults\.arrow\.color === '#111111'\) defaults\.arrow\.color = '#ffffff'/)
+  // and the preview still draws on the scene's ladder, head scale included
+  assert.match(main, /arrowPreview\(dash, head, shelfArrowColor\(\), defaults\.arrow\.width, false, liveArrows\(\)\)/)
+  assert.match(main, /headSize: arrowHeadSize\(width, live\)/)
 })

@@ -73,3 +73,14 @@ test('the utility arrows use the same dedicated 22 by 18 SVG helper', () => {
   assert.match(main, /swap: `<span class="swapArt">\$\{opposedArrows\(\)\}<\/span>`/)
   assert.match(css, /\.cell\.cellUtil svg \{ width: 22px; height: 18px; \}/)
 })
+
+test('project switches rebuild the shelf when pitch and broadcast shapes differ', () => {
+  const pitchSync = main.slice(main.indexOf('let renderedPanelLive'), main.indexOf('/**\n * The panel floats'))
+  assert.match(pitchSync, /const live = liveArrows\(\)/)
+  assert.match(pitchSync, /if \(live === renderedPanelLive\) return false/)
+  assert.match(pitchSync, /renderedPanelLive = live\s+renderPanel\(\)/)
+  assert.match(main, /store\.subscribe\(\(\) => \{\s+if \(!syncPanelPitchMode\(\)\) renderOptions\(\)/)
+  // Background metadata can arrive after the first paint, including for a
+  // project restored directly onto an uploaded broadcast still.
+  assert.match(main, /backgrounds\.subscribe\(\(\) => \{ renderRootValues\(\); syncPanelPitchMode\(\) \}\)/)
+})

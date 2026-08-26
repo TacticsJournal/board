@@ -75,8 +75,14 @@ test('Agents, Account, and Help keep every existing destination discoverable', (
   assert.ok(helpStart > -1)
   const help = root.slice(helpStart)
   assert.match(help, /data-goto="howto"[\s\S]*?>How to use</)
-  assert.match(help, /data-goto="about"[\s\S]*?>Data, copyright and terms</)
+  assert.match(help, /data-goto="about"[\s\S]*?>Privacy, data and terms</)
   assert.match(help, /BOARD_SELF_HOSTED \? '' : `<button class="setItem" data-goto="feedback">[\s\S]*?>Feedback</)
   assert.equal(occurrences(help, 'data-goto="howto"'), 1)
   assert.equal(occurrences(help, 'data-goto="about"'), 1)
+})
+
+test('the hosted privacy page describes tracking and personal data accurately', () => {
+  const about = sliceBetween(main, 'data-pane="about"', 'data-pane="self-host"')
+  assert.match(about, /<strong>Privacy, data, copyright and use<\/strong>/)
+  assert.match(about, /BOARD_SELF_HOSTED \? '' : '<p><b>Privacy\.<\/b> This website does not use advertising, analytics or cross-site tracking cookies\. It uses essential and functional cookies for sign-in and site preferences\. We collect personal information only when you provide it or use account features\.<\/p>'/)
 })

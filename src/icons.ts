@@ -8,8 +8,8 @@
  * which is why the notice is a served file rather than a banner.
  *
  * Inlined rather than fetched so the board works offline and adds no
- * third-party request. Every icon is 24x24 on a 2px stroke and takes its
- * colour from `currentColor`.
+ * third-party request. Tabler icons are 24x24 on a 2px stroke. Icons take
+ * their colour from `currentColor`.
  */
 
 const BODIES = {
@@ -32,6 +32,7 @@ const BODIES = {
   'search': `<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0-14 0m18 11l-6-6"/>`,
   'file-plus': `<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2m-5-10v6m-3-3h6"/></g>`,
   'puzzle': `<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 4a2 2 0 0 0-4 0v2H8a2 2 0 1 0 0 4h2v2a2 2 0 1 0 4 0v-2h2a2 2 0 1 1 0 4h-2v2a2 2 0 1 1-4 0v-2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>`,
+  'skills': `<path d="M0 0h16v16H0z" fill="none"/><path fill="currentColor" d="M9 1a2 2 0 0 0-2 2H5.5A1.5 1.5 0 0 0 4 4.5V6a2 2 0 0 0 0 4v1.5A1.5 1.5 0 0 0 5.5 13H7a2 2 0 0 0 4 0h1.5a1.5 1.5 0 0 0 1.5-1.5V9h-1a1 1 0 1 1 0-2h1V4.5A1.5 1.5 0 0 0 12.5 3H11a2 2 0 0 0-2-2"/>`,
   'upload': `<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 9l5-5l5 5m-5-5v12"/>`,
   'download': `<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 11l5 5l5-5m-5-7v12"/>`,
   'lock': `<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M5 13a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0-2 0m-3-5V7a4 4 0 1 1 8 0v4"/></g>`,
@@ -65,5 +66,6 @@ export type IconName = keyof typeof BODIES
 
 /** Inline SVG markup for an icon, sized by CSS. */
 export function icon(name: IconName, cls = 'ic'): string {
-  return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${BODIES[name]}</svg>`
+  const viewBox = name === 'skills' ? '0 0 16 16' : '0 0 24 24'
+  return `<svg class="${cls}" viewBox="${viewBox}" aria-hidden="true" focusable="false">${BODIES[name]}</svg>`
 }

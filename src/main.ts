@@ -63,7 +63,7 @@ import { downloadProjectImage, exportProjectImages, type ProjectImageFile } from
 import { startAgentImport, type BoardImportResult } from './agent-import-ui'
 import { createBoardImportUrl, createProjectImportUrl, createStoredProjectImportUrl, isAgentImportTooLarge, type AgentImportDraft } from './agent-import'
 import {
-  addBoard, appendBoardCopy, boardName, canAnimate, canCreateProject, currentProject, documentScene, freshDeviceDestination, FREE_PROJECT_LIMIT, loadLibrary, migrateProject, newProject, newProjectFromBoard, orderedProjects, reconcileProjectLibrary, rememberBoard, saveLibrary, storedBoardIndex, touch,
+  addBoard, appendBoardCopy, appendProjectCopy, boardName, canAnimate, canCreateProject, currentProject, documentScene, freshDeviceDestination, FREE_PROJECT_LIMIT, loadLibrary, migrateProject, newProject, newProjectFromBoard, newProjectFromProjectCopy, orderedProjects, reconcileProjectLibrary, rememberBoard, saveLibrary, storedBoardIndex, touch,
   type BoardDocument, type Library, type Project,
 } from './projects'
 
@@ -853,12 +853,16 @@ void viewportGateEl
  */
 function syncSheetViewport() {
   const vv = window.visualViewport
+  const top = Math.round(vv?.offsetTop ?? 0)
   const height = Math.round(vv?.height ?? window.innerHeight)
   const style = document.documentElement.style
-  style.setProperty('--vvTop', `${Math.round(vv?.offsetTop ?? 0)}px`)
+  style.setProperty('--vvTop', `${top}px`)
   style.setProperty('--vvLeft', `${Math.round(vv?.offsetLeft ?? 0)}px`)
   style.setProperty('--vvW', `${Math.round(vv?.width ?? window.innerWidth)}px`)
   style.setProperty('--vvH', `${height}px`)
+  // The iOS keyboard toolbar is translucent around its rounded top edge. Fill
+  // the covered part of the layout viewport so the board cannot show through.
+  style.setProperty('--vvBottom', `${Math.max(0, window.innerHeight - top - height)}px`)
   // Typing with only a sliver of screen left: the keyboard either ate the
   // visual viewport or the window is simply short. Both leave a sheet with
   // no room under the field, so the panels that care condense themselves.
@@ -1101,6 +1105,16 @@ function arrowPreview(dash: ArrowObj['dash'], head: boolean, color: string, widt
   return url
 }
 
+/**
+ * A broadcast board turns the new-arrow default white so it reads over video.
+ * The deck is pale in both themes, so showing that white would put every arrow
+ * choice on a dark plate; the deck is a shape picker, so it draws the dash,
+ * head and the pitch's own line weight in the shelf's own ink instead. The
+ * arrow you then drag onto the board is still white.
+ */
+const shelfArrowColor = () =>
+  liveArrows() && defaults.arrow.color === '#ffffff' ? '#111111' : defaults.arrow.color
+
 const img = (src: string, w: number, h: number) =>
   `<img src="${src}" width="${w}" height="${h}" alt="" draggable="false">`
 
@@ -1130,7 +1144,7 @@ const shelfArt = {
     background-size:${(4096 / LIVE_PLAYER_CROP.width) * 100}% ${(4096 / LIVE_PLAYER_CROP.height) * 100}%;
     background-position:${(LIVE_PLAYER_CROP.x / (4096 - LIVE_PLAYER_CROP.width)) * 100}% ${(LIVE_PLAYER_CROP.y / (4096 - LIVE_PLAYER_CROP.height)) * 100}%;"></span>`,
   arrow: (dash: ArrowObj['dash'], head: boolean) =>
-    `<img class="cellWide" src="${arrowPreview(dash, head, defaults.arrow.color, defaults.arrow.width, false, liveArrows())}" alt="" draggable="false">`,
+    `<img class="cellWide" src="${arrowPreview(dash, head, shelfArrowColor(), defaults.arrow.width, false, liveArrows())}" alt="" draggable="false">`,
   measure: () =>
     `<img class="cellWide" src="${arrowPreview('solid', false, defaults.measure.color, defaults.measure.width, true)}" alt="" draggable="false">`,
   box: (fill: string, opacity: number) =>
@@ -1934,6 +1948,18 @@ function renderPanel() {
   syncPanelHeight()
 }
 
+// Pitch boards and broadcast boards have different player and arrow shelves.
+// A scene load does not otherwise rebuild the shelf, so project switches must
+// follow the scene's mode rather than leave the previous project's cells up.
+let renderedPanelLive = liveArrows()
+function syncPanelPitchMode(): boolean {
+  const live = liveArrows()
+  if (live === renderedPanelLive) return false
+  renderedPanelLive = live
+  renderPanel()
+  return true
+}
+
 /**
  * The panel floats over the stage, so nothing it does resizes the board. Its
  * height is published for the controls that sit above it, and handed to the
@@ -2573,13 +2599,7 @@ function duplicateSelected() {
       if (!regroup.has(copy.group)) regroup.set(copy.group, uid('g'))
       copy.group = regroup.get(copy.group)
     }
-    if (copy.type === 'arrow') { copy.x1 += 16; copy.y1 += 16; copy.mx += 16; copy.my += 16; copy.x2 += 16; copy.y2 += 16 }
-    else {
-      copy.x += 16; copy.y += 16
-      if (copy.type === 'box' && copy.corners) {
-        for (const c of copy.corners) { c.x += 16; c.y += 16 }
-      }
-    }
+    moveObject(copy, 16, 16)
     return copy
   })
   store.apply(s => {
@@ -2623,8 +2643,10 @@ function sendBack() {
 /** Shift one object across the board. Arrows and free-form boxes carry points. */
 function moveObject(obj: SceneObj, dx: number, dy: number) {
   const o: any = obj
-  if (o.type === 'arrow') { o.x1 += dx; o.y1 += dy; o.mx += dx; o.my += dy; o.x2 += dx; o.y2 += dy }
-  else {
+  if (o.type === 'arrow') {
+    o.x1 += dx; o.y1 += dy; o.mx += dx; o.my += dy; o.x2 += dx; o.y2 += dy
+    if (o.points) for (const p of o.points) { p.x += dx; p.y += dy }
+  } else {
     o.x += dx; o.y += dy
     if (o.type === 'box' && o.corners) {
       for (const c of o.corners) { c.x += dx; c.y += dy }
@@ -3239,11 +3261,13 @@ function selectProjectBackgroundResolver(project: Project): void {
         if (scope !== sharedBackgroundScope) return
         setActiveSharedPitch(sharedBackgroundPitchStyle(background))
         board.rebuild()
+        syncPanelPitchMode()
       },
       onMissing: id => {
         if (scope !== sharedBackgroundScope) return
         setActiveSharedPitch(sharedPitchPlaceholder(id, pitchById(id).boardH))
         board.rebuild()
+        syncPanelPitchMode()
       },
     })
     sharedBackgroundScope = scope
@@ -3505,6 +3529,26 @@ function showCopySuccess(button: HTMLButtonElement, resetLabel: string) {
   copyButtonTimers.set(button, timer)
 }
 
+function boardLinkPreview(): string {
+  const source = board.toFrameCanvas(1200)
+  const canvas = document.createElement('canvas')
+  canvas.width = 1200
+  canvas.height = 630
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('This board preview could not be created.')
+  context.fillStyle = '#f2f1ed'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  const scale = Math.min(canvas.width / source.width, canvas.height / source.height)
+  const width = source.width * scale
+  const height = source.height * scale
+  context.drawImage(source, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height)
+  for (const quality of [0.72, 0.5, 0.32]) {
+    const preview = canvas.toDataURL('image/jpeg', quality)
+    if (preview.length <= 500_000) return preview
+  }
+  throw new Error('This board preview could not be created.')
+}
+
 function makeCopyLink(body: HTMLElement) {
   stashEditedBoard()
   const project = currentProject(library)
@@ -3550,25 +3594,30 @@ function makeCopyLink(body: HTMLElement) {
     status.textContent = scope === 'board' ? `Making a link for “${boardTitle}”…` : `Making a link for all ${project.boards.length} boards…`
     try {
       let url: string
+      const permanentProjectLink = scope === 'project'
+        && window.location.hostname === 'board.tacticsjournal.com'
+        && entitlements.hasPaidBoardAccess()
       try {
-        url = scope === 'board'
-          ? await createBoardImportUrl(boardLinkName, newProjectFromBoard(source, boardLinkName))
-          : await createProjectImportUrl(projectName, projectCopy)
-      } catch (error) {
-        if (scope !== 'project' || !isAgentImportTooLarge(error)) throw error
-        if (!entitlements.hasPaidBoardAccess()) {
-          if (request === generation) status.textContent = 'Large whole-project links require a License.'
-          return
+        if (scope === 'board') {
+          await board.imagesReady()
+          url = await createBoardImportUrl(boardLinkName, newProjectFromBoard(source, boardLinkName), boardLinkPreview())
+        } else {
+          url = permanentProjectLink
+            ? await createStoredProjectImportUrl(projectName, projectCopy)
+            : await createProjectImportUrl(projectName, projectCopy)
         }
-        url = await createStoredProjectImportUrl(projectName, projectCopy)
+      } catch (error) {
+        if (scope !== 'project' || permanentProjectLink || !isAgentImportTooLarge(error)) throw error
+        if (request === generation) status.textContent = 'Large whole-project links require a License.'
+        return
       }
       if (request !== generation) return
       currentUrl = url
       input.value = url
       input.setAttribute('aria-label', scope === 'board' ? 'Board link' : 'Project link')
       status.textContent = scope === 'board'
-        ? `Copies “${boardTitle}” only. It can be added to a new or existing project, and the link does not expire.`
-        : `Copies all ${project.boards.length} board${project.boards.length === 1 ? '' : 's'} in “${projectName}” as a new project. The link does not expire.`
+        ? `Copies “${boardTitle}” only. It can be added to a new or existing project. The link expires after 24 hours.`
+        : `Copies all ${project.boards.length} board${project.boards.length === 1 ? '' : 's'} in “${projectName}” as a new project. ${permanentProjectLink ? 'The link does not expire.' : 'The link expires after 24 hours.'}`
       field.hidden = false
     } catch (error) {
       if (request !== generation) return
@@ -4143,8 +4192,16 @@ if (!BOARD_SELF_HOSTED) initTjSearch()
 
 const THEME_KEY = 'tbm-theme-v1'
 
+/* The build steps from the repository README, kept as one block so the copy
+   button hands over exactly what the reader sees. */
+const SELF_HOST_REPO = 'https://github.com/kyleboas/board'
+const SELF_HOST_COMMANDS = `git clone ${SELF_HOST_REPO}.git
+cd board
+npm install
+npm run build:self-hosted`
+
 const settingsEl = document.createElement('div')
-settingsEl.className = 'modal hidden'
+settingsEl.className = 'modal hidden settingsModal'
 settingsEl.innerHTML = `
   <div class="sheet setSheet">
     <div class="setNav">
@@ -4215,7 +4272,7 @@ settingsEl.innerHTML = `
       <div class="setGroupHead">Agents</div>
       <div class="setGroup">
         <button class="setItem" data-goto="skills">
-          ${icon('puzzle')}
+          ${icon('skills')}
           <span class="setItemLabel">Skills and Extensions</span>
           ${icon('chevron-right', 'ic setChev')}
         </button>
@@ -4270,7 +4327,12 @@ settingsEl.innerHTML = `
         </button>
         <button class="setItem" data-goto="about">
           ${icon('copyright')}
-          <span class="setItemLabel">Data, copyright and terms</span>
+          <span class="setItemLabel">Privacy, data and terms</span>
+          ${icon('chevron-right', 'ic setChev')}
+        </button>
+        <button class="setItem" data-goto="self-host">
+          ${icon('stack')}
+          <span class="setItemLabel">Self-host</span>
           ${icon('chevron-right', 'ic setChev')}
         </button>
         ${BOARD_SELF_HOSTED ? '' : `<button class="setItem" data-goto="feedback">
@@ -4296,11 +4358,68 @@ settingsEl.innerHTML = `
     </div>
     <div class="setPane hidden" data-pane="about">
       <div class="setTutorial">
-        <strong>Data, copyright and use</strong>
+        <strong>Privacy, data, copyright and use</strong>
+        ${BOARD_SELF_HOSTED ? '' : '<p><b>Privacy.</b> This website does not use advertising, analytics or cross-site tracking cookies. It uses essential and functional cookies for sign-in and site preferences. We collect personal information only when you provide it or use account features.</p>'}
         <p><b>Data sources.</b> Team search and kit colors use TheSportsDB public API. Squad names, shirt numbers and positions are read from current squad sections on Wikipedia through the Wikipedia API. Third-party data may be incomplete, delayed or inaccurate; verify it before publishing.</p>
         <p><b>Copyright.</b> Except for identified third-party materials, the software and bundled assets are available under the MIT license. Club names, player names, colors and other source data remain the property of their respective owners and data providers. Tactics Journal and Tactics Board names and logos are reserved trademarks.</p>
         <p><b>Interface icons.</b> The icons in Settings and the menus are <a href="https://tabler.io/icons" target="_blank" rel="noopener">Tabler Icons</a>, copyright Paweł Kuna, used under the MIT license. The full license text is served at <a href="/LICENSE-icons" target="_blank" rel="noopener">/LICENSE-icons</a>.</p>
         ${BOARD_SELF_HOSTED ? '<p><b>Self-hosting.</b> This installation is operated by its owner, not Tactics Journal. See the repository license and trademark policy for the terms that apply.</p>' : '<p><b>Hosted service.</b> You may use exported board images for editorial, educational, social, internal and commercial work. Where an export uses Tactics Journal pitch artwork, the Tactics Journal watermark must remain visible. An export built on your own uploaded background or imported screenshot carries no Tactics Journal branding and no such condition. Use of the official hosted service is subject to the <a href="https://tacticsjournal.com/terms/" target="_blank" rel="noopener">Terms of Service</a>, <a href="https://tacticsjournal.com/privacy/" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://tacticsjournal.com/cookies/" target="_blank" rel="noopener">Cookie Policy</a>.</p>'}
+      </div>
+    </div>
+    <div class="setPane hidden" data-pane="self-host">
+      <div class="selfHostSection">
+        <h3 class="skillsHeading">Run Board yourself</h3>
+        <p class="skillsIntro">Board is open source. Except for identified third-party materials, the software and bundled non-trademark assets are MIT licensed, so you can build the board and serve it from your own machine or domain.</p>
+      </div>
+
+      <div class="setGroupHead">Build it</div>
+      <div class="setGroup">
+        <div class="setItem setItemStatic selfHostCode">
+          <code class="setCode setCodeBlock" data-self-host-command>${SELF_HOST_COMMANDS}</code>
+          <button class="setItemAction setCopy" data-self-host-copy aria-label="Copy the self-host commands">${icon('copy')}Copy</button>
+        </div>
+      </div>
+      <p class="setNote">Then serve the <code>dist</code> folder on localhost or your own HTTPS domain. To work on the board with Vite instead, run <code>BOARD_SELF_HOSTED=true npm run dev</code>.</p>
+      ${BOARD_SELF_HOSTED ? '<p class="setNote setNoteStrong">This installation is already a self-host build.</p>' : ''}
+
+      <div class="setGroupHead">What self-hosting changes</div>
+      <div class="setGroup">
+        <div class="setItem setItemStatic selfHostFact">
+          ${icon('check')}
+          <span class="setItemLabel">Local editing and export features work without a Board License or a Pro account.</span>
+        </div>
+        <div class="setItem setItemStatic selfHostFact">
+          ${icon('puzzle')}
+          <span class="setItemLabel">Extensions you place in <code>public/extensions</code> run in your build. The official hosted board does not run third-party extensions.</span>
+        </div>
+        <div class="setItem setItemStatic selfHostFact">
+          ${icon('lock')}
+          <span class="setItemLabel">Cloud sync, collaboration and agent links need Tactics Journal-operated services, so a self-host build does not provide them.</span>
+        </div>
+        <div class="setItem setItemStatic selfHostFact">
+          ${icon('copyright')}
+          <span class="setItemLabel">The installation is operated by whoever runs it, not by Tactics Journal. The Tactics Journal and Tactics Board names and logos stay reserved.</span>
+        </div>
+      </div>
+
+      <div class="setGroupHead">Project</div>
+      <div class="setGroup">
+        <a class="setItem selfHostLink" href="${SELF_HOST_REPO}" target="_blank" rel="noopener">
+          <span class="setItemLabel">Source code and README</span>${icon('external-link')}
+        </a>
+        <a class="setItem selfHostLink" href="${SELF_HOST_REPO}/blob/main/LICENSE" target="_blank" rel="noopener">
+          <span class="setItemLabel">MIT license</span>${icon('external-link')}
+        </a>
+        <a class="setItem selfHostLink" href="${SELF_HOST_REPO}/blob/main/TRADEMARKS.md" target="_blank" rel="noopener">
+          <span class="setItemLabel">Trademark policy</span>${icon('external-link')}
+        </a>
+      </div>
+
+      <div class="setGroup selfHostBack">
+        <button class="setItem" data-goto="root">
+          ${icon('chevron-left', 'ic setChev')}
+          <span class="setItemLabel">Back to Settings</span>
+        </button>
       </div>
     </div>
     <div class="setPane hidden" data-pane="pro">
@@ -4474,7 +4593,7 @@ settingsEl.querySelector('[data-pane="teams"]')!.appendChild(teams.el)
 settingsEl.querySelector('[data-saves-host]')!.appendChild(saves.el)
 
 /** Settings is one list plus push screens; every screen but root has a back arrow. */
-type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'pro' | 'agents' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets'
+type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'pro' | 'agents' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets' | 'self-host'
 
 const SCREEN_TITLES: Record<SetScreen, string> = {
   root: 'Settings',
@@ -4489,8 +4608,9 @@ const SCREEN_TITLES: Record<SetScreen, string> = {
   official: 'Official extension',
   extension: 'Extension',
   howto: 'How to use',
-  about: 'Data and copyright',
+  about: 'Privacy and data',
   feedback: 'Feedback',
+  'self-host': 'Self-host',
 }
 
 let screen: SetScreen = 'root'
@@ -4924,6 +5044,36 @@ async function copyAgentMcpUrl(button: HTMLButtonElement) {
   }
   button.innerHTML = `${icon('check')}Copied`
   setNote('Server URL copied.')
+  window.setTimeout(() => {
+    if (button.isConnected) button.innerHTML = `${icon('copy')}Copy`
+  }, 2000)
+}
+
+/** The build steps are several lines, so a selection fallback still hands over all of them. */
+async function copySelfHostCommands(button: HTMLButtonElement) {
+  const code = settingsEl.querySelector<HTMLElement>('[data-self-host-command]')
+  if (!code) return
+  let copied = false
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
+    await navigator.clipboard.writeText(SELF_HOST_COMMANDS)
+    copied = true
+  } catch {
+    const selection = window.getSelection()
+    if (selection) {
+      const range = document.createRange()
+      range.selectNodeContents(code)
+      selection.removeAllRanges()
+      selection.addRange(range)
+      try { copied = document.execCommand('copy') } catch { copied = false }
+    }
+  }
+  if (!copied) {
+    setNote('The commands are selected. Copy them with your keyboard.')
+    return
+  }
+  button.innerHTML = `${icon('check')}Copied`
+  setNote('Self-host commands copied.')
   window.setTimeout(() => {
     if (button.isConnected) button.innerHTML = `${icon('copy')}Copy`
   }, 2000)
@@ -5894,6 +6044,8 @@ settingsEl.addEventListener('click', (e) => {
     }
     return
   }
+  const selfHostCopy = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-self-host-copy]')
+  if (selfHostCopy) { void copySelfHostCommands(selfHostCopy); return }
   const agentCopy = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-agents-copy]')
   if (agentCopy) { void copyAgentMcpUrl(agentCopy); return }
   const providerLink = (e.target as HTMLElement).closest<HTMLAnchorElement>('[data-agent-provider]')
@@ -5995,7 +6147,7 @@ void loadBackgrounds()
     renderPitchSeg()
   })
   .catch(() => { /* no database on this device: the shelf stays empty */ })
-backgrounds.subscribe(() => { renderRootValues() })
+backgrounds.subscribe(() => { renderRootValues(); syncPanelPitchMode() })
 
 /* ---------- keyboard ---------- */
 
@@ -6064,7 +6216,11 @@ function syncTop() {
   ;(document.querySelector('[data-top="fit"]') as HTMLButtonElement).disabled = board.isFitView()
 }
 board.onViewChange = syncTop
-store.subscribe(() => { renderOptions(); syncTop(); renderFabs() })
+store.subscribe(() => {
+  if (!syncPanelPitchMode()) renderOptions()
+  syncTop()
+  renderFabs()
+})
 
 // edits flow into the board's saves entry (debounced; created in newBoard)
 let liveSaveTimer: number | undefined
@@ -6785,14 +6941,29 @@ window.addEventListener('online', () => {
   }
 })
 
-function addSharedProject(draft: AgentImportDraft): BoardImportResult {
+function addSharedProject(draft: AgentImportDraft, projectId: string | null): BoardImportResult {
   const source = migrateProject(draft.document)
   if (!source) return { status: 'failed', message: 'This project link is invalid.' }
-  if (!canCreateProject(library, entitlements.hasPaidBoardAccess())) {
-    return { status: 'failed', message: 'Free keeps three projects. Delete one or take a licence before adding this project.' }
+
+  if (projectId) {
+    const index = library.projects.findIndex(project => project.id === projectId)
+    if (index < 0) return { status: 'failed', message: 'That project is no longer available.' }
+    if (projectId === library.currentId) stashEditedBoard()
+    const project = migrateProject(JSON.parse(JSON.stringify(library.projects[index])))!
+    const firstBoardId = appendProjectCopy(project, source)[0]?.id ?? ''
+    if (!saves.persistProjectDocuments([project])) {
+      return { status: 'failed', message: 'The project could not be saved on this device.' }
+    }
+    library.projects[index] = project
+    saveLibrary(library)
+    boardsView.setLibrary(library)
+    return { status: 'added', projectId: project.id, projectName: project.name, boardId: firstBoardId }
   }
-  const project = newProjectFromBoard(source.boards[0], draft.name)
-  source.boards.slice(1).forEach(item => appendBoardCopy(project, item))
+
+  if (!canCreateProject(library, entitlements.hasPaidBoardAccess())) {
+    return { status: 'failed', message: 'Free keeps three projects. Add these boards to an existing project, delete one, or take a licence.' }
+  }
+  const project = newProjectFromProjectCopy(source, draft.name)
   if (!saves.persistProjectDocuments([project])) {
     return { status: 'failed', message: 'The project could not be saved on this device.' }
   }
@@ -6841,11 +7012,14 @@ if (!BOARD_SELF_HOSTED) startAgentImport({
   openSignIn,
   openPro: () => openSettings('pro'),
   openProjects: () => openProjectsScreen(),
-  boardDestinations: () => orderedProjects(library).map(project => ({
-    id: project.id,
-    name: project.name,
-    boardCount: project.boards.length,
-  })),
+  boardDestinations: () => {
+    const readOnly = new Set(saves.projectDocuments().filter(row => row.readOnly).map(row => row.project.id))
+    return orderedProjects(library).filter(project => !readOnly.has(project.id)).map(project => ({
+      id: project.id,
+      name: project.name,
+      boardCount: project.boards.length,
+    }))
+  },
   canCreateProject: () => canCreateProject(library, entitlements.hasPaidBoardAccess()),
   addBoard: addSharedBoard,
   addProject: addSharedProject,

@@ -3,6 +3,7 @@
    neutral, so the board reads as paper on a desk rather than a cream page. */
 :root {
   --bg: #ffffff;
+  --settings-bg: #f5f5f7;
   --bar: #f5f5f7;
   --line: #d2d2d7;
   --ink: #1d1d1f;
@@ -79,6 +80,7 @@
 html[data-theme-resolved="dark"] {
   color-scheme: dark;
   --bg: #000000;
+  --settings-bg: #000000;
   --bar: #1c1c1e;
   --line: #38383a;
   --ink: #f5f5f7;
@@ -1402,6 +1404,18 @@ textarea {
     border-radius: 0;
     padding-top: max(20px, env(safe-area-inset-top));
   }
+  /* iOS leaves the rounded keyboard toolbar partly transparent. Continue the
+     full-screen sheet behind it instead of exposing a strip of the board. */
+  body.kb-open .settingsModal:not(.hidden)::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    height: var(--vvBottom, 0px);
+    background: var(--settings-bg);
+    pointer-events: none;
+  }
 }
 /* ---------- settings: one grouped list, push screens underneath ----------
    No tab grid and no glow: selection reads through weight and ground, the
@@ -1591,6 +1605,52 @@ textarea {
   user-select: text;
   -webkit-user-select: text;
 }
+.selfHostSection {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 0 4px;
+}
+.selfHostCode {
+  align-items: flex-start !important;
+  gap: 10px !important;
+}
+.setCodeBlock {
+  display: block;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  padding: 2px 0;
+}
+.selfHostFact {
+  align-items: flex-start !important;
+}
+.selfHostFact > .ic {
+  margin-top: 2px;
+  color: var(--action);
+}
+.selfHostFact .setItemLabel {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.4;
+}
+.selfHostFact code,
+.setNote code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+}
+.selfHostLink {
+  color: var(--action) !important;
+  text-decoration: none;
+}
+.selfHostLink > .ic {
+  width: 16px;
+  height: 16px;
+  color: var(--ink-soft);
+}
+.selfHostBack {
+  margin-top: 14px;
+}
 .sheet .setItemAction.setCopy {
   display: inline-flex;
   align-items: center;
@@ -1599,6 +1659,10 @@ textarea {
   font-weight: 600;
 }
 .sheet .setItemAction.setCopy .ic { width: 16px; height: 16px; }
+@media (max-width: 430px) {
+  .selfHostCode { flex-wrap: wrap; }
+  .selfHostCode .setItemAction { margin-left: auto; }
+}
 .sheet .setProviderAction {
   min-height: 46px;
   padding-left: 45px;
@@ -1843,7 +1907,7 @@ html[data-theme-resolved="dark"] .pitchTile.on .pitchShot { border-color: var(--
 .setSheet {
   /* A settings screen inverts the board's ground: grouped cards in white on
      grey, rather than the board's white with grey chrome. */
-  --bg: #F5F5F7;
+  --bg: var(--settings-bg);
   --bar: #E8E8ED;
   --card: #FFFFFF;
   --line: #D2D2D7;
