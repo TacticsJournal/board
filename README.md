@@ -1,68 +1,48 @@
 # Board
 
-Board is a mobile-friendly editor for football tactics diagrams. Add players, balls, arrows, zones, labels, and a pitch, then export a PNG, GIF, or video.
+The minimal tactics board that is yours.
+
+Board is a mobile-friendly football tactics editor. Plan a training session, make a graphic for an article, or import a broadcast screenshot and draw over it. Use the [hosted Board](https://board.tacticsjournal.com/), self-host it, or change the code to fit how you work.
+
+Board is free and open source. Read [Introducing Board](https://tacticsjournal.com/board/2026/08/26/introducing-board/) for the full tour.
+
+## Use the hosted Board
+
+Open [board.tacticsjournal.com](https://board.tacticsjournal.com/). You can start without an account.
+
+The free hosted Board keeps three projects and three saved boards editable in your browser. Older saved boards remain available read-only. You can export a project file to another device or export a board as a PNG.
+
+The Annual Board License adds every pitch style, custom backgrounds and assets, reusable groups, animation, unlimited editable projects, and copy links on the hosted Board. Pro includes the Board License, cloud sync, real-time collaboration, and links that let Claude, ChatGPT, or another agent work on one project.
+
+## Self-host Board
+
+A self-host build enables every local editing and export feature without a Board License or Pro account. Boards, backgrounds, and uploaded assets stay in that browser profile. Board does not send them to a server.
+
+Self-hosting does not include Tactics Journal accounts, cloud sync, collaboration, billing, or agent links. Those depend on Tactics Journal-operated services. Team search can still contact TheSportsDB and Wikipedia from the browser.
+
+### Run the Docker image
 
 ```bash
 docker run --rm -p 8080:8080 ghcr.io/tacticsjournal/board:latest
 ```
 
-Open <http://localhost:8080> in a browser.
+Open <http://localhost:8080>. The container runs nginx as an unprivileged user on port 8080.
 
-## Features
-
-- Draw players, balls, markers, cones, zones, labels, and straight or curved movement paths.
-- Edit path nodes, group objects, change their stacking order, and rotate, mirror, duplicate, or style a selection, with undo and redo.
-- Use full, half, and side-by-side pitch layouts, or upload a custom background.
-- Organize multiple boards in a project, add board notes, save reusable selections as stamps, and keep a library of custom assets.
-- Convert match screenshots into editable positions with browser-based detection, manual player marking, and four-corner pitch mapping.
-- Export a board as a PNG or export a project as separate images, a GIF, or a video.
-- Use the bundled official 3D View extension to orbit the live editable board through 360 degrees. It is available in hosted and self-hosted builds, and its device setting stays out of board data.
-- Add project instructions and package permission-scoped self-hosted extensions in a self-hosted build. These third-party extensions run in a sandbox and are separate from official extensions.
-- Work with touch, mouse, or keyboard controls in light or dark mode.
-
-## Architecture
-
-Board is a browser-first TypeScript application. The editor uses Konva over the HTML canvas, while the interface is plain TypeScript, HTML, and CSS. Vite compiles both hosted and self-hosted builds.
-
-```text
-Browser
-├── Editor UI and project library
-├── Konva canvas renderer
-├── Screenshot import and media export
-├── localStorage for settings, projects, board state, and custom assets
-└── IndexedDB for uploaded background images
-         │
-         ├── TheSportsDB and Wikipedia, for optional team data
-         └── Hosted Tactics Journal APIs, hosted build only
-
-Vite self-host build → static dist/ → nginx, Docker, or another static server
-```
-
-The self-hosted build needs no application server or database. Its data stays in the browser profile. `backend/main.py` is an optional FastAPI homography experiment; the browser already performs that mapping itself.
-
-The main implementation is split by responsibility under `src/`: `board.ts` owns canvas interaction and rendering, `main.ts` assembles the interface and workflows, `store.ts` manages editor state, and the import, export, persistence, sync, and extension modules remain separate. Node's built-in test runner covers the application logic, with Playwright scripts for browser flows.
-
-## Run locally
-
-Docker is the easiest local install. The container listens as an unprivileged user on port 8080.
-
-From a checkout that includes `compose.yaml`, run:
+A checkout also includes a hardened Compose configuration:
 
 ```bash
 docker compose up
 ```
 
-Then open <http://localhost:8080>. Stop it with `Ctrl-C`.
+Compose binds Board to `127.0.0.1:8080`. Stop it with `Ctrl-C`.
 
-The self-hosted app keeps boards and uploaded files in the browser's local storage and IndexedDB. They stay in that browser profile. A container restart does not create a server-side backup.
+### Serve a release archive
 
-A self-hosted copy does not include Tactics Journal accounts, Pro entitlements, cloud sync, collaboration, agent links, billing, or the hosted service APIs. Team search can still contact TheSportsDB and Wikipedia from the browser. Those services can be blocked by a network or change their terms.
+Download the latest `.zip` or `.tar.gz` from [GitHub releases](https://github.com/TacticsJournal/board/releases). Verify it against `SHA256SUMS`, extract it, and serve the extracted directory with any static web server.
 
-## Prebuilt archive
+The server must fall back to `index.html` for application routes. Use HTTPS for a public deployment. Keep the included `LICENSE`, `TRADEMARKS.md`, `THIRD_PARTY_NOTICES.md`, and `README.md` files with a redistributed copy.
 
-Download the latest `.zip` or `.tar.gz` archive from [GitHub releases](https://github.com/TacticsJournal/board/releases). Extract it and serve the extracted directory with a web server that falls back to `index.html` for application routes. Keep the included `LICENSE`, `TRADEMARKS.md`, `THIRD_PARTY_NOTICES.md`, and `README.md` files with the site.
-
-For a quick local check only, extract the archive and serve the files with Python:
+For a local check:
 
 ```bash
 mkdir extracted-board
@@ -70,54 +50,96 @@ tar -xzf tacticsjournal-board-0.1.1.tar.gz -C extracted-board
 python3 -m http.server 8080 --directory extracted-board
 ```
 
-A production deployment should use HTTPS and the security settings of its web server. Do not add HSTS unless the site is always served over HTTPS.
+### Build from source
 
-## Build from source
-
-Use Node 24. The repository records this in [.nvmrc](.nvmrc).
+Use Node 24. The repository records the version in [.nvmrc](.nvmrc).
 
 ```bash
-nvm install
-nvm use
-npm ci
+git clone https://github.com/TacticsJournal/board.git
+cd board
+npm install
 npm run build:self-hosted
 ```
 
-The self-host bundle is in `dist/`. Check it with:
+Serve the generated `dist/` directory on localhost or your own HTTPS domain. For local development with Vite:
 
 ```bash
-npm run preview
+BOARD_SELF_HOSTED=true npm run dev
 ```
 
-The Vite preview server listens on all interfaces. Do not expose it to an untrusted network.
+The Vite development and preview servers listen on all interfaces. Do not expose them to an untrusted network.
 
-For the full test suite and both production bundles:
+## Features
+
+- Add players, the ball, arrows, zones, text, cones, goals, icons, a score, a clock, a date, and team details.
+- Load a real squad with its kit colors or start from a blank pitch.
+- Use horizontal, vertical, live, training, and two-pitch layouts, or draw over your own background.
+- Group objects, save reusable selections, add custom assets, and keep notes with each board.
+- Copy boards into a sequence, set the time between them, and export the project as separate images, a GIF, or a video.
+- Import a match screenshot, detect or mark player positions, set the four pitch corners, and map the positions onto a clean board.
+- Edit with touch, mouse, or keyboard controls in light or dark mode.
+- Use the bundled 3D View extension to orbit the live editable board through 360 degrees.
+
+## Skills and extensions
+
+A Skill is a set of project instructions for an agent. It can define your terminology, the meaning of an arrow style, or how you structure a training session.
+
+Official extensions are reviewed, bundled with Board, and available in hosted and self-hosted builds. Third-party extensions run only in self-host builds. They use a sandbox and ask for `board:read` or `board:write` access before they can work on a project.
+
+To try the included formation generator:
 
 ```bash
+mkdir -p public/extensions/formation-generator
+cp examples/extensions/formation-generator/index.html public/extensions/formation-generator/index.html
+npm run build:self-hosted
+```
+
+Each extension is one `index.html` file under `public/extensions/<safe-name>/`. A project can enable up to ten extensions. Read [the extension guide](docs/extensions.md) before writing one.
+
+## How it works
+
+Board is a browser-first TypeScript application. Konva renders and edits the board on an HTML canvas. Plain TypeScript, HTML, and CSS make up the interface, and Vite compiles the hosted and self-hosted builds.
+
+```text
+Browser
+├── Editor and project library
+├── Konva canvas renderer
+├── Screenshot import and media export
+├── localStorage for project data and settings
+└── IndexedDB for uploaded images
+         │
+         ├── TheSportsDB and Wikipedia for optional team data
+         └── Tactics Journal APIs in the hosted build only
+
+Vite self-host build → static dist/ → nginx, Docker, or another static server
+```
+
+A self-host installation needs no application server or database. `backend/main.py` is an optional FastAPI homography experiment. The browser already performs the same pitch mapping itself.
+
+The main code lives under `src/`. `board.ts` owns canvas interaction and rendering, `main.ts` assembles the interface and workflows, and `store.ts` manages editor state. Separate modules handle import, export, persistence, sync, and extensions.
+
+## Develop
+
+```bash
+npm ci
 npm test
 npm run build
 npm run build:self-hosted
 ```
 
-To create release archives and checksums after installing `zip` and `tar`:
+Node's built-in test runner covers application logic. Playwright scripts cover browser flows. To build versioned release archives and checksums after installing `zip` and `tar`:
 
 ```bash
 bash scripts/package-release.sh
 ```
 
-The archives are written to `release/` and use the version from `package.json`.
+The script writes the archives to `release/` and reads the version from `package.json`.
 
-## License boundary
+## License and trademarks
 
-The source code and the original, non-trademark Board artwork in this release are available under the [MIT License](LICENSE). MIT does not grant rights to use Tactics Journal or Tactics Board names, logos, or other reserved marks. Read [TRADEMARKS.md](TRADEMARKS.md) before publishing a modified copy.
+Except for identified third-party material, the source code and bundled non-trademark assets are available under the [MIT License](LICENSE). The license does not grant rights to the Tactics Journal or Tactics Board names and logos. Read [TRADEMARKS.md](TRADEMARKS.md) before publishing a modified copy.
 
-Some files and data have separate terms. [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) lists them. In particular:
-
-- `scripts/fixtures/match-real.jpg` is a CC BY-SA 2.0 fixture by Bill Boaden.
-- `public/LICENSE-icons` covers the Tabler icons used by the interface.
-- `public/teams-index.json` contains data copied and modified from TheSportsDB API responses. It includes source credit. Squad data from Wikipedia is requested at runtime and is not bundled.
-
-The release source does not include the unlicensed model, copied runtime files, or broadcast screenshots from earlier private development. Screenshot import uses browser heuristics plus manual mark and corner mapping.
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) lists files and data with separate terms. A self-hosted installation is operated by its owner, not by Tactics Journal.
 
 ## Documentation
 
