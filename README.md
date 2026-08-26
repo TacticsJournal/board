@@ -16,7 +16,8 @@ Open <http://localhost:8080> in a browser.
 - Organize multiple boards in a project, add board notes, save reusable selections as stamps, and keep a library of custom assets.
 - Convert match screenshots into editable positions with browser-based detection, manual player marking, and four-corner pitch mapping.
 - Export a board as a PNG or export a project as separate images, a GIF, or a video.
-- Add project instructions and package permission-scoped local extensions in a self-hosted build.
+- Use the bundled official 3D View extension to orbit the live editable board through 360 degrees. It is available in hosted and self-hosted builds, and its device setting stays out of board data.
+- Add project instructions and package permission-scoped self-hosted extensions in a self-hosted build. These third-party extensions run in a sandbox and are separate from official extensions.
 - Work with touch, mouse, or keyboard controls in light or dark mode.
 
 ## Architecture

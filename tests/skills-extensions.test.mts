@@ -66,10 +66,12 @@ test('extension protocol requires the frame token, has no bundled skills, and gr
   assert.equal(extensionObjects([{ type: 'ball', x: 1, y: 2, size: 20 }])?.length, 1)
 })
 
-test('hosted mode shows Extensions as self-hosted only and has no URL installer', () => {
+test('hosted mode keeps official and self-hosted extensions separate', () => {
   const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
   const runtime = readFileSync(new URL('../src/extension-runtime.ts', import.meta.url), 'utf8')
-  assert.match(main, /<span class="setItemLabel">Skills<\/span>/)
+  assert.match(main, /<span class="setItemLabel">Skills and Extensions<\/span>/)
+  assert.match(main, /<h3 class="skillsHeading">Official extensions<\/h3>/)
+  assert.match(main, /data-official-list/)
   assert.match(main, /BOARD_SELF_HOSTED \? `<div class="skillsSection">/)
   assert.match(main, /skillsSectionUnavailable" aria-disabled="true"/)
   assert.match(main, /<span class="setItemValue">Self-hosted only<\/span>/)

@@ -1,6 +1,14 @@
-# Self-host extensions
+# Extensions
 
-Extensions are available only in a self-host build. The hosted board at board.tacticsjournal.com supports Skills, not third-party extensions.
+## Official extensions
+
+Official extensions are reviewed first-party modules bundled with Board. They run in hosted and self-hosted builds and may use only the narrow host methods declared in `src/extensions/official/types.ts`. The registry is `src/extensions/official/registry.ts`.
+
+3D View is the first official extension. It contributes the cube control to the top toolbar and uses Board's live Konva camera, so editing, undo, autosave, and export continue to use the same scene. Its enablement and camera mode are device preferences, not board content.
+
+## Self-host extensions
+
+Third-party extensions are available only in a self-host build. The hosted board at board.tacticsjournal.com supports official extensions and Skills, but does not execute third-party extension files.
 
 An administrator adds a static extension at `public/extensions/<safe-name>/index.html` and rebuilds. Names use lowercase letters, numbers, and single hyphens. The build ignores other names, files without `index.html`, and links that resolve outside `public/extensions`.
 

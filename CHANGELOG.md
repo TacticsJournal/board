@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Added the official 3D View extension with full-circle mouse and touch orbit controls, camera zoom, and the editable live board.
+- Added a bundled official extension registry separate from sandboxed self-hosted extensions.
+
 ## [0.1.1] - 2026-08-26
 
 - Added a prebuilt Docker image, Compose configuration, and versioned self-host release archives.

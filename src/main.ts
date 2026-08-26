@@ -52,6 +52,7 @@ import {
 import { sceneShapesSvg } from './saves'
 import { icon } from './icons'
 import { ExtensionRuntime, type ExtensionManifest } from './extension-runtime'
+import { OfficialExtensions } from './extensions/official/manager.ts'
 import { BOARD_EXTENSION_PATHS, BOARD_SELF_HOSTED } from './build-mode.ts'
 import { addUserSkill, deleteSkill, installExtension, loadProjectSkillsState, mergeSyncedSkills, newUserSkill, removeExtension, saveProjectSkillsState, saveSkill, setExtensionEnabled, skillsForSync, type ProjectSkillsState, type Skill } from './skills-extensions'
 import { BoardsView, type AddBoardUpload } from './boards-view'
@@ -751,7 +752,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </div>
   </header>
   <div class="actionRow">
-    <span class="actGroup">
+    <span class="actGroup" data-ext-toolbar>
       <button class="iconBtn" data-top="snap" id="snapBtn" aria-label="Snap to grid" title="Snap to grid">${ICONS.magnet}</button>
       <button class="iconBtn" data-top="export" aria-label="Share" title="Share and export" aria-haspopup="dialog" aria-expanded="false" aria-controls="shareMenu">${ICONS.export}</button>
       <button class="iconBtn" data-top="fit" aria-label="Fit view" title="Fit view (F)">${ICONS.fit}</button>
@@ -775,7 +776,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div class="workArea" id="workArea">
     <main class="stageWrap">
       <div class="ctxDock" id="ctxDock"></div>
-      <div class="boardArea"><div id="stage"></div><div class="liveEditChip" role="status" aria-live="polite" aria-atomic="true"></div></div>
+      <div class="boardArea">
+        <div id="stage"></div>
+        <button class="boardReset" id="boardReset" type="button" aria-label="Reset 3D camera" title="Reset 3D camera">Reset</button>
+        <p class="boardHint" id="boardHint" role="status" aria-live="polite"></p>
+        <div class="liveEditChip" role="status" aria-live="polite" aria-atomic="true"></div>
+      </div>
       <div class="fabCol hidden" id="fabCol">
         <span class="fabPair">
           <button class="fab" data-act="front" aria-label="Move forward" title="Move forward">${ICONS.front}</button>
@@ -1943,6 +1949,12 @@ function syncPanelHeight() {
   board.bottomInset = h
 }
 
+// Turning the phone changes how much of the panel the board loses without
+// re-rendering it, so the inset has to be re-measured or the next fit centres
+// the pitch in a space that no longer exists.
+window.addEventListener('resize', syncPanelHeight)
+window.addEventListener('orientationchange', () => window.setTimeout(syncPanelHeight, 120))
+
 /**
  * Styles follows the selection. Picking something on the board opens the room
  * that restyles it, and letting it go puts the panel away and gives the room
@@ -2984,6 +2996,29 @@ function exportPng() {
   }
   download(filename, url)
 }
+
+/* ---------- the 3D view host ----------
+   Board keeps the camera, renderer and editing code. The official extension
+   gets only these view calls, and owns the preference and toolbar control. */
+const boardResetBtn = document.querySelector<HTMLButtonElement>('#boardReset')!
+const boardHintEl = document.querySelector<HTMLParagraphElement>('#boardHint')!
+const coarsePointer = window.matchMedia('(pointer: coarse)').matches
+boardHintEl.textContent = coarsePointer ? 'Drag to orbit · pinch to zoom' : 'Drag to orbit · scroll to zoom'
+board.onCameraGesture = () => { boardHintEl.classList.add('used') }
+boardResetBtn.addEventListener('click', () => {
+  board.reset3DCamera()
+  boardHintEl.classList.add('used')
+})
+
+const officialExtensions = new OfficialExtensions({
+  host: {
+    set3D: on => board.set3D(on),
+    is3D: () => board.is3D(),
+    reset3DCamera: () => board.reset3DCamera(),
+  },
+  toolbar: document.querySelector<HTMLElement>('[data-ext-toolbar]')!,
+})
+officialExtensions.start()
 
 document.querySelector('.actionRow')!.addEventListener('click', (e) => {
   const btn = (e.target as HTMLElement).closest('button')
@@ -4181,7 +4216,7 @@ settingsEl.innerHTML = `
       <div class="setGroup">
         <button class="setItem" data-goto="skills">
           ${icon('puzzle')}
-          <span class="setItemLabel">Skills</span>
+          <span class="setItemLabel">Skills and Extensions</span>
           ${icon('chevron-right', 'ic setChev')}
         </button>
         ${BOARD_SELF_HOSTED ? '' : `<button class="setItem" data-goto="agents">
@@ -4334,24 +4369,30 @@ settingsEl.innerHTML = `
         <button class="skillsButton" type="button" data-skills-action="create">Create a skill</button>
         <p class="setNote">For example, a skill can tell an agent to always use dashed arrows for defensive runs.</p>
       </div>
+      <div class="skillsSection">
+        <h3 class="skillsHeading">Official extensions</h3>
+        <p class="skillsIntro">Bundled with Board and available on hosted and self-hosted builds. These controls stay on this device.</p>
+        <div class="setGroup" data-official-list></div>
+      </div>
       ${BOARD_SELF_HOSTED ? `<div class="skillsSection">
-        <h3 class="skillsHeading">Extensions</h3>
-        <p class="skillsIntro">Extensions come from this self-host build. They stay on this device and project.</p>
+        <h3 class="skillsHeading">Self-hosted extensions</h3>
+        <p class="skillsIntro">Your own extensions run in a sandbox and stay on this device and project.</p>
         <div class="setGroup" data-extensions-list></div>
         <div class="setGroup" data-extension-paths-list></div>
       </div>` : `<div class="skillsSection skillsSectionUnavailable" aria-disabled="true">
-        <h3 class="skillsHeading">Extensions</h3>
-        <p class="skillsIntro">Available only when you self-host Board.</p>
+        <h3 class="skillsHeading">Self-hosted extensions</h3>
+        <p class="skillsIntro">Your own sandboxed extensions are available only when you self-host Board.</p>
         <div class="setGroup">
           <div class="setItem setItemStatic">
             ${icon('puzzle')}
-            <span class="setItemLabel">Extensions</span>
+            <span class="setItemLabel">Self-hosted extensions</span>
             <span class="setItemValue">Self-hosted only</span>
           </div>
         </div>
       </div>`}
     </div>
     <div class="setPane hidden" data-pane="skill"></div>
+    <div class="setPane hidden" data-pane="official"></div>
     ${BOARD_SELF_HOSTED ? '<div class="setPane hidden" data-pane="extension"></div>' : ''}
     <div class="setPane hidden" data-pane="feedback">
       <div class="feedbackIntro">
@@ -4433,7 +4474,7 @@ settingsEl.querySelector('[data-pane="teams"]')!.appendChild(teams.el)
 settingsEl.querySelector('[data-saves-host]')!.appendChild(saves.el)
 
 /** Settings is one list plus push screens; every screen but root has a back arrow. */
-type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'pro' | 'agents' | 'skills' | 'skill' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets'
+type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'pro' | 'agents' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets'
 
 const SCREEN_TITLES: Record<SetScreen, string> = {
   root: 'Settings',
@@ -4445,6 +4486,7 @@ const SCREEN_TITLES: Record<SetScreen, string> = {
   agents: 'Claude and ChatGPT',
   skills: 'Skills',
   skill: 'Skill',
+  official: 'Official extension',
   extension: 'Extension',
   howto: 'How to use',
   about: 'Data and copyright',
@@ -4455,6 +4497,7 @@ let screen: SetScreen = 'root'
 let pitchUndoDepth: number | null = null
 let editingSkillId: string | null = null
 let editingSkillDraft: Skill | null = null
+let openOfficialId: string | null = null
 let editingExtensionId: string | null = null
 let pendingExtensionPath: string | null = null
 let pendingExtensionManifest: ExtensionManifest | null = null
@@ -4469,6 +4512,7 @@ function renderSkillsScreen(): void {
   const state = projectSkills()
   const skills = settingsEl.querySelector<HTMLElement>('[data-skills-list]')!
   skills.innerHTML = state.skills.length ? state.skills.map(skill => `<button class="setItem" data-skills-open="${esc(skill.id)}"><span class="setItemLabel">${esc(skill.name)}</span><span class="setItemValue">${skill.enabled ? 'On' : 'Off'}</span>${icon('chevron-right', 'ic setChev')}</button>`).join('') : '<div class="skillsEmpty">No skills yet.</div>'
+  renderOfficialList()
   if (BOARD_SELF_HOSTED) {
     const extensions = settingsEl.querySelector<HTMLElement>('[data-extensions-list]')!
     const paths = settingsEl.querySelector<HTMLElement>('[data-extension-paths-list]')!
@@ -4478,6 +4522,35 @@ function renderSkillsScreen(): void {
     paths.innerHTML = available.length ? `<p class="skillsIntro">Available on this deployment</p>${available.map(path => `<button class="setItem" data-extension-path="${esc(path)}"><span class="setItemLabel">${esc(path)}</span>${icon('chevron-right', 'ic setChev')}</button>`).join('')}` : '<div class="skillsEmpty">No extension directories in this build.</div>'
   }
   void pullCurrentSkills().then(changed => { if (changed && screen === 'skills') renderSkillsScreen() })
+}
+
+function renderOfficialList(): void {
+  const host = settingsEl.querySelector<HTMLElement>('[data-official-list]')
+  if (!host) return
+  host.innerHTML = officialExtensions.list().map(extension =>
+    `<button class="setItem" data-official-open="${esc(extension.id)}"><span class="setItemLabel">${esc(extension.name)}</span><span class="setItemValue">${officialExtensions.isEnabled(extension.id) ? 'On' : 'Off'}</span>${icon('chevron-right', 'ic setChev')}</button>`,
+  ).join('')
+}
+
+function renderOfficialDetail(): void {
+  const extension = openOfficialId ? officialExtensions.info(openOfficialId) : null
+  if (!extension) { showScreen('skills'); return }
+  const enabled = officialExtensions.isEnabled(extension.id)
+  const pane = settingsEl.querySelector<HTMLElement>('[data-pane="official"]')!
+  pane.innerHTML = `<div class="extensionDetail">
+    <p class="officialName"><strong>${esc(extension.name)}</strong> <span class="officialVersion">${esc(extension.version)}</span></p>
+    <p class="setNote officialBy">Official extension · by ${esc(extension.author)}</p>
+    <p>${esc(extension.description)}</p>
+    <label class="skillsToggle">Use on this device<input type="checkbox" data-official-enabled ${enabled ? 'checked' : ''}></label>
+    <p class="setNote">${enabled ? 'Its control is on the board now. Turning it off removes it and returns the board to 2D.' : 'Turn it on to add its control to the board.'}</p>
+  </div>`
+}
+
+function openOfficialDetail(id: string): void {
+  if (!officialExtensions.info(id)) return
+  openOfficialId = id
+  renderOfficialDetail()
+  showScreen('official')
 }
 
 function renderSkillDetail(): void {
@@ -4671,6 +4744,7 @@ function showScreen(next: SetScreen) {
   }
   if (next === 'agents') renderAgentSettings()
   if (next === 'skills') renderSkillsScreen()
+  if (next === 'official') renderOfficialDetail()
   if (next === 'skill') renderSkillDetail()
   if (next === 'feedback') prefillFeedback()
 }
@@ -5712,6 +5786,8 @@ settingsEl.addEventListener('click', (e) => {
   }
   const skillOpen = (e.target as HTMLElement).closest<HTMLElement>('[data-skills-open]')
   if (skillOpen) { editingSkillDraft = null; editingSkillId = skillOpen.dataset.skillsOpen || null; renderSkillDetail(); showScreen('skill'); return }
+  const officialOpen = (e.target as HTMLElement).closest<HTMLElement>('[data-official-open]')
+  if (officialOpen?.dataset.officialOpen) { openOfficialDetail(officialOpen.dataset.officialOpen); return }
   const extensionOpen = (e.target as HTMLElement).closest<HTMLElement>('[data-extension-open]')
   if (BOARD_SELF_HOSTED && extensionOpen) { openExtensionDetail(extensionOpen.dataset.extensionOpen || null); return }
   const extensionPath = (e.target as HTMLElement).closest<HTMLElement>('[data-extension-path]')
@@ -5830,7 +5906,7 @@ settingsEl.addEventListener('click', (e) => {
     setNote('')
     disposeExtensionRuntime()
     if (screen === 'skill') editingSkillDraft = null
-    showScreen(screen === 'skill' || screen === 'extension' ? 'skills' : 'root')
+    showScreen(screen === 'skill' || screen === 'extension' || screen === 'official' ? 'skills' : 'root')
   }
   else if (k === 'theme-system') applyThemeChoice('system')
   else if (k === 'theme-light') applyTheme(false)
@@ -5861,6 +5937,12 @@ settingsEl.addEventListener('submit', (e) => {
 })
 settingsEl.addEventListener('change', (e) => {
   const input = e.target as HTMLInputElement
+  if (input.matches('[data-official-enabled]') && openOfficialId) {
+    officialExtensions.setEnabled(openOfficialId, input.checked)
+    renderOfficialDetail()
+    renderOfficialList()
+    return
+  }
   if (input.matches('[data-extension-enabled]') && editingExtensionId) {
     saveSkills(setExtensionEnabled(projectSkills(), editingExtensionId, input.checked), false)
     if (!input.checked) disposeExtensionRuntime()
@@ -6771,4 +6853,4 @@ if (!BOARD_SELF_HOSTED) startAgentImport({
 })
 
 // debugging/testing handle
-;(window as any).__tbm = { store, board, importer, saves, entitlements, backgrounds, pitchById }
+;(window as any).__tbm = { store, board, importer, saves, entitlements, backgrounds, pitchById, officialExtensions }
