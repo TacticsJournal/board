@@ -8,6 +8,39 @@ docker run --rm -p 8080:8080 ghcr.io/tacticsjournal/board:latest
 
 Open <http://localhost:8080> in a browser.
 
+## Features
+
+- Draw players, balls, markers, cones, zones, labels, and straight or curved movement paths.
+- Edit path nodes, group objects, change their stacking order, and rotate, mirror, duplicate, or style a selection, with undo and redo.
+- Use full, half, and side-by-side pitch layouts, or upload a custom background.
+- Organize multiple boards in a project, add board notes, save reusable selections as stamps, and keep a library of custom assets.
+- Convert match screenshots into editable positions with browser-based detection, manual player marking, and four-corner pitch mapping.
+- Export a board as a PNG or export a project as separate images, a GIF, or a video.
+- Add project instructions and package permission-scoped local extensions in a self-hosted build.
+- Work with touch, mouse, or keyboard controls in light or dark mode.
+
+## Architecture
+
+Board is a browser-first TypeScript application. The editor uses Konva over the HTML canvas, while the interface is plain TypeScript, HTML, and CSS. Vite compiles both hosted and self-hosted builds.
+
+```text
+Browser
+├── Editor UI and project library
+├── Konva canvas renderer
+├── Screenshot import and media export
+├── localStorage for settings, projects, board state, and custom assets
+└── IndexedDB for uploaded background images
+         │
+         ├── TheSportsDB and Wikipedia, for optional team data
+         └── Hosted Tactics Journal APIs, hosted build only
+
+Vite self-host build → static dist/ → nginx, Docker, or another static server
+```
+
+The self-hosted build needs no application server or database. Its data stays in the browser profile. `backend/main.py` is an optional FastAPI homography experiment; the browser already performs that mapping itself.
+
+The main implementation is split by responsibility under `src/`: `board.ts` owns canvas interaction and rendering, `main.ts` assembles the interface and workflows, `store.ts` manages editor state, and the import, export, persistence, sync, and extension modules remain separate. Node's built-in test runner covers the application logic, with Playwright scripts for browser flows.
+
 ## Run locally
 
 Docker is the easiest local install. The container listens as an unprivileged user on port 8080.
