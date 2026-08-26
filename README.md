@@ -1,12 +1,12 @@
-# Tactics Journal Board
+# Board
+
+Board is a mobile-friendly editor for football tactics diagrams. Add players, balls, arrows, zones, labels, and a pitch, then export a PNG, GIF, or video.
 
 ```bash
 docker run --rm -p 8080:8080 ghcr.io/tacticsjournal/board:latest
 ```
 
 Open <http://localhost:8080> in a browser.
-
-Tactics Journal Board is a mobile-friendly editor for football tactics diagrams. Add players, balls, arrows, zones, labels, and a pitch, then export a PNG, GIF, or video.
 
 ## Run locally
 
