@@ -91,11 +91,6 @@ jobs:
           test -n "$digest"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
-      - name: Make the container public
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh api --method PATCH /orgs/TacticsJournal/packages/container/board -f visibility=public
-
       - name: Generate image provenance attestation
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
         with:
@@ -107,7 +102,29 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          version="${GITHUB_REF_NAME#v}"
+          title="Board $version"
           if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+            gh release create "$GITHUB_REF_NAME" --title "$title" --generate-notes
+          else
+            gh release edit "$GITHUB_REF_NAME" --title "$title"
           fi
           gh release upload "$GITHUB_REF_NAME" release/*.zip release/*.tar.gz release/SHA256SUMS --clobber
+
+      - name: Verify the container is public
+        run: |
+          package_url="https://github.com/orgs/TacticsJournal/packages/container/board/settings"
+          token_url="https://ghcr.io/token?service=ghcr.io&scope=repository:tacticsjournal/board:pull"
+          if ! response="$(curl --silent --show-error --fail "$token_url")"; then
+            echo "::error::ghcr.io/tacticsjournal/board is private. Set its visibility to Public at $package_url"
+            exit 1
+          fi
+          token="$(jq -r '.token // empty' <<<"$response")"
+          if [[ -z "$token" ]]; then
+            echo "::error::GHCR did not issue an anonymous pull token. Check package visibility at $package_url"
+            exit 1
+          fi
+          curl --silent --show-error --fail \
+            --header "Authorization: Bearer $token" \
+            --header "Accept: application/vnd.oci.image.index.v1+json" \
+            "https://ghcr.io/v2/tacticsjournal/board/manifests/latest" >/dev/null
