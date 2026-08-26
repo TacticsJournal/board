@@ -151,16 +151,14 @@ async function seedPlayer(page) {
 
 /* ---------- desktop, mouse ---------- */
 await run('desktop', { width: 1280, height: 900 }, false, async (page) => {
-  check(await page.getAttribute(TILT_BUTTON, 'aria-pressed') === 'false', 'desktop: 2D is the default')
-  check(await page.evaluate(() => window.__tbm.officialExtensions.isEnabled('3d-view') === true), 'desktop: 3D View is enabled by default')
+  check(await page.evaluate(() => !window.__tbm.board.is3D()), 'desktop: 2D is the default')
+  check(await page.evaluate(() => window.__tbm.officialExtensions.isEnabled('3d-view') === false), 'desktop: 3D View is disabled by default')
+  check(await page.locator(TILT_BUTTON).count() === 0, 'desktop: a disabled extension adds no top tool')
+  await page.evaluate(() => window.__tbm.officialExtensions.setEnabled('3d-view', true))
   check(await page.evaluate(() => {
     const b = document.querySelector('[data-ext-action="3d-view:tilt"]')
     return !!b && b.getAttribute('aria-label')?.includes('3D') && !!b.title
-  }), 'desktop: the toggle is labelled and has a tooltip')
-  await page.evaluate(() => window.__tbm.officialExtensions.setEnabled('3d-view', false))
-  check(await page.evaluate(() => !document.querySelector('[data-ext-action="3d-view:tilt"]') && !window.__tbm.board.is3D()), 'desktop: disabling removes the control and returns to 2D')
-  await page.evaluate(() => window.__tbm.officialExtensions.setEnabled('3d-view', true))
-  check(await page.locator(TILT_BUTTON).count() === 1, 'desktop: re-enabling restores the control')
+  }), 'desktop: enabling adds the labelled top tool')
 
   await seedPlayer(page)
   await enter3D(page, 'desktop')
@@ -384,6 +382,9 @@ await run('desktop', { width: 1280, height: 900 }, false, async (page) => {
 
 /* ---------- phone, touch ---------- */
 await run('phone', { width: 390, height: 844 }, true, async (page) => {
+  check(await page.locator(TILT_BUTTON).count() === 0, 'phone: 3D View is disabled by default')
+  await page.evaluate(() => window.__tbm.officialExtensions.setEnabled('3d-view', true))
+  check(await page.locator(TILT_BUTTON).count() === 1, 'phone: enabling adds the top tool')
   await seedPlayer(page)
   await enter3D(page, 'phone')
 

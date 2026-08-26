@@ -37,14 +37,14 @@ test('3D View is registered as a bundled official extension', () => {
   assert.equal('activate' in officialExtensionList()[0], false)
 })
 
-test('a device with no official state enables every bundled extension', () => {
+test('a device with no official state keeps bundled extensions disabled', () => {
   const values = new Map<string, string>()
   const storage = {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => { values.set(key, value) },
   } as unknown as Storage
-  assert.deepEqual(defaultOfficialExtensionState(OFFICIAL_EXTENSION_IDS).enabled, [THREE_D_VIEW_ID])
-  assert.deepEqual(loadOfficialExtensionState(OFFICIAL_EXTENSION_IDS, storage).enabled, [THREE_D_VIEW_ID])
+  assert.deepEqual(defaultOfficialExtensionState(OFFICIAL_EXTENSION_IDS).enabled, [])
+  assert.deepEqual(loadOfficialExtensionState(OFFICIAL_EXTENSION_IDS, storage).enabled, [])
   values.set(OFFICIAL_EXTENSIONS_KEY, JSON.stringify({ version: 1, enabled: [] }))
   assert.deepEqual(loadOfficialExtensionState(OFFICIAL_EXTENSION_IDS, storage).enabled, [])
 })

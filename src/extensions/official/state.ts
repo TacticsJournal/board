@@ -18,8 +18,8 @@ export function normalizeOfficialExtensionState(raw: unknown, known: readonly st
   return { version: 1, enabled: known.filter(id => wanted.has(id)) }
 }
 
-export function defaultOfficialExtensionState(known: readonly string[]): OfficialExtensionState {
-  return { version: 1, enabled: [...known] }
+export function defaultOfficialExtensionState(_known: readonly string[]): OfficialExtensionState {
+  return { version: 1, enabled: [] }
 }
 
 export function isOfficialExtensionEnabled(state: OfficialExtensionState, id: string): boolean {
@@ -34,7 +34,7 @@ export function setOfficialExtensionEnabled(state: OfficialExtensionState, id: s
   return { version: 1, enabled: known.filter(item => next.has(item)) }
 }
 
-/** An absent key is a first-run device, so bundled extensions start enabled. */
+/** An absent key is a first-run device, so bundled extensions start disabled. */
 export function loadOfficialExtensionState(known: readonly string[], storage: Storage | null = safeStorage()): OfficialExtensionState {
   try {
     const stored = storage?.getItem(OFFICIAL_EXTENSIONS_KEY)
