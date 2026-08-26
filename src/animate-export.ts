@@ -95,17 +95,19 @@ async function renderFrames(
 
     for (let i = 0; i < count; i++) {
       const frame = frameAt(project, Math.min(i * step, total))
-      /* the board draws every object it is given, so one still fading in is
-         held back until it is more there than not */
-      offscreen.store.loadScene(frame.enterAlpha >= 0.5 ? frame.scene : {
-        ...frame.scene,
-        objects: frame.scene.objects.filter(o => !frame.arriving.has(o.id)),
-      })
+      offscreen.store.loadScene(frame.scene)
       // A cached custom background reaches Board through a resolved promise.
       // Let that callback assign src before waiting for the image to decode.
       await Promise.resolve()
       await offscreen.board.imagesReady()
-      const shot = offscreen.board.toFrameCanvas(width, frame.view)
+      /* the scene still carries an object the next board drops, and already
+         carries one it adds; the frame's alphas are what take them in and out,
+         so the export dims them exactly as the player does */
+      const alpha = new Map<string, number>()
+      frame.fading.forEach(id => alpha.set(id, frame.exitAlpha))
+      frame.arriving.forEach(id => alpha.set(id, frame.enterAlpha))
+      frame.riding.forEach(id => alpha.set(id, frame.rideAlpha))
+      const shot = offscreen.board.toFrameCanvas(width, frame.view, alpha)
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, out.width, out.height)
       ctx.drawImage(shot, 0, 0, width, boardH)

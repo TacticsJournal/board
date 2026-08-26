@@ -3751,10 +3751,26 @@ export class Board {
     this.rebuild()
   }
 
-  toFrameCanvas(width: number, view?: { x: number; y: number; w: number; h: number }): HTMLCanvasElement {
+  /**
+   * `opacity` dims individual objects for this capture alone — an animation
+   * export uses it to fade an object out as the next board drops it, the way
+   * the player does. Every entry is put back before the canvas is returned.
+   */
+  toFrameCanvas(
+    width: number,
+    view?: { x: number; y: number; w: number; h: number },
+    opacity?: Map<string, number>,
+  ): HTMLCanvasElement {
     // Captures are always the durable local board, never a translucent local
     // layer under a received visual frame.
     this.clearRemotePreview()
+    const dimmed: { node: Konva.Node; was: number }[] = []
+    opacity?.forEach((value, id) => {
+      const node = this.objLayer.findOne(`#${id}`)
+      if (!node) return
+      dimmed.push({ node, was: node.opacity() })
+      node.opacity(Math.max(0, Math.min(1, value)))
+    })
     const prevScale = this.stage.scale()
     const prevPos = this.stage.position()
     const prevSize = this.stage.size()
@@ -3773,6 +3789,7 @@ export class Board {
     this.stage.position(prevPos)
     this.uiLayer.visible(true)
     this.noteLayer.visible(true)
+    for (const { node, was } of dimmed) node.opacity(was)
     return canvas
   }
 
