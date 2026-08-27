@@ -1,10 +1,32 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
 import { discoverExtensionPaths, extensionWrapper, isSelfHostedBuild, readExtensionSource } from '../build-config.ts'
+
+test('the build dependencies use the exact locked tool versions', () => {
+  const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const lockfile = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url), 'utf8'))
+  const expected = { typescript: '6.0.3', vite: '8.0.16' }
+  for (const [name, version] of Object.entries(expected)) {
+    assert.equal(packageJson.devDependencies[name], version)
+    assert.equal(lockfile.packages[''].devDependencies[name], version)
+    assert.equal(lockfile.packages[`node_modules/${name}`].version, version)
+  }
+})
+
+test('the production and extension header rules do not combine their policies', () => {
+  const headers = readFileSync(new URL('../public/_headers', import.meta.url), 'utf8')
+  assert.doesNotMatch(headers, /connect-src[^\n]*billing-sandbox\.tacticsjournal\.pages\.dev/)
+
+  const extensionRule = headers.match(/\/extensions\/\*[\s\S]*?(?=\n\/models\/\*|$)/)?.[0] ?? ''
+  assert.match(extensionRule, /  ! X-Frame-Options\n  X-Frame-Options: SAMEORIGIN/)
+  assert.match(extensionRule, /  ! Content-Security-Policy\n  Content-Security-Policy: default-src 'none'/)
+  assert.equal((extensionRule.match(/^  X-Frame-Options:/gm) ?? []).length, 1)
+  assert.equal((extensionRule.match(/^  Content-Security-Policy:/gm) ?? []).length, 1)
+})
 
 test('self-host mode requires BOARD_SELF_HOSTED=true exactly', () => {
   assert.equal(isSelfHostedBuild('true'), true)

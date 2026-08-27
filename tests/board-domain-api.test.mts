@@ -45,10 +45,25 @@ test('a short board page publishes its board preview as social metadata', async 
 })
 
 test('OAuth discovery fails as JSON instead of falling through to the Board app', async () => {
-  const response = rejectOAuthDiscovery()
+  const response = rejectOAuthDiscovery({ request: request('https://board.tacticsjournal.com/.well-known/oauth-authorization-server') })
   assert.equal(response.status, 404)
   assert.equal(response.headers.get('Content-Type'), 'application/json; charset=utf-8')
   assert.match(await response.text(), /OAuth is not configured/)
+})
+
+test('security.txt publishes the Board contact and policy metadata', async () => {
+  const response = rejectOAuthDiscovery({ request: request('https://board.tacticsjournal.com/.well-known/security.txt') })
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('Content-Type'), 'text/plain; charset=utf-8')
+  assert.equal(response.headers.get('Cache-Control'), 'public, max-age=3600')
+  assert.equal(response.headers.get('Access-Control-Allow-Origin'), null)
+  assert.equal(await response.text(), [
+    'Contact: mailto:kyle@tacticsjournal.com',
+    'Canonical: https://board.tacticsjournal.com/.well-known/security.txt',
+    'Preferred-Languages: en',
+    'Expires: 2027-08-27T23:59:59Z',
+    '',
+  ].join('\n'))
 })
 
 test('board proxy has a fixed allowlist and preserves board request shape', async () => {
