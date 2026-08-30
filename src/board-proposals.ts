@@ -562,10 +562,12 @@ export class BoardProposalsPanel {
     const busy = !!this.deciding
     const renamed = review.proposal.name !== review.currentName
     const views: [View, string][] = [['current', 'Current'], ['proposed', 'Proposed'], ['both', 'Side by side']]
-    const toggle = `<div class="propViews" role="group" aria-label="What to show">
-      ${views.map(([value, label]) => `<button class="propView${this.view === value ? ' propViewOn' : ''}"
+    // the same segmented control Settings uses for theme, so the choice of
+    // what is on screen reads as a setting rather than three buttons
+    const toggle = `<span class="setSeg propViews" role="group" aria-label="What to show">
+      ${views.map(([value, label]) => `<button type="button"${this.view === value ? ' class="active"' : ''}
         data-prop="view" data-view="${value}" aria-pressed="${this.view === value}">${label}</button>`).join('')}
-    </div>`
+    </span>`
     const summary = `<div class="propSummary">
       <span>${esc(changeSummary(changes))}</span>
       ${renamed ? `<span class="propRenamed">Renamed to "${esc(review.proposal.name)}"</span>` : ''}
@@ -580,7 +582,7 @@ export class BoardProposalsPanel {
           <button class="setItemAction" data-prop="cancel"${busy ? ' disabled' : ''}>Cancel</button>
         </span>`
       : `<button class="setItemAction propDo" data-prop="ask"${busy ? ' disabled' : ''}>Accept</button>
-         <button class="setItemAction danger" data-prop="reject"${busy ? ' disabled' : ''}>${this.deciding === 'reject' ? 'Rejecting…' : 'Reject'}</button>`
+         <button class="setItemAction" data-prop="reject"${busy ? ' disabled' : ''}>${this.deciding === 'reject' ? 'Rejecting…' : 'Reject'}</button>`
     return `<div class="propHead">
         <button class="setItemAction" data-prop="back"${busy ? ' disabled' : ''}>All proposals</button>
         ${toggle}

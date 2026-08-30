@@ -2758,19 +2758,7 @@ html[data-theme-resolved="dark"] .mThumb { background: #0a0a0a; }
 
 .propHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 /* the three views are one control: which of the two versions is on screen */
-.propViews { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.propView {
-  font: inherit;
-  font-size: 12.5px;
-  padding: 4px 10px;
-  background: transparent;
-  color: var(--ink-soft);
-  border: 0;
-  border-left: 1px solid var(--line);
-  cursor: pointer;
-}
-.propView:first-child { border-left: 0; }
-.propViewOn { background: var(--ink); color: var(--bg); }
+.propViews { flex-wrap: wrap; }
 .propSummary { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--ink-soft); margin-bottom: 12px; }
 .propRenamed { color: var(--ink); }
 .propStaleNote { color: var(--propose); }
