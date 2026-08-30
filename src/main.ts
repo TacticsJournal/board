@@ -5553,7 +5553,7 @@ function renderProBilling() {
   const billed = settingsEl.querySelector('[data-pro-billed]')
   const save = settingsEl.querySelector('[data-pro-save]') as HTMLElement | null
   if (amount) amount.textContent = yearly ? '$12.99' : '$14.99'
-  if (billed) billed.textContent = yearly ? 'Billed yearly at $155.88' : 'Billed monthly at $14.99'
+  if (billed) billed.textContent = yearly ? 'Billed yearly at $155.88' : 'Cancel anytime'
   if (save) save.hidden = !yearly
   for (const button of settingsEl.querySelectorAll('[data-period]')) {
     button.setAttribute('aria-pressed', String(button.getAttribute('data-period') === proBillingPeriod))

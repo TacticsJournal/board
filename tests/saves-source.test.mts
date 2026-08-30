@@ -277,7 +277,7 @@ test('user-facing plan copy names Free and Pro exactly', () => {
   assert.doesNotMatch(main, /Pro · Recommended/)
   assert.match(main, /data-pro-amount>\$12\.99<\/span><span class=\"proCardPer\">\/month/)
   assert.match(main, /yearly \? '\$12\.99' : '\$14\.99'/)
-  assert.match(main, /yearly \? 'Billed yearly at \$155\.88' : 'Billed monthly at \$14\.99'/)
+  assert.match(main, /yearly \? 'Billed yearly at \$155\.88' : 'Cancel anytime'/)
   assert.match(main, /Save \$24 versus monthly/)
   assert.match(main, /buyButton\('Get Pro', 'pro_monthly'\)/)
   assert.match(main, /buyButton\('Get Pro', 'pro_yearly'\)/)
