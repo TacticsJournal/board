@@ -428,7 +428,7 @@ export class BoardsView {
         </div>
         <button class="projOpt" data-proj="rename">${icon('pencil')}<span>Rename</span></button>
         ${actions.history ? `<button class="projOpt" data-proj="history">${icon('history')}<span>Version history</span></button>` : ''}
-        ${actions.proposals ? `<button class="projOpt" data-proj="proposals">${icon('prompt')}<span>Proposals</span>${waiting}</button>` : ''}
+        ${actions.proposals ? `<button class="projOpt" data-proj="proposals">${icon('inbox')}<span>Proposals</span>${waiting}</button>` : ''}
         <button class="projOpt projOptDanger" data-proj="delete"${this.lib.projects.length < 2 ? ' disabled' : ''}>${icon('trash')}<span>Delete</span></button>
       </div>`
     document.body.appendChild(sheet)
