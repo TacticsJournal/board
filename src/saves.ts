@@ -5,6 +5,7 @@ import { nodeSegments, nodesToSvgPath, segmentEndTangent } from './path-nodes'
 import { canCreateAgentLink, hasPaidBoardAccess, isPro } from './entitlements'
 import { boardInvitationsUrl, boardSharesUrl, boardUserSearchUrl } from './board-api'
 import { canCreateSavedBoard, editableBoardNames, savedBoardNamesByRecency, sharedBoardNames, swapEditableSlot, writeSavedBoards } from './saved-board-policy'
+import { canOpenBoardHistory, type BoardHistoryContext } from './board-history'
 import { icon } from './icons'
 import { mountSlidingPills } from './sliding-pill'
 import { getAsset } from './assets'
@@ -453,6 +454,14 @@ export class SavesPanel {
   }
   /** Set by main: offer account backup when an explicit save reaches Free's limit. */
   onFreeLimit: () => void = () => {}
+  /**
+   * Set by main: who this device is signed in as and what they hold. Version
+   * history belongs to owned, synced projects on a Pro account, so the default
+   * grants nothing and the action never appears until main says otherwise.
+   */
+  historyContext: () => BoardHistoryContext = () => ({ pro: false, signedIn: false, selfHosted: true, accountBinding: null })
+  /** Set by main: open the version-history screen for one owned saved project. */
+  onOpenHistory: (target: { id: string; name: string; savedAt: string; accountBinding: string }) => void = () => {}
   /** Set by main: what to call a board saved without anyone naming it. */
   defaultBoardName: () => string = () => ''
 
@@ -499,6 +508,7 @@ export class SavesPanel {
       else if (k === 'load') this.load(btn.dataset.name!)
       else if (k === 'delete') this.remove(btn.dataset.name!)
       else if (k === 'agent-link') void this.createAgentLink(btn.dataset.id!)
+      else if (k === 'history') this.openHistory(btn.dataset.name!)
     })
     window.addEventListener('storage', (event) => {
       if (event.storageArea !== localStorage || event.key !== this.storageKey) return
@@ -1851,6 +1861,24 @@ export class SavesPanel {
     status.textContent = copied ? 'Invite link copied. It works once.' : 'Copy this link. It works once.'
   }
 
+  /** Say something in the saved-list status line, where a reader is looking. */
+  announce(message: string): void { this.showStatus(message) }
+
+  /** Move keyboard focus to one saved row's History button, when it still exists. */
+  focusHistoryAction(boardId: string): boolean {
+    const button = this.el.querySelector<HTMLElement>(`[data-sv="history"][data-id="${CSS.escape(boardId)}"]`)
+    button?.focus()
+    return !!button
+  }
+
+  private openHistory(name: string): void {
+    const saved = readAll(this.storageKey)[name]
+    if (!saved?.id) return
+    const locked = !editableBoardNames(readAll(this.storageKey), hasPaidBoardAccess()).has(name)
+    if (!canOpenBoardHistory({ ...saved, locked }, this.historyContext())) return
+    this.onOpenHistory({ id: saved.id, name, savedAt: saved.savedAt, accountBinding: saved.syncAccount! })
+  }
+
   private renderList() {
     const all = readAll(this.storageKey)
     const names = savedBoardNamesByRecency(all)
@@ -1877,6 +1905,7 @@ export class SavesPanel {
         <span class="saveMeta" data-sv="load" data-name="${safe}"><strong>${safe}</strong><span>${isShared ? `${owner}${readOnly ? ' - read-only' : ''}` : `${dateText} - ${count} objects`}</span></span>
         ${locked || readOnly ? `<span class="saveReadOnly">${icon('lock')}Read-only</span>` : ''}
         ${!locked && canCreateAgentLink() && all[n].id ? `<button class="setItemAction" data-sv="agent-link" data-id="${safeId}">Copy agent link</button>` : ''}
+        ${canOpenBoardHistory({ ...project, locked }, this.historyContext()) ? `<button class="setItemAction" data-sv="history" data-name="${safe}" data-id="${safeId}" aria-label="Version history for ${safe}">History</button>` : ''}
         <button class="setItemAction" data-sv="load" data-name="${safe}">${locked ? 'Open' : 'Load'}</button>
         ${!isShared ? `<button class="setItemAction danger" data-sv="delete" data-name="${safe}" aria-label="Delete ${safe}">${icon('trash')}</button>` : ''}
       </div>`

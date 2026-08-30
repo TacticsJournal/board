@@ -20,6 +20,7 @@ export const boardAgentLinksUrl = () => `${BOARD_API}/agent-links`
 export const boardAgentUrl = () => `${BOARD_API}/agent`
 export const boardLiveUrl = () => `${BOARD_API}/live`
 export const boardCollaborationUrl = () => `${BOARD_API}/collaboration`
+export const boardHistoryUrl = () => `${BOARD_API}/history`
 
 type FetchLike = typeof fetch
 
