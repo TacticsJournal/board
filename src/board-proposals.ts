@@ -145,7 +145,26 @@ export const boardProposalsListUrl = (boardId: string): string =>
 export const boardProposalReviewUrl = (boardId: string, proposalId: string): string =>
   `${boardProposalsListUrl(boardId)}&proposal_id=${encodeURIComponent(proposalId)}`
 
+/** How many proposals wait on each board, by board id. */
+export type BoardProposalCounts = Record<string, number>
+
+/**
+ * The counts, or null when the payload is not a counts answer. A board is
+ * listed only while something waits on it, so a missing key is zero.
+ */
+export function parseBoardProposalCounts(payload: unknown): BoardProposalCounts | null {
+  const counts = (payload as { counts?: unknown } | null)?.counts
+  if (!counts || typeof counts !== 'object' || Array.isArray(counts)) return null
+  const parsed: BoardProposalCounts = {}
+  for (const [boardId, value] of Object.entries(counts as Record<string, unknown>)) {
+    const waiting = typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : 0
+    if (boardId && waiting > 0) parsed[boardId.slice(0, MAX_ID_LENGTH)] = waiting
+  }
+  return parsed
+}
+
 export type BoardProposalsApi = {
+  counts(): Promise<BoardProposalCounts>
   list(boardId: string): Promise<BoardProposal[]>
   review(boardId: string, proposalId: string): Promise<BoardProposalReview>
   accept(boardId: string, proposalId: string): Promise<AcceptedBoard>
@@ -173,6 +192,13 @@ function decide(fetchImpl: typeof fetch, boardId: string, proposalId: string, de
 
 export function createBoardProposalsApi(fetchImpl: typeof fetch = fetch): BoardProposalsApi {
   return {
+    async counts() {
+      const response = await fetchImpl(boardProposalsUrl(), { credentials: 'include' })
+      if (!response.ok) throw await failure(response)
+      const counts = parseBoardProposalCounts(await response.json())
+      if (!counts) throw new Error('The server sent counts this version cannot read.')
+      return counts
+    },
     async list(boardId) {
       const response = await fetchImpl(boardProposalsListUrl(boardId), { credentials: 'include' })
       if (!response.ok) throw await failure(response)

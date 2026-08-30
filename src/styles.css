@@ -3164,6 +3164,46 @@ button.libTitle:focus-visible { outline: 2px solid var(--grip); outline-offset: 
 .projMore { min-height: 26px; padding: 2px 4px; color: var(--ink-soft); }
 .projMore svg { width: 15px; height: 15px; display: block; }
 .projMore:disabled { opacity: 0.28; }
+/* the one thing on a card that is news: a version somebody proposed and
+   nobody has answered. It sits with the name, not with the actions. */
+.projWait {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--propose);
+  border: 1px solid var(--propose);
+  border-radius: 999px;
+  padding: 0 7px;
+  line-height: 17px;
+  white-space: nowrap;
+}
+/* one menu instead of a row of icons: the actions get words, and a card in a
+   scrolling grid keeps a sheet rather than a menu hung off its corner */
+.projSheetBody { gap: 6px; }
+.projOpt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+}
+.projOpt svg { width: 18px; height: 18px; flex: none; color: var(--ink-soft); }
+.projOpt:disabled { opacity: 0.4; }
+.projOptDanger, .projOptDanger svg { color: #c2554b; }
+.projSheetCount {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--propose);
+}
+
 .projStrip { display: flex; gap: 5px; align-items: flex-start; }
 .projStrip span { flex: 1 1 0; max-width: 92px; }
 

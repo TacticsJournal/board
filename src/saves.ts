@@ -1887,6 +1887,35 @@ export class SavesPanel {
     return !!button
   }
 
+  /**
+   * What the projects library may offer for one card, found by the library's
+   * own project id. The policy stays here, beside the two screens it governs,
+   * so the library never has to know what makes a project eligible.
+   */
+  projectActions(projectId: string): {
+    target: { id: string; name: string; savedAt: string; accountBinding: string } | null
+    history: boolean
+    proposals: boolean
+  } {
+    const none = { target: null, history: false, proposals: false }
+    const all = readAll(this.storageKey)
+    const found = Object.entries(all).find(([, saved]) => migrateProject(saved.scene)?.id === projectId)
+    if (!found) return none
+    const [name, saved] = found
+    if (!saved.id) return none
+    const locked = !editableBoardNames(all, hasPaidBoardAccess()).has(name)
+    const context = this.historyContext()
+    const row = { ...saved, locked }
+    const history = canOpenBoardHistory(row, context)
+    const proposals = canReviewBoardProposals(row, context)
+    if (!history && !proposals) return none
+    return {
+      target: { id: saved.id, name, savedAt: saved.savedAt, accountBinding: saved.syncAccount! },
+      history,
+      proposals,
+    }
+  }
+
   private openProposals(name: string): void {
     const saved = readAll(this.storageKey)[name]
     if (!saved?.id) return
