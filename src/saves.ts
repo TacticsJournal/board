@@ -451,6 +451,8 @@ export class SavesPanel {
   onCreateAgentLink: (boardId: string) => Promise<string> = async () => {
     throw new Error('Agent links are unavailable.')
   }
+  /** Set by main: offer account backup when an explicit save reaches Free's limit. */
+  onFreeLimit: () => void = () => {}
   /** Set by main: what to call a board saved without anyone naming it. */
   defaultBoardName: () => string = () => ''
 
@@ -537,7 +539,7 @@ export class SavesPanel {
     if (this.currentName && all[this.currentName]) return this.autosaveNamed(this.currentName, all)
     if (Object.values(all).some(p => JSON.stringify(p.scene) === sceneJson)) return true
     if (!canCreateSavedBoard(all, hasPaidBoardAccess())) {
-      if (!quiet) this.showStatus(FREE_LIMIT_MESSAGE)
+      if (!quiet) { this.showStatus(FREE_LIMIT_MESSAGE); this.onFreeLimit() }
       return false
     }
     // a board saved in the background is named after the board it is, not
@@ -1010,6 +1012,7 @@ export class SavesPanel {
 
     if (!all[name] && !currentExists && !canCreateSavedBoard(all, hasPaidBoardAccess())) {
       this.showStatus(FREE_LIMIT_MESSAGE)
+      this.onFreeLimit()
       return
     }
 
@@ -1114,6 +1117,7 @@ export class SavesPanel {
     if (!canCreateSavedBoard(all, hasPaidBoardAccess())) {
       this.detachCurrent()
       this.showStatus(FREE_LIMIT_MESSAGE)
+      this.onFreeLimit()
       return false
     }
     let n = 1

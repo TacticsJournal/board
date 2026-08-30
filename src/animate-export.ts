@@ -5,6 +5,7 @@ import { GifWriter } from './gif'
 import { OffscreenBoard } from './offscreen-board'
 import { BOARD_W } from './types'
 import { Project, boardName, frameAt, projectDuration } from './projects'
+import { drawTrialWatermark } from './trial-watermark'
 
 /**
  * Exporting a project as an animation. Frames come from a second, off-screen
@@ -62,6 +63,7 @@ async function renderFrames(
   withNotes: boolean,
   onFrame: (canvas: HTMLCanvasElement, index: number, total: number) => void | Promise<void>,
   resolveBackground?: BackgroundResolver,
+  watermark?: boolean,
 ) {
   const source = resolveBackground ?? ((id: string) => backgrounds.image(id))
   const backgroundCache = new Map<string, string | null>()
@@ -125,6 +127,7 @@ async function renderFrames(
         })
         ctx.globalAlpha = 1
       }
+      if (watermark) drawTrialWatermark(ctx, width, out.height)
       await onFrame(out, i, count)
     }
   } finally {
@@ -165,7 +168,7 @@ function safeName(project: Project): string {
   return base || 'tactics-board'
 }
 
-export async function exportGif(project: Project, defaults: ToolDefaults, withNotes: boolean, onProgress?: Progress, resolveBackground?: BackgroundResolver) {
+export async function exportGif(project: Project, defaults: ToolDefaults, withNotes: boolean, onProgress?: Progress, resolveBackground?: BackgroundResolver, watermark?: boolean) {
   const gif: { writer?: GifWriter } = {}
   await renderFrames(project, defaults, GIF_WIDTH, GIF_FPS, withNotes, async (canvas, index, total) => {
     const ctx = canvas.getContext('2d')!
@@ -181,7 +184,7 @@ export async function exportGif(project: Project, defaults: ToolDefaults, withNo
     onProgress?.(index + 1, total)
     // encoding a frame is the slow part, so hand the tab back between frames
     await new Promise(r => setTimeout(r))
-  }, resolveBackground)
+  }, resolveBackground, watermark)
   if (!gif.writer) throw new Error('Nothing to animate.')
   share(gif.writer.finish(), `${safeName(project)}.gif`)
 }
@@ -225,9 +228,9 @@ export async function exportVideo(project: Project, defaults: ToolDefaults, with
   share(blob, `${safeName(project)}.${ext}`)
 }
 
-export async function exportAnimation(kind: AnimationKind, project: Project, defaults: ToolDefaults, withNotes: boolean, onProgress?: Progress, resolveBackground?: BackgroundResolver) {
+export async function exportAnimation(kind: AnimationKind, project: Project, defaults: ToolDefaults, withNotes: boolean, onProgress?: Progress, resolveBackground?: BackgroundResolver, watermark?: boolean) {
   if (project.boards.length < 2) throw new Error('A project needs two boards to animate.')
-  if (kind === 'gif') await exportGif(project, defaults, withNotes, onProgress, resolveBackground)
+  if (kind === 'gif') await exportGif(project, defaults, withNotes, onProgress, resolveBackground, watermark)
   else await exportVideo(project, defaults, withNotes, onProgress, resolveBackground)
 }
 

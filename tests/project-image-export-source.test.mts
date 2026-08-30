@@ -20,7 +20,7 @@ test('the export sheet offers every board as individual PNG images', () => {
   assert.match(main, /project\.boards\.length < 10/)
   assert.match(main, /openProjectImageSheet\(files\)/)
   const imageBranch = main.indexOf("if (kind === 'images')")
-  const licenseGate = main.indexOf("if (!licensed)", imageBranch)
+  const licenseGate = main.indexOf("if (!licensed && !usingGifTrial)", imageBranch)
   assert.ok(imageBranch >= 0 && licenseGate > imageBranch, 'project image export must stay available before the animation licence gate')
 })
 
@@ -53,11 +53,11 @@ test('animation export waits for local and shared project backgrounds', () => {
   assert.match(animation, /await Promise\.all\(backgroundIds\.map\(cachedBackground\)\)/)
   assert.match(animation, /new OffscreenBoard\(defaults, cachedBackground\)/)
   assert.match(animation, /await Promise\.resolve\(\)[\s\S]*await offscreen\.board\.imagesReady\(\)/)
-  assert.match(main, /exportAnimation\([\s\S]*?sharedBackgroundScope \?\? undefined\)/)
+  assert.match(main, /exportAnimation\([\s\S]*?sharedBackgroundScope \?\? undefined, usingGifTrial\)/)
 })
 
 test('unsupported multi-file sharing offers one explicit download per image', () => {
-  const fallback = main.match(/function openProjectImageSheet\([\s\S]*?\n}\n\nfunction openExportSheet/)?.[0] ?? ''
+  const fallback = main.match(/function openProjectImageSheet\([\s\S]*?\n}\n\nasync function openExportSheet/)?.[0] ?? ''
   assert.match(fallback, /Download project images/)
   assert.match(fallback, /This device cannot share multiple files at once\. Download the images you need below\./)
   assert.match(fallback, /files\.map\(\(file, i\)/)

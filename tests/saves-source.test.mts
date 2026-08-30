@@ -254,7 +254,7 @@ test('email-code sign-in loads the canonical account before board sync starts', 
 test('free local scheduling receives whether the changed record is shared', () => {
   assert.match(saves, /onLocalChange: \(change\?: SavesLocalChange\)/)
   assert.match(saves, /this\.onLocalChange\(\{ shared: sharedChanged \}\)/)
-  assert.match(main, /if \(authenticated && !entitlements\.isPro\(\) && !change\.shared\) return/)
+  assert.match(main, /if \(authenticated && !entitlements\.isPro\(\) && !change\.shared[\s\S]*?!selectedFreeBackup\(localStorage, accountBinding\)\) return/)
   assert.match(main, /saves\.onLocalChange = \(change\) => \{\s*updatePresence\(\)\s*scheduleSync\(SYNC_DEBOUNCE, change \?\? \{ shared: false \}\)/)
 })
 
@@ -266,12 +266,12 @@ test('rename and overwrite paths protect locked records and retain confirmation'
 
 test('user-facing plan copy names every live offer exactly', () => {
   assert.match(main, /Keep three boards editable on this device; older boards stay available read-only/)
-  assert.match(main, /Keep unlimited boards editable on this device/)
+  assert.match(main, /Keep unlimited projects editable on this device/)
   assert.doesNotMatch(main, /board unlocks automatically|Pro syncs them automatically/)
 
   // The licence is on sale, so the board offers it instead of collecting an
   // email for a launch that already happened.
-  assert.match(main, /buyButton\('Get License', 'license'\)/)
+  assert.match(main, /buyButton\('Get Hosted Board License', 'license'\)/)
   // The origin is resolved once, so a preview build can point at the sandbox.
   assert.match(main, /LICENSE_MANAGE_URL = `\$\{TJ_ORIGIN\}\/settings\/`/)
   assert.doesNotMatch(main, /Join Waitlist|join the waitlist/i)
@@ -297,15 +297,15 @@ test('plan copy assigns only built features to each plan', () => {
   // reintroduce the old vague branding claim.
   assert.doesNotMatch(main, /branding on exports/)
   assert.doesNotMatch(main, /Unlimited editable boards and cross-device sync/)
-  assert.match(main, /Pro includes the Annual Board License\./)
+  assert.match(main, /Pro includes the Hosted Board License\./)
   assert.match(main, /pay only the difference/)
   assert.match(main, /data-pro-save>Save [$]60/)
   assert.match(main, /Full refund within 14 days of your first payment or of an automatic yearly renewal/)
   assert.doesNotMatch(main, /Monthly renewals|service failure requires/i)
   // Detection was removed rather than left on the card as a promise.
   assert.doesNotMatch(main, /player detection/i)
-  const lic = main.match(/proCardName">Annual Board License[\s\S]*?<\/ul>/)?.[0] ?? ''
-  assert.match(lic, /Draw over a broadcast screenshot on the live board/)
+  const lic = main.match(/proCardName">Hosted Board License[\s\S]*?<\/ul>/)?.[0] ?? ''
+  assert.match(lic, /Draw over broadcast screenshots/)
   assert.doesNotMatch(lic, /Coming soon/)
 
   // The scoreboard and overlays are free, so they belong to the Free card and
@@ -317,19 +317,19 @@ test('plan copy assigns only built features to each plan', () => {
   assert.doesNotMatch(free, /Cones/)
   // Pro includes the licence, and the card must say so.
   const pro = main.match(/proCardName">Pro[\s\S]*?<\/ul>/)?.[0] ?? ''
-  assert.match(pro, /Everything in the Annual Board License/)
+  assert.match(pro, /Every feature in the Hosted Board License/)
   assert.match(pro, /Begin on one device and continue on another with automatic board sync/)
   assert.match(pro, /See edits appear on your other devices and for people you invite/)
   assert.match(pro, /Invite a collaborator by @username to edit the project/)
   assert.match(pro, /Give ChatGPT, Claude, or another AI agent 24-hour access by link or MCP/)
-  const license = main.match(/proCardName">Annual Board License[\s\S]*?<\/ul>/)?.[0] ?? ''
+  const license = main.match(/proCardName">Hosted Board License[\s\S]*?<\/ul>/)?.[0] ?? ''
   assert.match(license, /cones/)
   assert.doesNotMatch(license, /scoreboard and match overlays/)
   assert.match(license, /live broadcast/)
   assert.match(license, /own backgrounds/)
   assert.match(license, /without a Tactics Journal mark/)
-  assert.match(license, /Keep unlimited boards editable/)
-  assert.match(license, /GIF or video/)
+  assert.match(license, /Keep unlimited projects editable/)
+  assert.match(license, /GIFs or video/)
   assert.doesNotMatch(license, /Real squads/)
 })
 
@@ -350,18 +350,14 @@ test('the board sells where the buyer already is', () => {
   assert.match(cta, /isPro\(\)/)
 })
 
-test('screenshot import stays behind the paid background gates', () => {
-  // The separate screenshot-import toolbar action was removed. A screenshot is
-  // saved to the background shelf, and both doors to that shelf are paid: the
-  // camera button only exists on a photographic board, and adding one needs
-  // the licence.
+test('screenshot import offers one bounded Free trial before the paid gate', () => {
   const liveButton = main.match(/function syncLiveButton\(\)[\s\S]*?\n}/)?.[0] ?? ''
   assert.match(liveButton, /pitchById\(store\.scene\.pitch\)\.live/)
-  assert.match(main, /if \(!entitlements\.canPickPitch\(style\)\)/)
+  assert.match(main, /featureTrials\.canTry\('screenshot_import'\)/)
+  assert.match(main, /featureTrials\.consume\('screenshot_import'\)/)
+  assert.match(main, /const files = trial \? picked\.slice\(0, 1\) : picked/)
+  assert.match(main, /paid_gate_hit', 'screenshot_import'/)
   assert.match(main, /if \(!entitlements\.canUploadBackground\(\)\)/)
-
-  // Do not resurrect the old standalone import button or its entitlement
-  // change handler; the canonical Live-pitch gate owns this entry point.
   assert.doesNotMatch(main, /id="importBtn"|data-top="import"|importer\.open\(\)/)
 })
 
@@ -385,7 +381,7 @@ test('the Pro launch path will upgrade without charging twice', () => {
   // The board contains no provider product or price identifiers and sends no
   // amount, tier, or cadence in the request body.
   assert.doesNotMatch(cta, /pri_|product_id|price_id|amount|tier|cadence/)
-  assert.match(main, /Pro includes the Annual Board License\./)
+  assert.match(main, /Pro includes the Hosted Board License\./)
 })
 
 test('a board draws the pieces the board draws, from the board’s own art', () => {

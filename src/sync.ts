@@ -79,7 +79,7 @@ export type SyncResponse = {
 }
 
 export type SyncApi = {
-  push(body: { boards: unknown[]; cursor: string | null }): Promise<SyncResponse>
+  push(body: { boards: unknown[]; cursor: string | null; free_backup_id?: string }): Promise<SyncResponse>
   pull(cursor: string | null): Promise<SyncResponse>
 }
 
@@ -95,8 +95,12 @@ export type SyncResult = {
 
 export type SyncOptions = {
   includeOwned?: boolean
-  /** Push only this saved Project. Used by sharing, never by background sync. */
+  /** Push only this saved Project. Used by sharing and Free backup selection. */
   targetId?: string
+  /** Include only this owned Project while still syncing accessible shared work. */
+  ownedId?: string
+  /** Ask the server to make this the account's selected Free backup. */
+  freeBackupId?: string
   /** Targeted preparation must leave the full-sync markers unchanged. */
   advanceMarkers?: boolean
   /** Share one owned local target even when no current account binding is available. */
@@ -111,16 +115,16 @@ export const SYNC_BATCH_SIZE = 50
 export const SYNC_REQUEST_BYTE_LIMIT = 2 * 1024 * 1024
 export const SYNC_REQUEST_BYTE_BUDGET = SYNC_REQUEST_BYTE_LIMIT - 16 * 1024
 
-export function syncRequestBytes(boards: unknown[], cursor: string | null): number {
-  return new TextEncoder().encode(JSON.stringify({ boards, cursor })).byteLength
+export function syncRequestBytes(boards: unknown[], cursor: string | null, freeBackupId?: string): number {
+  return new TextEncoder().encode(JSON.stringify({ boards, cursor, ...(freeBackupId ? { free_backup_id: freeBackupId } : {}) })).byteLength
 }
 
 /** Take the largest count- and byte-bounded batch at this offset. */
-export function takeSyncBatch(changes: unknown[], start: number, cursor: string | null): unknown[] {
+export function takeSyncBatch(changes: unknown[], start: number, cursor: string | null, freeBackupId?: string): unknown[] {
   const chunk: unknown[] = []
   for (let index = start; index < changes.length && chunk.length < SYNC_BATCH_SIZE; index += 1) {
     const candidate = [...chunk, changes[index]]
-    if (chunk.length && syncRequestBytes(candidate, cursor) > SYNC_REQUEST_BYTE_BUDGET) break
+    if (chunk.length && syncRequestBytes(candidate, cursor, freeBackupId) > SYNC_REQUEST_BYTE_BUDGET) break
     chunk.push(changes[index])
   }
   return chunk
@@ -193,6 +197,7 @@ function laterThan(a: string, b: string | null | undefined): boolean {
 export function collectChanges(store: SyncStore, options: SyncOptions = {}): unknown[] {
   const includeOwned = options.includeOwned ?? true
   const targetId = options.targetId
+  const ownedId = options.ownedId
   // Free sync must not move the personal marker: those boards remain eligible
   // if the account later becomes Pro. Old adapters have no shared marker yet,
   // so fall back to their existing marker and preserve their old behaviour.
@@ -212,12 +217,13 @@ export function collectChanges(store: SyncStore, options: SyncOptions = {}): unk
       && includeOwned && board.access !== 'shared'
     if (accountAware && board.syncAccount && board.syncAccount !== account && !mayShareTarget) continue
     if (accountAware && board.access === 'shared' && (!account || board.syncAccount !== account)) continue
-    // Free members may edit shared boards, but their personal device boards
-    // must never be sent to the service.
+    // Free members may edit shared boards and optionally back up one selected
+    // personal Project. No other owned row leaves the device.
     if (!includeOwned && board.access !== 'shared') continue
+    if (board.access !== 'shared' && ownedId && board.id !== ownedId) continue
     // Sharing replays its one required Project even when the full-sync marker
     // says it was already pushed. The API accepts exact duplicate replays.
-    if (!targetId && !laterThan(board.savedAt, since)) continue
+    if (!targetId && !(ownedId && board.id === ownedId) && !laterThan(board.savedAt, since)) continue
     changes.push({
       id: board.id,
       name: board.name,
@@ -231,6 +237,7 @@ export function collectChanges(store: SyncStore, options: SyncOptions = {}): unk
 
   for (const stone of store.tombstones()) {
     if (!includeOwned) continue
+    if (ownedId && stone.id !== ownedId) continue
     if (accountAware && stone.syncAccount && stone.syncAccount !== account) continue
     changes.push({
       id: stone.id,
@@ -437,11 +444,11 @@ export async function syncOnce(
       for (let start = 0; start < changes.length;) {
         assertCurrent()
         const cursor = store.cursor()
-        const chunk = takeSyncBatch(changes, start, cursor)
-        if (!chunk.length || syncRequestBytes(chunk, cursor) > SYNC_REQUEST_BYTE_BUDGET) {
+        const chunk = takeSyncBatch(changes, start, cursor, options.freeBackupId)
+        if (!chunk.length || syncRequestBytes(chunk, cursor, options.freeBackupId) > SYNC_REQUEST_BYTE_BUDGET) {
           throw new Error('one Project exceeds the sync request limit')
         }
-        const response = await api.push({ boards: chunk, cursor })
+        const response = await api.push({ boards: chunk, cursor, ...(options.freeBackupId ? { free_backup_id: options.freeBackupId } : {}) })
         // Check before remote boards, conflicts, tombstones, or the cursor can
         // mutate local state from this response.
         requireAcknowledgement(response, chunk)
@@ -464,10 +471,12 @@ export async function syncOnce(
       assertCurrent()
       const marker = pushMarker(now)
       const advanceMarkers = options.advanceMarkers ?? !targetId
-      if (advanceMarkers && (options.includeOwned ?? true)) {
+      if (advanceMarkers && (options.includeOwned ?? true) && !options.ownedId) {
         store.setPushedAt(marker)
         store.setSharedPushedAt?.(marker)
       } else if (advanceMarkers) {
+        // A selected Free backup is deliberately excluded from the personal
+        // marker so other local projects remain eligible if Pro begins later.
         store.setSharedPushedAt?.(marker)
       }
     }
