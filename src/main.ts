@@ -13,6 +13,7 @@ import { ArrowObj, BallObj, BoxObj, GoalObj, ImageObj, MarkerObj, PlayerObj, Sce
 import type { NodeCurve, PathNode } from './path-nodes'
 import { ImportPanel } from './importer'
 import { SavesPanel } from './saves'
+import { BoardHistoryPanel, createBoardHistoryApi, type BoardHistoryTarget, type RestoredBoard } from './board-history'
 import { formatElapsedSince } from './last-updated'
 import { mountSlidingPills } from './sliding-pill'
 import { TeamPanel, teamCode, type TeamSide } from './teams'
@@ -4418,7 +4419,7 @@ settingsEl.innerHTML = `
     <div class="setPane hidden" data-pane="pro">
       <div class="proHero">
         <h2 class="proTagline">Think it. Draw it. Share it.</h2>
-        <p class="proLede">Every local editing and export feature is free. Pro adds automatic cloud sync, collaboration, sharing controls, and agent access.</p>
+        <p class="proLede">Every local editing and export feature is free. Pro adds automatic cloud sync, version history, collaboration, sharing controls, and agent access.</p>
         <div class="proHeroCta" data-lic-area></div>
       </div>
       <h3 class="proChoose">Choose how you work</h3>
@@ -4446,6 +4447,7 @@ settingsEl.innerHTML = `
           <p class="proCardBilled"><span data-pro-billed>Billed yearly at $155.88</span><span class="proSavePill" data-pro-save>Save $24 versus monthly</span></p>
           <ul>
             <li>Back up and sync every project across devices</li>
+            <li>Restore earlier project versions</li>
             <li>See edits appear in real time for people you invite</li>
             <li>Control hosted project sharing and invitations</li>
             <li>Give ChatGPT, Claude, or another AI agent 24-hour access by link</li>
@@ -4561,6 +4563,9 @@ settingsEl.innerHTML = `
       <div class="setGroupHead">Boards on this device</div>
       <div data-saves-host></div>
     </div>
+    <div class="setPane hidden" data-pane="history">
+      <div data-history-host></div>
+    </div>
     <div class="impStatus" data-set-note role="status" aria-live="polite"></div>
   </div>`
 document.body.appendChild(settingsEl)
@@ -4571,14 +4576,34 @@ mountSlidingPills(settingsEl)
 settingsEl.querySelector('[data-pane="teams"]')!.appendChild(teams.el)
 settingsEl.querySelector('[data-saves-host]')!.appendChild(saves.el)
 
+/**
+ * Version history stands on its own Settings screen, opened from one saved
+ * project and returning to the list it came from. Restoring goes through the
+ * ordinary sync store and the ordinary post-sync reconciliation, so a restored
+ * project reaches the canvas and the Projects library the same way a version
+ * pulled from another device does.
+ */
+const boardHistory = new BoardHistoryPanel({
+  api: createBoardHistoryApi(),
+  onRestore: (board, target) => applyRestoredVersion(board, target),
+  onDone: (message, boardId) => {
+    showScreen('boards')
+    saves.refresh()
+    saves.announce(message)
+    if (!saves.focusHistoryAction(boardId)) settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
+  },
+})
+settingsEl.querySelector('[data-history-host]')!.appendChild(boardHistory.el)
+
 /** Settings is one list plus push screens; every screen but root has a back arrow. */
-type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'pro' | 'agents' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets' | 'self-host'
+type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'history' | 'pro' | 'agents' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets' | 'self-host'
 
 const SCREEN_TITLES: Record<SetScreen, string> = {
   root: 'Settings',
   teams: 'Teams',
   pitch: 'Pitch',
   boards: 'Move to another device',
+  history: 'Version history',
   assets: 'My assets',
   pro: 'Plans',
   agents: 'Claude and ChatGPT',
@@ -5437,6 +5462,18 @@ teams.onClose = closeSettings
 teams.onChangedSides = renderRootValues
 saves.onOpen = () => { updatePresence(); openSettings('boards') }
 saves.onClose = closeSettings
+saves.historyContext = () => ({
+  pro: entitlements.isPro(),
+  signedIn: authenticated,
+  selfHosted: BOARD_SELF_HOSTED,
+  accountBinding,
+})
+saves.onOpenHistory = (target) => {
+  setNote('')
+  boardHistory.open(target)
+  showScreen('history')
+  settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
+}
 
 function setThemeResolved(dark: boolean, selected: 'system' | 'light' | 'dark') {
   // same attribute tacticsjournal.com uses, so the palettes stay in sync
@@ -6004,7 +6041,8 @@ settingsEl.addEventListener('click', (e) => {
     setNote('')
     disposeExtensionRuntime()
     if (screen === 'skill') editingSkillDraft = null
-    showScreen(screen === 'skill' || screen === 'extension' || screen === 'official' ? 'skills' : 'root')
+    showScreen(screen === 'skill' || screen === 'extension' || screen === 'official' ? 'skills'
+      : screen === 'history' ? 'boards' : 'root')
   }
   else if (k === 'theme-system') applyThemeChoice('system')
   else if (k === 'theme-light') applyTheme(false)
@@ -6385,7 +6423,7 @@ window.addEventListener('tacticsjournal:auth-changed', ((event: CustomEvent) => 
   const isPro = entitlements.isPro()
   if (wasPro && !isPro) {
     showBanner(`
-      <p>Pro access has ended. Local projects remain editable and exportable; all-project sync, collaboration, sharing controls, and agent access are paused.</p>
+      <p>Pro access has ended. Local projects remain editable and exportable; all-project sync, version history, collaboration, sharing controls, and agent access are paused.</p>
       <span class="appBannerActions"><button data-banner="dismiss">Dismiss</button></span>`, 'warn')
   }
   wasPro = isPro
@@ -6468,6 +6506,35 @@ function reconcileProjectSync(rowsBeforeSync: ReturnType<typeof saves.projectDoc
     board.refreshBackground()
   }
   return openConflict
+}
+
+/**
+ * Put a version the server restored onto this device.
+ *
+ * The response is an ordinary sync row, so it takes the ordinary path: write
+ * any live edit to its own record first, hand the row to the sync store, then
+ * run the same reconciliation a pull runs. That is what keeps the canvas, the
+ * saved list and the Projects library on one project rather than two, and what
+ * makes a name that now collides behave exactly as a name from another device
+ * does. A refused local write returns false with nothing changed.
+ */
+function applyRestoredVersion(board: RestoredBoard, target: BoardHistoryTarget): boolean {
+  if (!authenticated || !entitlements.isPro() || !accountBinding || target.accountBinding !== accountBinding) return false
+  if (!saves.flushCurrentForSync()) return false
+  const rowsBeforeRestore = saves.projectDocuments()
+  syncStore.upsert({
+    id: board.id,
+    name: board.name,
+    savedAt: board.updatedAt,
+    scene: board.scene,
+    ...(accountBinding ? { syncAccount: accountBinding } : {}),
+  })
+  const stored = syncStore.list().some(row => row.id === board.id && row.savedAt === board.updatedAt)
+  if (!stored) return false
+  reconcileProjectSync(rowsBeforeRestore, {
+    status: 'ok', pushed: 0, pulled: 1, conflicts: 0, remoteIds: [board.id],
+  })
+  return true
 }
 
 async function runSyncPass(): Promise<void> {
@@ -6925,6 +6992,9 @@ window.addEventListener('tbm:entitlements-changed', ((event: CustomEvent) => {
   renderLicenseCta()
   renderProCta()
   saves.refresh()
+  // A lapsed or signed-out account must not be left standing on a screen its
+  // project list no longer offers.
+  if (screen === 'history' && !(authenticated && entitlements.isPro() && !BOARD_SELF_HOSTED)) showScreen('boards')
   // Pro just resolved, which is the first moment sync is allowed to run.
   void runSync()
   void updateLiveChannel()

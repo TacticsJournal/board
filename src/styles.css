@@ -2700,6 +2700,38 @@ html[data-theme-resolved="dark"] .mThumb { background: #0a0a0a; }
   .saveItem .saveMeta { flex-basis: calc(100% - 90px); }
 }
 
+/* version history: a date, what it was called, and one way back to it. The
+   endpoint sends no scenes, so a row has no thumbnail to keep -- the time is
+   the row's own heading and carries the weight the name carries elsewhere. */
+.histItem { gap: 11px; align-items: center; }
+.histItem .histMeta { flex: 1 1 120px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.histItem .histMeta strong { font-weight: 400; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.histItem .histMeta span { font-size: 12.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.histCurrent .histMeta strong { font-weight: 500; }
+.histTag {
+  flex: none;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+/* the confirmation replaces the row's action rather than covering the screen:
+   the version being replaced stays in sight while the question is asked */
+.histConfirm { display: flex; align-items: center; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.histConfirmText { font-size: 12.5px; color: var(--ink-soft); }
+.sheet .setItemAction.histDo { color: #c2554b; }
+.sheet .setItemAction[disabled] { opacity: 0.5; cursor: default; }
+.histEmpty { font-size: 13px; color: var(--ink-soft); display: block; }
+.histPane .saveStatus:empty { display: none; }
+@media (max-width: 430px) {
+  /* a row with no thumbnail still fits its date and one action side by side;
+     only the confirmation, which is a question and two answers, takes a line */
+  .histItem { flex-wrap: wrap; }
+  .histItem .histMeta { flex: 1 1 60%; }
+  .histConfirm { flex-basis: 100%; justify-content: flex-start; margin-top: 2px; }
+}
+
 /* team sheet: side switch + one editor */
 .tmSides { display: flex; flex-direction: column; gap: 0; min-width: 0; }
 /* Home and Away side by side: picking a side, not two long cards to scroll */
