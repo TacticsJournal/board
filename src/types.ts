@@ -104,7 +104,7 @@ export type TextObj = {
 } & Flippable
 
 /**
- * One of the licensed user's own assets, placed on the board. The board stores
+ * One of the user's own assets, placed on the board. The board stores
  * the asset's id, never its bytes, so a shared board stays readable by someone
  * who does not own it. `size` is the width; `aspect` is height over width, kept
  * on the object so the frame is right before the image has loaded.

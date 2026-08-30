@@ -127,13 +127,13 @@ test('a project copy link preserves every board behind a short id', async () => 
   )
 })
 
-test('a capped free user is led to an existing project instead of a failing new one', () => {
+test('an unavailable new-project context is led to an existing project', () => {
   assert.deepEqual(boardImportReadyRows('Pressing trigger', 3, false), [
     {
       label: 'Existing project', detail: 'Choose from 3 projects', action: 'existing', primary: true, chevron: true,
     },
     {
-      label: 'New project', detail: 'Free keeps three projects. Take a licence for more', action: 'pro',
+      label: 'New project', detail: 'A new project is not available in this context', action: 'unavailable',
     },
   ])
 
@@ -144,13 +144,13 @@ test('a capped free user is led to an existing project instead of a failing new 
   assert.equal(available[1].primary, false)
 })
 
-test('a free account can add a shared project to an existing project when its project limit is full', () => {
+test('a constrained context can add a shared project to an existing project', () => {
   assert.deepEqual(projectImportReadyRows('Pressing patterns', 3, 3, false), [
     {
       label: 'Existing project', detail: 'Adds all 3 boards to one of 3 projects', action: 'existing', primary: true, chevron: true,
     },
     {
-      label: 'New project', detail: 'Free keeps three projects. Take a licence for more', action: 'pro',
+      label: 'New project', detail: 'A new project is not available in this context', action: 'unavailable',
     },
   ])
 
@@ -273,7 +273,7 @@ test('the import prompt preserves its fragment for browser handoff, then clears 
   assert.match(ui, /options\.saves\.hasImport\(draft\.draftId\)/)
   assert.match(main, /createStoredProjectImportUrl/)
   assert.match(main, /isAgentImportTooLarge/)
-  assert.match(main, /Large whole-project links require a License/)
+  assert.match(main, /Large whole-project links require Pro/)
   assert.match(saves, /saved\.importId === importId/)
   assert.match(styles, /\.agentImportDialog/)
   assert.match(styles, /\.agentImportPreview svg/)

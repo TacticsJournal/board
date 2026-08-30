@@ -59,7 +59,7 @@ export function boardImportReadyRows(name: string, destinationCount: number, can
   }
   const fresh: BoardImportReadyRow = canCreateProject
     ? { label: 'New project', detail: `Creates a project named “${name}”`, action: 'new-project', primary: true }
-    : { label: 'New project', detail: 'Free keeps three projects. Take a licence for more', action: 'pro' }
+    : { label: 'New project', detail: 'A new project is not available in this context', action: 'unavailable' }
   return canCreateProject ? [fresh, existing] : [existing, fresh]
 }
 
@@ -80,7 +80,7 @@ export function projectImportReadyRows(
   }
   const fresh: BoardImportReadyRow = canCreateProject
     ? { label: 'New project', detail: `Creates “${name}” with ${boardCount} board${boardCount === 1 ? '' : 's'}`, action: 'new-project', primary: true }
-    : { label: 'New project', detail: 'Free keeps three projects. Take a licence for more', action: 'pro' }
+    : { label: 'New project', detail: 'A new project is not available in this context', action: 'unavailable' }
   const rows = canCreateProject ? [fresh] : []
   if (destinationCount > 0) rows.push(existing)
   if (!canCreateProject) rows.push(fresh)

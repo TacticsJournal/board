@@ -105,12 +105,12 @@ test('the picked images become boards after the one being edited, in order', () 
 
 test('the file button takes more than one image', () => {
   assert.match(main, /<input data-live-file type="file" accept="image\/\*" multiple style="display:none">/)
-  assert.match(liveShotSection, /const picked = Array\.from\(input\.files \?\? \[\]\)/)
-  assert.match(liveShotSection, /const files = trial \? picked\.slice\(0, 1\) : picked/)
+  assert.match(liveShotSection, /const files = Array\.from\(input\.files \?\? \[\]\)/)
+  assert.doesNotMatch(liveShotSection, /trial|featureTrials/)
 })
 
 test('one image still changes the board in front of you', () => {
-  assert.match(liveShotSection, /if \(files\.length > 1\) \{ void importLiveShots\(files\)\.then\(finishTrial\); return \}/)
+  assert.match(liveShotSection, /if \(files\.length > 1\) \{ void importLiveShots\(files\); return \}/)
   assert.match(liveShotSection, /applyLiveShot\(img, nameFromFile\(file\.name\)\)/)
   assert.match(liveShotSection, /async function applyLiveShot[\s\S]*?useBackground\(await addBackgroundFromImage\(img, name, 'broadcast'\)\)/)
 })

@@ -15,7 +15,7 @@ export type PitchStyle = {
   category: PitchCategory
   /** Number of pitch surfaces in the background; mirror duplicates objects onto both sides when this is 2. */
   sides?: 1 | 2
-  /** part of the paid tier (waitlist for now) */
+  /** Legacy metadata. Local pitch styles are Free. */
   pro: boolean
   /** clean pitch, shown only to the board admin account */
   adminOnly?: boolean
@@ -38,13 +38,13 @@ export type PitchStyle = {
 
 export const PITCHES: PitchStyle[] = [
   { id: 'pitch', label: 'Pitch', src: new URL('../assets/pitch/pitch_marked.jpeg', import.meta.url).href, boardH: 618, pro: false, category: 'pitch', sides: 1, scoreboard: { x: 745, y: 86 } },
-  { id: 'pitch-up', label: 'Vertical', src: new URL('../assets/pitch/pitch_up_marked.jpeg', import.meta.url).href, boardH: 640, pro: true, category: 'vertical', sides: 1, scoreboard: { x: 75, y: 133 } },
-  { id: 'training', label: 'Training', src: new URL('../assets/pitch/training_marked.jpeg', import.meta.url).href, boardH: 418, pro: true, category: 'training', sides: 1, scoreboard: { x: 745, y: 86, logo: true }, awayCodeLift: 44 },
-  { id: 'sidebyside', label: 'Two pitches', src: new URL('../assets/pitch/sidebyside_marked.jpeg', import.meta.url).href, boardH: 533, pro: true, category: 'sidebyside', sides: 2, scoreboard: { x: 400, y: 95 } },
+  { id: 'pitch-up', label: 'Vertical', src: new URL('../assets/pitch/pitch_up_marked.jpeg', import.meta.url).href, boardH: 640, pro: false, category: 'vertical', sides: 1, scoreboard: { x: 75, y: 133 } },
+  { id: 'training', label: 'Training', src: new URL('../assets/pitch/training_marked.jpeg', import.meta.url).href, boardH: 418, pro: false, category: 'training', sides: 1, scoreboard: { x: 745, y: 86, logo: true }, awayCodeLift: 44 },
+  { id: 'sidebyside', label: 'Two pitches', src: new URL('../assets/pitch/sidebyside_marked.jpeg', import.meta.url).href, boardH: 533, pro: false, category: 'sidebyside', sides: 2, scoreboard: { x: 400, y: 95 } },
   /* The old single-slot screenshot board. Every screenshot is a saved
      background now, so this is never offered; it stays so boards drawn on it
      keep their art. */
-  { id: 'live', label: 'Live', src: '', boardH: 372, pro: true, category: 'live', sides: 1, live: true, hidden: true },
+  { id: 'live', label: 'Live', src: '', boardH: 372, pro: false, category: 'live', sides: 1, live: true, hidden: true },
   { id: 'classic', label: 'Classic', src: new URL('../assets/pitch/pitch.jpeg', import.meta.url).href, boardH: 418, pro: true, adminOnly: true, category: 'classic', sides: 1, scoreboard: { x: 745, y: 86, logo: true } },
 ]
 
@@ -101,7 +101,7 @@ export function allPitches(): PitchStyle[] {
 function missingBackground(id: string): PitchStyle {
   return {
     id, label: 'Missing background', src: '', boardH: 418,
-    category: 'custom', sides: 1, pro: true, live: true, custom: true, missing: true,
+    category: 'custom', sides: 1, pro: false, live: true, custom: true, missing: true,
   }
 }
 

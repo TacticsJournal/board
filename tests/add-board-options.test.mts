@@ -49,11 +49,11 @@ test('saved backgrounds come with their thumbnails, minus the ones not on this d
   assert.equal(choices.backgrounds[0].custom, true)
 })
 
-test('free reports the paid choices as locked rather than hiding them', () => {
-  const free = paid({ canPick: (s: PitchStyle) => !s.pro && !s.adminOnly, canUpload: false })
-  assert.deepEqual(free.pitches.map(p => [p.id, p.locked]), [['pitch', false], ['pitch-up', true]])
-  assert.equal(free.backgrounds[0].locked, true)
-  assert.equal(free.uploadLocked, true)
+test('Free can choose local pitches and upload local backgrounds', () => {
+  const free = paid({ canPick: () => true, canUpload: true })
+  assert.deepEqual(free.pitches.map(p => [p.id, p.locked]), [['pitch', false], ['pitch-up', false]])
+  assert.equal(free.backgrounds[0].locked, false)
+  assert.equal(free.uploadLocked, false)
 })
 
 test('the board on screen is the fast path and is marked in the grid', () => {
@@ -98,11 +98,8 @@ test('every choice inserts at the asked-for index, opens the board and saves', (
   assert.match(create, /this\.commit\(\)[\s\S]*this\.host\.openBoard\(index \+ 1\)[\s\S]*this\.open\(null\)/)
 })
 
-test('a locked choice explains the License and opens the Pro tab', () => {
-  assert.match(view, /if \(pick\.dataset\.locked === '1'\) \{ this\.wantLicense\(\); return \}/)
-  const want = view.slice(view.indexOf('private wantLicense'), view.indexOf('private async uploadForNewBoard'))
-  assert.match(want, /comes with the License/)
-  assert.match(want, /this\.host\.openPro\(\)/)
+test('all local choices stay available without a purchase', () => {
+  assert.doesNotMatch(view, /wantLicense|comes with the License/)
 })
 
 test('the upload opens the native picker inside the tap and resets the input', () => {

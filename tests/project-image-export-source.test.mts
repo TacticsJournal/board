@@ -19,9 +19,9 @@ test('the export sheet offers every board as individual PNG images', () => {
   assert.match(main, /sharedBackgroundScope \?\? undefined/)
   assert.match(main, /project\.boards\.length < 10/)
   assert.match(main, /openProjectImageSheet\(files\)/)
-  const imageBranch = main.indexOf("if (kind === 'images')")
-  const licenseGate = main.indexOf("if (!licensed && !usingGifTrial)", imageBranch)
-  assert.ok(imageBranch >= 0 && licenseGate > imageBranch, 'project image export must stay available before the animation licence gate')
+  assert.doesNotMatch(main, /if \(!licensed && !usingGifTrial\)/)
+  const exportSheet = main.match(/async function openExportSheet\(\)[\s\S]*?\/\* ---------- background images/)?.[0] ?? ''
+  assert.doesNotMatch(exportSheet, /trial watermark|Hosted Board License/)
 })
 
 test('project image export renders each board away from the live editor', () => {
@@ -53,7 +53,8 @@ test('animation export waits for local and shared project backgrounds', () => {
   assert.match(animation, /await Promise\.all\(backgroundIds\.map\(cachedBackground\)\)/)
   assert.match(animation, /new OffscreenBoard\(defaults, cachedBackground\)/)
   assert.match(animation, /await Promise\.resolve\(\)[\s\S]*await offscreen\.board\.imagesReady\(\)/)
-  assert.match(main, /exportAnimation\([\s\S]*?sharedBackgroundScope \?\? undefined, usingGifTrial\)/)
+  assert.match(main, /exportAnimation\([\s\S]*?sharedBackgroundScope \?\? undefined\)/)
+  assert.doesNotMatch(animation, /watermark|drawTrialWatermark/)
 })
 
 test('unsupported multi-file sharing offers one explicit download per image', () => {

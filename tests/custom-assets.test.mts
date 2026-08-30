@@ -31,10 +31,11 @@ test('only stored images are accepted, and only inside a budget', () => {
   assert.match(assets, /canvas\.toDataURL\('image\/png'\)/)
 })
 
-test('adding an asset needs the licence', () => {
+test('adding custom assets is Free', () => {
   assert.match(main, /const canUseAssets = \(\) => entitlements\.canPlaceCone\(\)/)
-  assert.match(main, /if \(!canUseAssets\(\)\) \{\s*\n\s*return \[\{ id: 'asset-add'/)
-  assert.match(main, /data-lock-tag="assets"/)
+  assert.doesNotMatch(main, /Your own shapes come with the licence/)
+  assert.doesNotMatch(main, /data-lock-tag="assets"/)
+  assert.match(main, /title: 'Add your own'/)
 })
 
 test('the add cell uses the open shelf category', () => {

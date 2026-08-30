@@ -63,10 +63,11 @@ test('a clean device opens meaningful remote work instead of its untouched start
   assert.equal(freshDeviceDestination(lib, { id: starter.id, updated: starter.updated - 1 }, remoteIds), null)
 })
 
-test('free stops at three projects and a licence does not', () => {
-  for (let count = 0; count <= FREE_PROJECT_LIMIT + 1; count++) {
+test('Free and Pro both allow unlimited local projects', () => {
+  assert.equal(FREE_PROJECT_LIMIT, 3, 'legacy display constant remains import-compatible')
+  for (const count of [0, 3, 4, 100]) {
     const lib = libraryOf(count)
-    assert.equal(canCreateProject(lib, false), count < FREE_PROJECT_LIMIT)
+    assert.equal(canCreateProject(lib, false), true)
     assert.equal(canCreateProject(lib, true), true)
   }
 })

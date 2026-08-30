@@ -46,19 +46,17 @@ test('screenshot import and background upload gates match isPro logic', () => {
 
 // -- Premium pitch layout tests --
 
-test('pitch metadata correctly marks free vs Pro layouts', () => {
-  const free = PITCHES.filter(p => !p.pro && !p.adminOnly)
-  const pro = PITCHES.filter(p => p.pro && !p.adminOnly)
-  assert.ok(free.length > 0, 'at least one free pitch')
-  assert.ok(pro.length > 0, 'at least one Pro pitch')
+test('every non-admin pitch layout is Free', () => {
+  const publicPitches = PITCHES.filter(p => !p.adminOnly)
+  assert.ok(publicPitches.length > 0)
+  assert.equal(publicPitches.every(p => !p.pro), true)
 })
 
-test('expected premium layouts exist: Vertical, Training, Two pitches, Live', () => {
-  const expectedPro = ['Vertical', 'Training', 'Two pitches', 'Live']
-  for (const label of expectedPro) {
+test('Vertical, Training, Two pitches, and Live are Free', () => {
+  for (const label of ['Vertical', 'Training', 'Two pitches', 'Live']) {
     const pitch = PITCHES.find(p => p.label === label)
     assert.ok(pitch, `${label} pitch should exist`)
-    assert.equal(pitch!.pro, true, `${label} should be Pro`)
+    assert.equal(pitch!.pro, false, `${label} should be Free`)
   }
 })
 
@@ -103,26 +101,13 @@ test('no cloud sync, team sharing, or collaborative editing references exist in 
 
 // -- Saved board Pro restoration --
 
-test('Pro restoration makes all boards editable after downgrade', () => {
+test('Free and Pro keep every local saved board editable', () => {
   const boards = Object.fromEntries(
     Array.from({ length: 10 }, (_, i) => [`Board ${i}`, { savedAt: new Date(2026, 0, i + 1).toISOString() }])
   )
-
-  // Free: only 3 editable
-  const freeEditable = editableBoardNames(boards, false)
-  assert.equal(freeEditable.size, FREE_EDITABLE_BOARD_LIMIT)
-
-  // Pro: all 10 editable
-  const proEditable = editableBoardNames(boards, true)
-  assert.equal(proEditable.size, 10)
-
-  // After swap during free, all still restore with Pro
-  const swapResult = swapEditableSlot(boards, [...freeEditable][0], 'Board 0')
-  assert.equal(swapResult.ok, true)
-  if (swapResult.ok) {
-    const postSwapPro = editableBoardNames(swapResult.boards, true)
-    assert.equal(postSwapPro.size, 10, 'Pro restores all boards after swap')
-  }
+  assert.equal(FREE_EDITABLE_BOARD_LIMIT, 3, 'legacy constant remains compatible')
+  assert.equal(editableBoardNames(boards, false).size, 10)
+  assert.equal(editableBoardNames(boards, true).size, 10)
 })
 
 // Branding rule: our mark rides on our pitch artwork. A user-supplied
@@ -186,43 +171,31 @@ test('a Board license unlocks paid gates without granting Pro', async () => {
   assert.equal(hasPaidBoardAccess(), false)
 })
 
-test('the license gates paid features including screenshot import', async () => {
-  const source = await (await import('node:fs/promises')).readFile(
-    new URL('../src/entitlements.ts', import.meta.url), 'utf8')
-
-  // Import follows paid access: the Live board is unlocked by the licence and is
-  // useless without its screenshot, so the two must open together.
-  assert.match(source, /export function canImport\(\): boolean \{ return hasPaidBoardAccess\(\) \}/)
-  assert.match(source, /export function canUploadBackground\(\): boolean \{ return hasPaidBoardAccess\(\) \}/)
-  assert.match(source, /return !style\.pro \|\| hasPaidBoardAccess\(\)/)
-  // The admin pitch stays closed to both products.
-  assert.match(source, /if \(style\.adminOnly\) return hasBoardAdminAccess\(\)/)
+test('all browser-local capabilities are Free while the admin pitch stays protected', async () => {
+  const { canImport, canPlaceCone, canUploadBackground, canPickPitch } = await import('../src/entitlements.ts')
+  resetServerEntitlement()
+  assert.equal(canImport(), true)
+  assert.equal(canPlaceCone(), true)
+  assert.equal(canUploadBackground(), true)
+  assert.equal(canExportAnimation(), true)
+  const normal = PITCHES.find(p => p.id === 'training')!
+  const classic = PITCHES.find(p => p.id === 'classic')!
+  assert.equal(canPickPitch(normal), true)
+  assert.equal(canPickPitch(classic), false)
 })
 
 // Cones are a paid feature. The gate covers placing a new one; a cone already on
 // a saved board must keep rendering, stay editable and still export.
-test('placing a cone needs paid access, and existing cones are untouched', async () => {
-  const { canPlaceCone, hasPaidBoardAccess } = await import('../src/entitlements.ts')
+test('placing and rendering cones are Free', async () => {
+  const { canPlaceCone } = await import('../src/entitlements.ts')
   const { readFile } = await import('node:fs/promises')
   resetServerEntitlement()
-
-  assert.equal(canPlaceCone(), false, 'free cannot place a cone')
-  setServerEntitlement(false, true)
-  assert.equal(canPlaceCone(), true, 'a licence can place a cone')
-  setServerEntitlement(true, false)
-  assert.equal(canPlaceCone(), true, 'Pro includes it')
-  resetServerEntitlement()
-  assert.equal(canPlaceCone(), hasPaidBoardAccess())
-
-  // Enforced where the object is created, not only in the toolbar.
+  assert.equal(canPlaceCone(), true)
   const board = await readFile(new URL('../src/board.ts', import.meta.url), 'utf8')
   assert.match(board, /this\.defaults\.place === 'cone' && canPlaceCone\(\)/)
-  // Rendering, editing and migration of existing cones stay ungated.
   assert.match(board, /case 'cone': return this\.buildCone\(o\)/)
-  assert.doesNotMatch(board, /canPlaceCone\(\)[\s\S]{0,80}buildCone/)
-
   const main = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8')
-  assert.match(main, /Cones and goals need a License\. Your saved cones and goals stay on their boards\./)
+  assert.doesNotMatch(main, /Cones and goals need a License/)
 })
 
 // Goals ride the same licence as cones: placing one is gated, drawing an
@@ -237,22 +210,12 @@ test('placing a goal needs paid access, and existing goals are untouched', async
 
 // The Live board needs an imported screenshot to be usable at all, so whatever
 // unlocks the board must also unlock the import.
-test('every tier that can pick the Live board can also import into it', async () => {
+test('Free can pick the Live board and import into it', async () => {
   const { canImport, canPickPitch } = await import('../src/entitlements.ts')
-  const { PITCHES } = await import('../src/pitches.ts')
   const live = PITCHES.find(p => p.id === 'live')!
-  assert.ok(live, 'the live pitch exists')
-
   resetServerEntitlement()
-  assert.equal(canPickPitch(live), false, 'free cannot pick it')
-  assert.equal(canImport(), false, 'and cannot import')
-
-  for (const [pro, license] of [[false, true], [true, false], [true, true]] as [boolean, boolean][]) {
-    setServerEntitlement(pro, license)
-    assert.equal(canPickPitch(live), true)
-    assert.equal(canImport(), true, 'picking the live board always implies importing')
-  }
-  resetServerEntitlement()
+  assert.equal(canPickPitch(live), true)
+  assert.equal(canImport(), true)
 })
 
 test('the preview plan override can only ever show less, never grant', () => {
@@ -316,18 +279,16 @@ test('the protected author can sign in to Board through the dashboard', () => {
   assert.match(header, /sessionBinding === previousSessionBinding/)
 })
 
-test('nobody is sold what they already hold', () => {
+test('existing License and Pro holders are not sold what they already hold', () => {
   const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
 
   const licence = main.match(/function renderLicenseCta\(\)[\s\S]*?\n}/)?.[0] ?? ''
   const pro = main.match(/function renderProCta\(\)[\s\S]*?\n}/)?.[0] ?? ''
 
-  // A holder is told what they have and where to change it, and the buy button
-  // is cleared rather than left under the card.
-  for (const fn of [licence, pro]) {
-    assert.match(fn, /manageLink\(\)/)
-  }
-  assert.match(licence, /cardCta\.innerHTML = ''/)
+  assert.match(licence, /hasBoardLicense\(\)/)
+  assert.match(licence, /grandfathered Hosted Board License/)
+  assert.doesNotMatch(licence, /buyButton[\s\S]*license/)
+  assert.match(pro, /entitlements\.isPro\(\)[\s\S]*manageLink\(\)/)
   assert.match(main, /Manage or cancel on Tactics Journal/)
 })
 
@@ -361,18 +322,15 @@ test('billing is not managed anywhere that cannot manage it', () => {
   assert.match(main, /href="\$\{LICENSE_MANAGE_URL\}" target="_blank" rel="noopener">Manage or cancel on Tactics Journal/)
 })
 
-test('production sells the Licence and Pro', () => {
+test('production sells only Pro', () => {
   const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
   const checkout = readFileSync(new URL('../src/checkout.ts', import.meta.url), 'utf8')
 
-  assert.match(main, /LICENSE_CHECKOUT_OPEN\s*=\s*true/)
+  assert.doesNotMatch(main, /LICENSE_CHECKOUT_OPEN|licenseCheckoutOpen/)
   assert.match(main, /PRO_CHECKOUT_OPEN\s*=\s*true/)
-  const licence = main.match(/function renderLicenseCta\(\)[\s\S]*?\n}/)?.[0] ?? ''
   const pro = main.match(/function renderProCta\(\)[\s\S]*?\n}/)?.[0] ?? ''
-  assert.match(licence, /licenseCheckoutOpen\(\)/)
-  assert.match(licence, /buyButton\([\s\S]*['\"]license['\"]\)/)
+  assert.doesNotMatch(checkout, /license-checkout|CheckoutProduct = 'license'/)
   assert.match(pro, /proCheckoutOpen\(\)/)
-  assert.match(pro, /Pro is coming soon/)
   assert.match(pro, /buyButton\([\s\S]*['\"]pro_monthly['\"]\)/)
   assert.match(pro, /buyButton\([\s\S]*['\"]pro_yearly['\"]\)/)
 
@@ -402,12 +360,12 @@ test('previews may use sandbox billing but the canonical Board host always uses 
   }
 })
 
-test('animation export is a licence feature, and a still image is not', () => {
+test('animation export is Free', () => {
   resetServerEntitlement()
-  assert.equal(canExportAnimation(), false)
+  assert.equal(canExportAnimation(), true)
   setServerEntitlement(false, true)
-  assert.equal(canExportAnimation(), true, 'a licence exports the animation')
+  assert.equal(canExportAnimation(), true)
   setServerEntitlement(true, false)
-  assert.equal(canExportAnimation(), true, 'Pro includes the licence')
+  assert.equal(canExportAnimation(), true)
   resetServerEntitlement()
 })
