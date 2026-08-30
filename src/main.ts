@@ -3114,8 +3114,154 @@ const boardsView = new BoardsView(document.querySelector<HTMLElement>('#libRoot'
     loadBoardIntoEditor(board.scene)
   },
   openProject: openLibraryProject,
+  projectActions: (projectId) => {
+    const actions = saves.projectActions(projectId)
+    const waiting = actions.target ? proposalCounts[actions.target.id] || 0 : 0
+    return { history: actions.history, proposals: actions.proposals, waiting }
+  },
+  openProjectHistory: (projectId) => openProjectScreen(projectId, 'history'),
+  openProjectProposals: (projectId) => openProjectScreen(projectId, 'proposals'),
 })
 boardsView.setLibrary(library)
+
+/**
+ * How many proposed versions wait on each synced project, by the server's
+ * board id. Read once when the library opens, so a card can say that
+ * something is waiting without a request of its own. An account that cannot
+ * have proposals never asks, and a failed read simply says nothing.
+ */
+let proposalCounts: Record<string, number> = {}
+
+async function refreshProposalCounts(): Promise<void> {
+  if (BOARD_SELF_HOSTED || !authenticated || !entitlements.isPro() || !accountBinding) {
+    proposalCounts = {}
+    return
+  }
+  try {
+    proposalCounts = await createBoardProposalsApi().counts()
+  } catch {
+    proposalCounts = {}
+    return
+  }
+  boardsView.refreshProjects()
+}
+
+/**
+ * Leave the library for one project's own screen in Settings.
+ *
+ * The two screens already exist and already own one project at a time, so
+ * this opens Settings on the screen and hands the project over. Back goes to
+ * the saved list, which is where those screens have always returned to.
+ */
+function openProjectScreen(projectId: string, screen: 'history' | 'proposals'): void {
+  const actions = saves.projectActions(projectId)
+  if (!actions.target) return
+  if (screen === 'history' ? !actions.history : !actions.proposals) return
+  boardsView.close()
+  openSettings(screen)
+  if (screen === 'history') boardHistory.open(actions.target)
+  else boardProposals.start(actions.target)
+  settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
+}
+
+/**
+ * What a carry moves. A selection is the answer when there is one; with
+ * nothing picked the board itself is the answer, so the common path never
+ * stops to ask.
+ */
+function carryScope(): CarrySelection {
+  const ids = selectedObjects().map(object => object.id)
+  return ids.length ? ids : 'all'
+}
+
+function carrySelectionToBoards(sourceBoardId: string, targetBoardIds: readonly string[], scope: CarrySelection) {
+  const source = currentBoard()
+  if (!source || source.id !== sourceBoardId) return
+  stashEditedBoard(false)
+  const project = currentProject(library)
+  const carriedCount = scope === 'all'
+    ? source.scene.objects.length
+    : source.scene.objects.filter(object => scope.includes(object.id)).length
+  const result = carryObjects(project, sourceBoardId, targetBoardIds, scope)
+  saveProjectChanges(project)
+  if (result.objects) {
+    showToast(
+      `Carried ${carriedCount} object${carriedCount === 1 ? '' : 's'} to ${result.boards} board${result.boards === 1 ? '' : 's'}. They stay on this board too.`,
+      undoCarryAction(project.id, result.added),
+    )
+  } else {
+    showToast('Those objects are already on those boards.')
+  }
+}
+
+/** The one-click path: everything after this board takes the copies. */
+function carryForward() {
+  const project = currentProject(library)
+  const source = currentBoard()
+  if (!source || !store.scene.objects.length) return
+  const index = project.boards.findIndex(item => item.id === source.id)
+  const targets = index >= 0 ? project.boards.slice(index + 1).map(item => item.id) : []
+  if (!targets.length) return
+  closeCarryMenu(false)
+  carrySelectionToBoards(source.id, targets, carryScope())
+}
+
+function chooseCarryTargets() {
+  const source = currentBoard()
+  if (!source) return
+  const scope = carryScope()
+  const count = scope === 'all' ? store.scene.objects.length : scope.length
+  stashEditedBoard(false)
+  boardsView.openCarry(source.id, scope, count)
+}
+
+function carryMenuAction(action: string) {
+  const project = currentProject(library)
+  const source = currentBoard()
+  if (!source) return
+  if (action === 'choose') {
+    closeCarryMenu(false)
+    chooseCarryTargets()
+    return
+  }
+  const index = project.boards.findIndex(board => board.id === source.id)
+  const next = project.boards[index + 1]
+  if (!next) return
+  closeCarryMenu()
+  carrySelectionToBoards(source.id, [next.id], carryScope())
+}
+
+/** The Undo a carry toast offers, or nothing when it added nothing. */
+function undoCarryAction(projectId: string, added: readonly CarryAddition[]): ToastAction | undefined {
+  if (!added.length) return undefined
+  const record = added.map(entry => ({ boardId: entry.boardId, objectIds: [...entry.objectIds] }))
+  return { label: 'Undo', run: () => revertCarry(projectId, record) }
+}
+
+/**
+ * Take one carry back: only the copies it added come off, and only from the
+ * boards it touched. The source never had anything done to it, so it is left
+ * alone; a target board the editor happens to be holding is shown again.
+ */
+function revertCarry(projectId: string, added: readonly CarryAddition[]) {
+  const project = library.projects.find(item => item.id === projectId)
+  if (!project) return
+  const openId = library.currentId === projectId ? currentBoard()?.id : undefined
+  if (openId) stashEditedBoard(false)
+  const removed = undoCarry(project, added)
+  if (!removed) { showToast('Those copies are already gone.'); return }
+  saveProjectChanges(project)
+  if (openId && added.some(entry => entry.boardId === openId)) {
+    const board = project.boards.find(item => item.id === openId)
+    if (board) loadBoardIntoEditor(board.scene)
+  }
+  showToast('Carry undone.')
+}
+
+carryMenuEl.addEventListener('click', e => {
+  const item = (e.target as HTMLElement).closest<HTMLElement>('[data-carry]')
+  if (item && !item.hasAttribute('disabled')) carryMenuAction(item.dataset.carry!)
+})
 
 /**
  * A board started on a chosen pitch or saved background. The style is resolved
@@ -3337,6 +3483,7 @@ function openProjectsScreen(): void {
   reconcileLibraryProjectDocuments()
   closeSettings()
   boardsView.open('projects')
+  void refreshProposalCounts()
   document.querySelector<HTMLElement>('#libRoot .libClose')?.focus()
 }
 
