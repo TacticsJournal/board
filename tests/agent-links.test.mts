@@ -23,7 +23,7 @@ test('agent-link controls are Pro-only and limited to editable saved rows', () =
 
 test('person and agent sharing sync the saved board before issuing requests', () => {
   assert.match(saves, /onPrepareShare: \(boardId: string\) => Promise<string>/)
-  assert.match(saves, /onCreateAgentLink: \(boardId: string\) => Promise<string>/)
+  assert.match(saves, /onCreateAgentLink: \(boardId: string, mode: AgentAccessMode\) => Promise<string>/)
 
   const request = saves.match(/const request = async[\s\S]*?const roleLabel/)?.[0] ?? ''
   assert.match(request, /await prepareShare\(\)/)
@@ -53,7 +53,7 @@ test('person and agent sharing sync the saved board before issuing requests', ()
   assert.match(callback, /await flushSkillsForAgentLink\(finalBoardId\)/)
   assert.match(callback, /boardAgentLinksUrl\(\)/)
   assert.match(callback, /credentials: 'include'/)
-  assert.match(callback, /JSON\.stringify\(\{ board_id: finalBoardId \}\)/)
+  assert.match(callback, /JSON\.stringify\(\{ board_id: finalBoardId, access_mode: mode \}\)/)
   assert.ok(callback.indexOf('await prepareSavedBoardsForSharing()') < callback.indexOf('fetch('))
 })
 

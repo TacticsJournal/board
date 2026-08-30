@@ -146,7 +146,7 @@ test('history is a Settings screen with a back arrow, not a window of its own', 
   assert.match(main, /type SetScreen = [^\n]*\| 'history'/)
   assert.match(main, /history: 'Version history'/)
   assert.match(main, /<div class="setPane hidden" data-pane="history">\s*<div data-history-host><\/div>/)
-  assert.match(main, /screen === 'history' \? 'boards' : 'root'/)
+  assert.match(main, /screen === 'history' \|\| screen === 'proposals' \? 'boards' : 'root'/)
   assert.match(main, /boardHistory\.open\(target\)\s*showScreen\('history'\)\s*settingsEl\.querySelector<HTMLElement>\('\.setBack'\)\?\.focus\(\)/)
   assert.doesNotMatch(main, /alert\(`?[^`)]*version history/i)
 })
@@ -162,7 +162,7 @@ test('a restored version goes through the sync store and the usual reconciliatio
   // about to be hidden
   assert.match(main, /onDone: \(message, boardId\) => \{\s*showScreen\('boards'\)\s*saves\.refresh\(\)\s*saves\.announce\(message\)/)
   assert.match(saves, /announce\(message: string\): void \{ this\.showStatus\(message\) \}/)
-  assert.match(main, /if \(screen === 'history' && !\(authenticated && entitlements\.isPro\(\) && !BOARD_SELF_HOSTED\)\) showScreen\('boards'\)/)
+  assert.match(main, /\(screen === 'history' \|\| screen === 'proposals'\)\s*&& !\(authenticated && entitlements\.isPro\(\) && !BOARD_SELF_HOSTED\)\) showScreen\('boards'\)/)
 })
 
 test('the history screen keeps its states, its confirmation and its live region', () => {

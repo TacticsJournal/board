@@ -46,7 +46,20 @@ export type BoardsHost = {
    * is given.
    */
   resolveBackground: (id: string, projectId: string) => Promise<string | null>
+  /**
+   * What this account may do with one project beyond renaming and deleting
+   * it, and how many proposed versions are waiting on it. The library shows
+   * what it is given and decides nothing itself.
+   */
+  projectActions: (projectId: string) => ProjectActions
+  /** Leave the library for one project's Version history. */
+  openProjectHistory: (projectId: string) => void
+  /** Leave the library for one project's Proposals. */
+  openProjectProposals: (projectId: string) => void
 }
+
+/** Owner-only actions for one project, as the host reports them. */
+export type ProjectActions = { history: boolean; proposals: boolean; waiting: number }
 
 /** null is the user backing out of the native picker: nothing to say about it. */
 export type AddBoardUpload = { pitchId: string } | { error: string } | null
@@ -67,6 +80,9 @@ export class BoardsView {
   private addSheet: HTMLElement | null = null
   private addIndex = 0
   private addTrigger: HTMLElement | null = null
+  private projSheet: HTMLElement | null = null
+  private projSheetId: string | null = null
+  private projTrigger: HTMLElement | null = null
   /** Uploaded background bytes already in hand, read once each. */
   private bg = createBackgroundCache(
     (id, projectId) => this.host.resolveBackground(id, projectId),
@@ -109,6 +125,7 @@ export class BoardsView {
   /** Show Boards, or Projects, or neither. */
   open(screen: Screen | null) {
     this.closeAddSheet(false)
+    this.closeProjectSheet(false)
     if (!screen) {
       this.root.hidden = true
       document.body.classList.remove('lib-open')
@@ -122,6 +139,17 @@ export class BoardsView {
   }
 
   toggleBoards() { this.open(this.isOpen && this.screen === 'boards' ? null : 'boards') }
+
+  /** Leave the library entirely, for a screen that lives somewhere else. */
+  close() {
+    this.closeProjectSheet(false)
+    this.open(null)
+  }
+
+  /** Redraw the project cards in place, for a count that arrived after they did. */
+  refreshProjects() {
+    if (this.isOpen && this.screen === 'projects') this.renderProjects()
+  }
 
   /** Redraw after the editor changed the board it is holding. */
   refresh() { if (!this.root.hidden) this.render() }
@@ -213,9 +241,9 @@ export class BoardsView {
       <div class="libCard projCard${project.id === this.lib.currentId ? ' is-live' : ''}" data-project="${project.id}">
         <span class="projTop">
           <span class="projName">${escapeText(project.name)}</span>
+          ${this.waitingChip(project.id)}
           <span class="projMeta">${project.boards.length} · ${ago(project.updated)}</span>
-          <button class="projMore" data-act="rename" data-id="${project.id}" title="Rename">${icon('pencil')}</button>
-          <button class="projMore" data-act="del-project" data-id="${project.id}" title="Delete"${this.lib.projects.length < 2 ? ' disabled' : ''}>${icon('trash')}</button>
+          <button class="projMore" data-act="proj-menu" data-id="${project.id}" title="More" aria-haspopup="dialog" aria-label="More for ${escapeText(project.name)}">${icon('dots')}</button>
         </span>
         <span class="projStrip">${project.boards.slice(0, 6).map(b => `<span>${this.preview(b, project.id)}</span>`).join('')}</span>
       </div>`).join('')
@@ -347,27 +375,8 @@ export class BoardsView {
           this.open('boards')
           return
         }
-        case 'rename': {
-          const found = this.lib.projects.find(p => p.id === id)
-          if (!found) return
-          const name = window.prompt('Name this project:', found.name === UNTITLED ? '' : found.name)
-          if (name === null) return
-          found.name = name.trim() || UNTITLED
-          touch(found)
-          this.host.changed(found)
-          this.render()
-          return
-        }
-        case 'del-project': {
-          if (this.lib.projects.length < 2) return
-          const found = this.lib.projects.find(p => p.id === id)
-          if (!found) return
-          if (!window.confirm(`Delete "${found.name}" and its ${found.boards.length} board${found.boards.length === 1 ? '' : 's'}?`)) return
-          this.host.deleteProject(found.id)
-          this.lib.projects = this.lib.projects.filter(p => p.id !== id)
-          this.host.changed()
-          if (this.lib.currentId === id) this.host.openProject(orderedProjects(this.lib)[0].id)
-          this.render()
+        case 'proj-menu': {
+          this.projectMenu(id, btn)
           return
         }
       }
@@ -385,6 +394,101 @@ export class BoardsView {
       this.host.openProject(projCard.dataset.project!)
       this.open('boards')
     }
+  }
+
+  /** The amber word on a card that something is waiting, or nothing at all. */
+  private waitingChip(projectId: string): string {
+    const waiting = this.host.projectActions(projectId).waiting
+    if (waiting < 1) return ''
+    const label = waiting === 1 ? '1 waiting' : `${waiting} waiting`
+    return `<span class="projWait" title="Proposed versions waiting for you">${label}</span>`
+  }
+
+  /**
+   * Everything a project can be asked to do, in words.
+   *
+   * It is a sheet rather than a floating menu for the same reason Add board
+   * is: on a phone a menu hung off a card in a scrolling grid ends up half
+   * off the screen. What an account cannot use is absent, never greyed out,
+   * so the sheet never advertises Pro from inside a project's own menu.
+   */
+  private projectMenu(projectId: string, trigger?: HTMLElement | null) {
+    this.closeProjectSheet(false)
+    const project = this.lib.projects.find(p => p.id === projectId)
+    if (!project) return
+    const actions = this.host.projectActions(projectId)
+    const waiting = actions.waiting > 0 ? `<span class="projSheetCount">${actions.waiting}</span>` : ''
+    const sheet = document.createElement('div')
+    sheet.className = 'modal projSheet'
+    sheet.innerHTML = `
+      <div class="sheet projSheetBody" role="dialog" aria-modal="true" aria-label="${escapeText(project.name)}">
+        <div class="sheetHead">
+          <strong>${escapeText(project.name)}</strong>
+          <button data-proj="close">Close</button>
+        </div>
+        <button class="projOpt" data-proj="rename">${icon('pencil')}<span>Rename</span></button>
+        ${actions.history ? `<button class="projOpt" data-proj="history">${icon('history')}<span>Version history</span></button>` : ''}
+        ${actions.proposals ? `<button class="projOpt" data-proj="proposals">${icon('inbox')}<span>Proposals</span>${waiting}</button>` : ''}
+        <button class="projOpt projOptDanger" data-proj="delete"${this.lib.projects.length < 2 ? ' disabled' : ''}>${icon('trash')}<span>Delete</span></button>
+      </div>`
+    document.body.appendChild(sheet)
+    this.projSheet = sheet
+    this.projSheetId = projectId
+    this.projTrigger = trigger ?? null
+    sheet.addEventListener('click', e => this.onProjectSheetClick(e))
+    sheet.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.stopPropagation(); this.closeProjectSheet(true) }
+    })
+    sheet.querySelector<HTMLElement>('[data-proj="rename"]')?.focus()
+  }
+
+  private onProjectSheetClick(e: MouseEvent) {
+    const target = e.target as HTMLElement
+    const button = target.closest<HTMLElement>('[data-proj]')
+    // the ground outside the sheet dismisses it, as every other sheet does
+    if (!button) { if (target === this.projSheet) this.closeProjectSheet(true); return }
+    const act = button.dataset.proj
+    const projectId = this.projSheetId
+    if (!projectId) return
+    if (act === 'close') { this.closeProjectSheet(true); return }
+    this.closeProjectSheet(act === 'rename' || act === 'delete')
+    if (act === 'rename') this.renameProject(projectId)
+    else if (act === 'delete') this.deleteProject(projectId)
+    else if (act === 'history') this.host.openProjectHistory(projectId)
+    else if (act === 'proposals') this.host.openProjectProposals(projectId)
+  }
+
+  private closeProjectSheet(restoreFocus: boolean) {
+    if (!this.projSheet) return
+    this.projSheet.remove()
+    this.projSheet = null
+    this.projSheetId = null
+    const trigger = this.projTrigger
+    this.projTrigger = null
+    if (restoreFocus && trigger?.isConnected) trigger.focus()
+  }
+
+  private renameProject(id: string) {
+    const found = this.lib.projects.find(p => p.id === id)
+    if (!found) return
+    const name = window.prompt('Name this project:', found.name === UNTITLED ? '' : found.name)
+    if (name === null) return
+    found.name = name.trim() || UNTITLED
+    touch(found)
+    this.host.changed(found)
+    this.render()
+  }
+
+  private deleteProject(id: string) {
+    if (this.lib.projects.length < 2) return
+    const found = this.lib.projects.find(p => p.id === id)
+    if (!found) return
+    if (!window.confirm(`Delete "${found.name}" and its ${found.boards.length} board${found.boards.length === 1 ? '' : 's'}?`)) return
+    this.host.deleteProject(found.id)
+    this.lib.projects = this.lib.projects.filter(p => p.id !== id)
+    this.host.changed()
+    if (this.lib.currentId === id) this.host.openProject(orderedProjects(this.lib)[0].id)
+    this.render()
   }
 
   /**

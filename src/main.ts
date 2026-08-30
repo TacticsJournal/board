@@ -14,6 +14,7 @@ import type { NodeCurve, PathNode } from './path-nodes'
 import { ImportPanel } from './importer'
 import { SavesPanel } from './saves'
 import { BoardHistoryPanel, createBoardHistoryApi, type BoardHistoryTarget, type RestoredBoard } from './board-history'
+import { BoardProposalsPanel, createBoardProposalsApi, type AcceptedBoard, type BoardProposalsTarget } from './board-proposals'
 import { formatElapsedSince } from './last-updated'
 import { mountSlidingPills } from './sliding-pill'
 import { TeamPanel, teamCode, type TeamSide } from './teams'
@@ -39,7 +40,7 @@ import {
 import * as live from './live'
 import * as collaboration from './collaboration'
 import { TJ_ORIGIN, usingBillingSandbox } from './origin'
-import { boardAgentLinksUrl, boardInvitationUrl, boardPresenceUrl, boardSkillsUrl, ensureBoardSession, resetBoardSession } from './board-api'
+import { boardAgentLinksUrl, boardInvitationUrl, boardPresenceUrl, boardSkillsUrl, ensureBoardSession, resetBoardSession, type AgentAccessMode } from './board-api'
 import { startCheckout, type CheckoutProduct } from './checkout'
 import * as entitlements from './entitlements'
 import {
@@ -50,7 +51,7 @@ import {
   MAX_CAT_LENGTH, MAX_STAMP_OBJECTS, Stamp, StampQuotaError,
   addStamp, customCats, listStamps, normalizeCat, removeStamp, updateStamp, stampLibrarySyncStore, subscribe as subscribeStamps,
 } from './stamps'
-import { sceneShapesSvg } from './saves'
+import { previewSvg, sceneShapesSvg } from './saves'
 import { icon } from './icons'
 import { ExtensionRuntime, type ExtensionManifest } from './extension-runtime'
 import { OfficialExtensions } from './extensions/official/manager.ts'
@@ -3113,8 +3114,154 @@ const boardsView = new BoardsView(document.querySelector<HTMLElement>('#libRoot'
     loadBoardIntoEditor(board.scene)
   },
   openProject: openLibraryProject,
+  projectActions: (projectId) => {
+    const actions = saves.projectActions(projectId)
+    const waiting = actions.target ? proposalCounts[actions.target.id] || 0 : 0
+    return { history: actions.history, proposals: actions.proposals, waiting }
+  },
+  openProjectHistory: (projectId) => openProjectScreen(projectId, 'history'),
+  openProjectProposals: (projectId) => openProjectScreen(projectId, 'proposals'),
 })
 boardsView.setLibrary(library)
+
+/**
+ * How many proposed versions wait on each synced project, by the server's
+ * board id. Read once when the library opens, so a card can say that
+ * something is waiting without a request of its own. An account that cannot
+ * have proposals never asks, and a failed read simply says nothing.
+ */
+let proposalCounts: Record<string, number> = {}
+
+async function refreshProposalCounts(): Promise<void> {
+  if (BOARD_SELF_HOSTED || !authenticated || !entitlements.isPro() || !accountBinding) {
+    proposalCounts = {}
+    return
+  }
+  try {
+    proposalCounts = await createBoardProposalsApi().counts()
+  } catch {
+    proposalCounts = {}
+    return
+  }
+  boardsView.refreshProjects()
+}
+
+/**
+ * Leave the library for one project's own screen in Settings.
+ *
+ * The two screens already exist and already own one project at a time, so
+ * this opens Settings on the screen and hands the project over. Back goes to
+ * the saved list, which is where those screens have always returned to.
+ */
+function openProjectScreen(projectId: string, screen: 'history' | 'proposals'): void {
+  const actions = saves.projectActions(projectId)
+  if (!actions.target) return
+  if (screen === 'history' ? !actions.history : !actions.proposals) return
+  boardsView.close()
+  openSettings(screen)
+  if (screen === 'history') boardHistory.open(actions.target)
+  else boardProposals.start(actions.target)
+  settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
+}
+
+/**
+ * What a carry moves. A selection is the answer when there is one; with
+ * nothing picked the board itself is the answer, so the common path never
+ * stops to ask.
+ */
+function carryScope(): CarrySelection {
+  const ids = selectedObjects().map(object => object.id)
+  return ids.length ? ids : 'all'
+}
+
+function carrySelectionToBoards(sourceBoardId: string, targetBoardIds: readonly string[], scope: CarrySelection) {
+  const source = currentBoard()
+  if (!source || source.id !== sourceBoardId) return
+  stashEditedBoard(false)
+  const project = currentProject(library)
+  const carriedCount = scope === 'all'
+    ? source.scene.objects.length
+    : source.scene.objects.filter(object => scope.includes(object.id)).length
+  const result = carryObjects(project, sourceBoardId, targetBoardIds, scope)
+  saveProjectChanges(project)
+  if (result.objects) {
+    showToast(
+      `Carried ${carriedCount} object${carriedCount === 1 ? '' : 's'} to ${result.boards} board${result.boards === 1 ? '' : 's'}. They stay on this board too.`,
+      undoCarryAction(project.id, result.added),
+    )
+  } else {
+    showToast('Those objects are already on those boards.')
+  }
+}
+
+/** The one-click path: everything after this board takes the copies. */
+function carryForward() {
+  const project = currentProject(library)
+  const source = currentBoard()
+  if (!source || !store.scene.objects.length) return
+  const index = project.boards.findIndex(item => item.id === source.id)
+  const targets = index >= 0 ? project.boards.slice(index + 1).map(item => item.id) : []
+  if (!targets.length) return
+  closeCarryMenu(false)
+  carrySelectionToBoards(source.id, targets, carryScope())
+}
+
+function chooseCarryTargets() {
+  const source = currentBoard()
+  if (!source) return
+  const scope = carryScope()
+  const count = scope === 'all' ? store.scene.objects.length : scope.length
+  stashEditedBoard(false)
+  boardsView.openCarry(source.id, scope, count)
+}
+
+function carryMenuAction(action: string) {
+  const project = currentProject(library)
+  const source = currentBoard()
+  if (!source) return
+  if (action === 'choose') {
+    closeCarryMenu(false)
+    chooseCarryTargets()
+    return
+  }
+  const index = project.boards.findIndex(board => board.id === source.id)
+  const next = project.boards[index + 1]
+  if (!next) return
+  closeCarryMenu()
+  carrySelectionToBoards(source.id, [next.id], carryScope())
+}
+
+/** The Undo a carry toast offers, or nothing when it added nothing. */
+function undoCarryAction(projectId: string, added: readonly CarryAddition[]): ToastAction | undefined {
+  if (!added.length) return undefined
+  const record = added.map(entry => ({ boardId: entry.boardId, objectIds: [...entry.objectIds] }))
+  return { label: 'Undo', run: () => revertCarry(projectId, record) }
+}
+
+/**
+ * Take one carry back: only the copies it added come off, and only from the
+ * boards it touched. The source never had anything done to it, so it is left
+ * alone; a target board the editor happens to be holding is shown again.
+ */
+function revertCarry(projectId: string, added: readonly CarryAddition[]) {
+  const project = library.projects.find(item => item.id === projectId)
+  if (!project) return
+  const openId = library.currentId === projectId ? currentBoard()?.id : undefined
+  if (openId) stashEditedBoard(false)
+  const removed = undoCarry(project, added)
+  if (!removed) { showToast('Those copies are already gone.'); return }
+  saveProjectChanges(project)
+  if (openId && added.some(entry => entry.boardId === openId)) {
+    const board = project.boards.find(item => item.id === openId)
+    if (board) loadBoardIntoEditor(board.scene)
+  }
+  showToast('Carry undone.')
+}
+
+carryMenuEl.addEventListener('click', e => {
+  const item = (e.target as HTMLElement).closest<HTMLElement>('[data-carry]')
+  if (item && !item.hasAttribute('disabled')) carryMenuAction(item.dataset.carry!)
+})
 
 /**
  * A board started on a chosen pitch or saved background. The style is resolved
@@ -3336,6 +3483,7 @@ function openProjectsScreen(): void {
   reconcileLibraryProjectDocuments()
   closeSettings()
   boardsView.open('projects')
+  void refreshProposalCounts()
   document.querySelector<HTMLElement>('#libRoot .libClose')?.focus()
 }
 
@@ -3461,7 +3609,7 @@ function shareEntries(): ShareEntry[] {
       key: 'agent', label: 'Invite an agent', ic: 'prompt',
       // a preview build shares the billing sandbox and must never mint a real
       // credential, so a Pro account here is told why rather than sold to
-      note: 'A link that can read and draw on this board for 24 hours',
+      note: 'A link that can read and draw on this board for 24 hours, proposing or editing as you choose',
       // a preview build shares the billing sandbox and grants Pro to everyone
       // on it, so it must never mint a real credential: that is a different
       // reason from not having bought Pro, and it gets a different answer
@@ -3471,7 +3619,7 @@ function shareEntries(): ShareEntry[] {
           ? { tag: 'Board', toast: 'Agent links are issued only from board.tacticsjournal.com.' }
           : { tag: 'Pro', toast: UPGRADE_TOAST },
       run: () => shareStep('Invite an agent', (body) => {
-        void makeAgentLink(body)
+        makeAgentLink(body)
         return true
       }),
     },
@@ -3642,10 +3790,33 @@ function makeCopyLink(body: HTMLElement) {
   void generate('board')
 }
 
-async function makeAgentLink(body: HTMLElement) {
+/**
+ * The one thing to decide before an agent gets a link: whether what it saves
+ * lands on the project or waits for you. The choice is made here, before any
+ * credential exists, because it cannot be changed on a link already issued.
+ */
+function makeAgentLink(body: HTMLElement) {
+  body.innerHTML = `<p class="shareStatus">What may this agent do with the project?</p>
+    <div class="setGroup agentModes">
+      <button class="setItem" data-agent-mode="propose">
+        <span class="setItemLabel">Propose changes<span class="setItemNote">Its work waits in Proposals until you accept it</span></span>
+      </button>
+      <button class="setItem" data-agent-mode="edit">
+        <span class="setItemLabel">Edit directly<span class="setItemNote">It changes the project as you would; earlier versions stay in History</span></span>
+      </button>
+    </div>`
+  body.querySelectorAll<HTMLButtonElement>('[data-agent-mode]').forEach(button => {
+    button.addEventListener('click', () => {
+      void issueAgentLink(body, button.dataset.agentMode === 'edit' ? 'edit' : 'propose')
+    })
+  })
+  body.querySelector<HTMLButtonElement>('[data-agent-mode]')?.focus()
+}
+
+async function issueAgentLink(body: HTMLElement, mode: AgentAccessMode) {
   body.innerHTML = '<p class="shareStatus">Saving and creating agent link…</p>'
   try {
-    const result = await saves.currentAgentLink()
+    const result = await saves.currentAgentLink(mode)
     if (result.status !== 'ok') {
       body.innerHTML = `<p class="shareStatus">${result.status === 'save-first'
         ? 'This board could not be saved on this device, so there is nothing to give an agent yet.'
@@ -3653,7 +3824,10 @@ async function makeAgentLink(body: HTMLElement) {
       return
     }
     const url = result.url
-    body.innerHTML = `<p class="shareStatus">Paste this link into your coding agent. It expires after 24 hours and can only read and draw on this project.</p>
+    body.innerHTML = `<p class="shareStatus">Paste this link into your coding agent. It expires after 24 hours and can only read and draw on this project.
+      ${mode === 'propose'
+        ? 'What it saves waits for you in Proposals.'
+        : 'What it saves changes the project straight away.'}</p>
       <span class="linkField">
         <input type="text" readonly data-agent-link aria-label="Agent link">
         <button type="button" class="copyIconButton" data-agent-link-copy aria-label="Copy agent link">${copyButtonIcons()}</button>
@@ -4566,6 +4740,9 @@ settingsEl.innerHTML = `
     <div class="setPane hidden" data-pane="history">
       <div data-history-host></div>
     </div>
+    <div class="setPane hidden" data-pane="proposals">
+      <div data-proposals-host></div>
+    </div>
     <div class="impStatus" data-set-note role="status" aria-live="polite"></div>
   </div>`
 document.body.appendChild(settingsEl)
@@ -4595,8 +4772,28 @@ const boardHistory = new BoardHistoryPanel({
 })
 settingsEl.querySelector('[data-history-host]')!.appendChild(boardHistory.el)
 
+/**
+ * Proposals is Version history's twin: one project, opened from the saved
+ * list, returning to it. Where history looks backwards at versions this
+ * account made, proposals looks at versions an agent link suggested and never
+ * applied. Accepting one takes the same path a restore takes, so an accepted
+ * version reaches the canvas and the Projects library like any other change.
+ */
+const boardProposals = new BoardProposalsPanel({
+  api: createBoardProposalsApi(),
+  renderScene: (scene) => previewSvg(scene ?? undefined),
+  onAccepted: (board: AcceptedBoard, target: BoardProposalsTarget) => applyRestoredVersion(board, { ...target, savedAt: board.updatedAt }),
+  onDone: (message, boardId) => {
+    showScreen('boards')
+    saves.refresh()
+    saves.announce(message)
+    if (!saves.focusProposalsAction(boardId)) settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
+  },
+})
+settingsEl.querySelector('[data-proposals-host]')!.appendChild(boardProposals.el)
+
 /** Settings is one list plus push screens; every screen but root has a back arrow. */
-type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'history' | 'pro' | 'agents' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets' | 'self-host'
+type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'history' | 'proposals' | 'pro' | 'agents' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets' | 'self-host'
 
 const SCREEN_TITLES: Record<SetScreen, string> = {
   root: 'Settings',
@@ -4604,6 +4801,7 @@ const SCREEN_TITLES: Record<SetScreen, string> = {
   pitch: 'Pitch',
   boards: 'Move to another device',
   history: 'Version history',
+  proposals: 'Proposals',
   assets: 'My assets',
   pro: 'Plans',
   agents: 'Claude and ChatGPT',
@@ -5474,6 +5672,12 @@ saves.onOpenHistory = (target) => {
   showScreen('history')
   settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
 }
+saves.onOpenProposals = (target) => {
+  setNote('')
+  boardProposals.start(target)
+  showScreen('proposals')
+  settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
+}
 
 function setThemeResolved(dark: boolean, selected: 'system' | 'light' | 'dark') {
   // same attribute tacticsjournal.com uses, so the palettes stay in sync
@@ -6042,7 +6246,7 @@ settingsEl.addEventListener('click', (e) => {
     disposeExtensionRuntime()
     if (screen === 'skill') editingSkillDraft = null
     showScreen(screen === 'skill' || screen === 'extension' || screen === 'official' ? 'skills'
-      : screen === 'history' ? 'boards' : 'root')
+      : screen === 'history' || screen === 'proposals' ? 'boards' : 'root')
   }
   else if (k === 'theme-system') applyThemeChoice('system')
   else if (k === 'theme-light') applyTheme(false)
@@ -6777,14 +6981,14 @@ async function prepareSavedBoardsForSharing(boardId: string): Promise<string> {
 }
 
 saves.onPrepareShare = (boardId: string) => prepareSavedBoardsForSharing(boardId)
-saves.onCreateAgentLink = async (boardId: string): Promise<string> => {
+saves.onCreateAgentLink = async (boardId: string, mode: AgentAccessMode = 'propose'): Promise<string> => {
   const finalBoardId = await prepareSavedBoardsForSharing(boardId)
   await flushSkillsForAgentLink(finalBoardId)
   const response = await fetch(boardAgentLinksUrl(), {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ board_id: finalBoardId }),
+    body: JSON.stringify({ board_id: finalBoardId, access_mode: mode }),
   })
   if (!response.ok) throw new Error(`The server returned ${response.status}.`)
   const data = await response.json() as { url?: unknown }
@@ -6994,7 +7198,8 @@ window.addEventListener('tbm:entitlements-changed', ((event: CustomEvent) => {
   saves.refresh()
   // A lapsed or signed-out account must not be left standing on a screen its
   // project list no longer offers.
-  if (screen === 'history' && !(authenticated && entitlements.isPro() && !BOARD_SELF_HOSTED)) showScreen('boards')
+  if ((screen === 'history' || screen === 'proposals')
+    && !(authenticated && entitlements.isPro() && !BOARD_SELF_HOSTED)) showScreen('boards')
   // Pro just resolved, which is the first moment sync is allowed to run.
   void runSync()
   void updateLiveChannel()

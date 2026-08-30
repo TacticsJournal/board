@@ -21,6 +21,14 @@ export const boardAgentUrl = () => `${BOARD_API}/agent`
 export const boardLiveUrl = () => `${BOARD_API}/live`
 export const boardCollaborationUrl = () => `${BOARD_API}/collaboration`
 export const boardHistoryUrl = () => `${BOARD_API}/history`
+export const boardProposalsUrl = () => `${BOARD_API}/proposals`
+
+/**
+ * What an agent link may do with the project it is scoped to. A link that
+ * proposes leaves every save waiting for the owner in Proposals; a link that
+ * edits writes straight to the project.
+ */
+export type AgentAccessMode = 'propose' | 'edit'
 
 type FetchLike = typeof fetch
 
