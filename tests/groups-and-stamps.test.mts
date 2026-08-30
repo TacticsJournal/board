@@ -59,8 +59,9 @@ test('a user category is a short plain name, and it gets its own shelf row', () 
   assert.match(main, /for \(const cat of customCats\(ASSET_CATEGORIES\)\) rows\.push\(\{ cat, label: cat, items: stampItems\(cat\) \}\)/)
 })
 
-test('saving to the shelf is licensed, grouping is not', () => {
-  assert.match(main, /function saveSelectionToShelf\(\) \{\s*\n\s*if \(!canUseAssets\(\)\)/)
+test('saving combinations and grouping are Free', () => {
+  const save = main.match(/function saveSelectionToShelf\(\)[\s\S]*?\n}/)?.[0] ?? ''
+  assert.doesNotMatch(save, /canUseAssets|licen[cs]e/i)
   assert.equal(/function groupSelection\(\) \{[\s\S]{0,200}canUseAssets/.test(main), false)
 })
 

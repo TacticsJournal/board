@@ -1,4 +1,3 @@
-import { BOARD_SELF_HOSTED } from './build-mode.ts'
 import type { PitchStyle } from './pitches'
 
 /**
@@ -35,9 +34,9 @@ export function isAutomaticProEnvironment(environment: EntitlementEnvironment): 
 let _serverPro = false
 
 /**
- * The one-time Board license, reported by the server as `board_license`. It is a
- * separate product from Pro and never implies it: a license unlocks the paid
- * board features below, while Pro-only features stay closed.
+ * The retired Board License, reported by the server as `board_license`.
+ * Existing holders keep their account status and upgrade path, but all
+ * browser-local editor features are now Free.
  */
 let _serverLicense = false
 
@@ -107,18 +106,9 @@ function buildContextGrantsPro(): boolean {
 }
 
 /**
- * Preview-only plan override, for looking at the paid gates without holding a
- * licence. It reads `?plan=free|license|pro|server`, and only where the build
- * context already grants Pro, which is development and Cloudflare preview
- * hosts. On production it returns null and changes nothing, so a query
- * parameter can never grant access. On a preview it can only ever show less
- * than the Pro that host already hands out.
- *
- * `server` is the one to test a purchase with. It drops the automatic grant and
- * reports exactly what the account holds, so the board shows Free before paying
- * and the licence after, which is the whole thing being tested. The other three
- * pin a plan and ignore the account, so a licence bought under them stays
- * invisible.
+ * Preview-only plan override for reviewing account states. It reads
+ * `?plan=free|license|pro|server` only where the build context already grants
+ * Pro. Production ignores it, so a query parameter never grants access.
  */
 type PreviewPlan = 'free' | 'license' | 'pro' | 'server'
 
@@ -156,20 +146,16 @@ export function hasBoardLicense(): boolean {
 }
 
 /**
- * Paid board features: every pitch style, custom backgrounds, and unlimited
- * saved boards. Either product unlocks them, because Pro includes the licence —
- * buying Pro must never leave a subscriber with less than a licence holder. A
- * trusted build context unlocks them too, so development and preview builds are
- * unaffected.
- *
- * The reverse does not hold: a licence alone never opens Pro-only features.
+ * Legacy helper retained for account/status compatibility. A grandfathered
+ * License is still paid account access, but local editor capabilities no longer
+ * consult this result.
  */
 export function resolvePaidBoardAccess(selfHosted: boolean, pro: boolean, license: boolean): boolean {
   return selfHosted || pro || license
 }
 
 export function hasPaidBoardAccess(): boolean {
-  return resolvePaidBoardAccess(BOARD_SELF_HOSTED, isPro(), _serverLicense)
+  return isPro() || _serverLicense
 }
 
 /**
@@ -182,36 +168,12 @@ export function canCreateAgentLink(): boolean {
   catch { return false }
 }
 
-/**
- * Importing a broadcast screenshot is a paid feature, not a Pro-only one. The
- * Live board is unlocked by the licence and is useless without its screenshot,
- * so the two must open together.
- *
- * Automatic player detection is a separate, unbuilt thing and is not implied.
- */
-export function canImport(): boolean { return hasPaidBoardAccess() }
-
-/**
- * Placing a cone is a paid feature. Existing cones on a saved board always keep
- * rendering, staying editable and exporting: the gate covers placing a new one,
- * never the boards someone already drew.
- */
-export function canPlaceCone(): boolean { return hasPaidBoardAccess() }
-
-export function canUploadBackground(): boolean { return hasPaidBoardAccess() }
-
-/**
- * Exporting a project as an animation — a GIF or a video. Both render on this
- * device, so both belong to the licence: the split between the two products is
- * local power against the account, not one file format against another.
- *
- * Free keeps the still image. Animation is what every comparable board charges
- * for, so it sits above the free line from the day it exists rather than being
- * taken back later.
- */
-export function canExportAnimation(): boolean { return hasPaidBoardAccess() }
+// Every browser-local editor and export capability is Free.
+export function canImport(): boolean { return true }
+export function canPlaceCone(): boolean { return true }
+export function canUploadBackground(): boolean { return true }
+export function canExportAnimation(): boolean { return true }
 
 export function canPickPitch(style: PitchStyle): boolean {
-  if (style.adminOnly) return hasBoardAdminAccess()
-  return !style.pro || hasPaidBoardAccess()
+  return !style.adminOnly || hasBoardAdminAccess()
 }

@@ -68,7 +68,7 @@ test('Agents, Account, and Help keep every existing destination discoverable', (
     '<div class="setGroupHead">Help</div>',
   )
   assert.match(account, /data-set="signin"[\s\S]*?Sign in to Tactics Journal/)
-  assert.match(account, /data-goto="pro"[\s\S]*?>License and Pro</)
+  assert.match(account, /data-goto="pro"[\s\S]*?>Plans</)
   assert.match(account, /data-goto="assets"[\s\S]*?>My assets</)
 
   const helpStart = root.indexOf('<div class="setGroupHead">Help</div>')
@@ -84,5 +84,8 @@ test('Agents, Account, and Help keep every existing destination discoverable', (
 test('the hosted privacy page describes tracking and personal data accurately', () => {
   const about = sliceBetween(main, 'data-pane="about"', 'data-pane="self-host"')
   assert.match(about, /<strong>Privacy, data, copyright and use<\/strong>/)
-  assert.match(about, /BOARD_SELF_HOSTED \? '' : '<p><b>Privacy\.<\/b> This website does not use advertising, analytics or cross-site tracking cookies\. It uses essential and functional cookies for sign-in and site preferences\. We collect personal information only when you provide it or use account features\.<\/p>'/)
+  assert.match(about, /Board sends first-party aggregate counters/)
+  assert.match(about, /no IP address, account ID, visitor ID, URL, referrer, cookies, or arbitrary text/)
+  assert.match(about, /kept for 14 months/)
+  assert.match(about, /no advertising, third-party analytics, or cross-site tracking cookies/)
 })

@@ -230,15 +230,11 @@ export function projectDuration(project: Project): number {
   return project.boards.length * HOLD_MS + moves
 }
 
-/**
- * Free keeps three projects on this device, the same number it keeps editable
- * saved boards. A licence or Pro removes the limit; nothing is ever deleted
- * when access lapses, it just stops taking new ones.
- */
+/** Legacy display constant retained for import compatibility. Local projects are unlimited. */
 export const FREE_PROJECT_LIMIT = 3
 
-export function canCreateProject(lib: Library, paid: boolean): boolean {
-  return paid || lib.projects.length < FREE_PROJECT_LIMIT
+export function canCreateProject(_lib: Library, _paid: boolean): boolean {
+  return true
 }
 
 export function canAnimate(project: Project): boolean {

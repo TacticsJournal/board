@@ -106,6 +106,7 @@ test('the picked images become boards after the one being edited, in order', () 
 test('the file button takes more than one image', () => {
   assert.match(main, /<input data-live-file type="file" accept="image\/\*" multiple style="display:none">/)
   assert.match(liveShotSection, /const files = Array\.from\(input\.files \?\? \[\]\)/)
+  assert.doesNotMatch(liveShotSection, /trial|featureTrials/)
 })
 
 test('one image still changes the board in front of you', () => {

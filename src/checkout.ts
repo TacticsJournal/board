@@ -2,8 +2,8 @@
  * Buying on the board.
  *
  * The board cannot take money itself — it is a static app with no server — but
- * it is where someone actually wants the licence, so the purchase happens here
- * rather than by sending them to the site and hoping they come back. Tactics
+ * it is where someone actually wants Pro, so the purchase happens here rather
+ * than by sending them to the site and hoping they come back. Tactics
  * Journal creates the checkout against the signed-in account and Polar's
  * overlay opens over the board. Nothing about the price, the product or the
  * buyer is decided in this file; all three come back from the server.
@@ -12,17 +12,16 @@
 import { PolarEmbedCheckout } from '@polar-sh/checkout/embed'
 import { TJ_ORIGIN } from './origin'
 
-export type CheckoutProduct = 'license' | 'pro_monthly' | 'pro_yearly'
+export type CheckoutProduct = 'pro_monthly' | 'pro_yearly'
 
 /** What the button should say it is doing, as the purchase moves through. */
 export type CheckoutStage = 'opening' | 'confirming'
 
 export type CheckoutOutcome =
   | { ok: true; upgraded: boolean; checkEmail?: boolean }
-  | { ok: false; reason: 'unavailable' | 'failed' | 'abandoned' }
+  | { ok: false; reason: 'unavailable' | 'failed' | 'abandoned' | 'unconfirmed' }
 
 const ENDPOINT: Record<CheckoutProduct, string> = {
-  license: '/api/billing/license-checkout',
   pro_monthly: '/api/billing/pro-checkout',
   pro_yearly: '/api/billing/pro-yearly-checkout',
 }
@@ -49,10 +48,8 @@ function announce(session: SessionData): void {
   window.dispatchEvent(new CustomEvent('tacticsjournal:auth-changed', { detail: session }))
 }
 
-function holds(session: SessionData | null, product: CheckoutProduct): boolean {
-  if (!session) return false
-  if (product === 'pro_monthly' || product === 'pro_yearly') return session.site_access === 'pro'
-  return session.board_license === true || session.site_access === 'pro'
+function holds(session: SessionData | null, _product: CheckoutProduct): boolean {
+  return session?.site_access === 'pro'
 }
 
 /**
@@ -143,7 +140,7 @@ export async function startCheckout(
   // paid for by the time the answer comes back, so there is nothing to open.
   if (body?.upgraded === true) {
     onStage('confirming')
-    await confirmPurchase(product)
+    if (!await confirmPurchase(product)) return { ok: false, reason: 'unconfirmed' }
     return { ok: true, upgraded: true }
   }
   if (!body?.url) return { ok: false, reason: 'failed' }
@@ -157,9 +154,13 @@ export async function startCheckout(
   // Someone who bought without signing in has no session for the poll to read,
   // so the purchase is claimed first and the session comes back with it.
   let claimed: 'signed_in' | 'code_sent' | 'failed' = 'signed_in'
-  if (!signedIn && body.client_secret) claimed = await claimPurchase(body.client_secret)
+  if (!signedIn) {
+    if (!body.client_secret) return { ok: false, reason: 'unconfirmed' }
+    claimed = await claimPurchase(body.client_secret)
+  }
   if (claimed === 'code_sent') return { ok: true, upgraded: false, checkEmail: true }
+  if (claimed === 'failed') return { ok: false, reason: 'unconfirmed' }
 
-  await confirmPurchase(product)
+  if (!await confirmPurchase(product)) return { ok: false, reason: 'unconfirmed' }
   return { ok: true, upgraded: false }
 }

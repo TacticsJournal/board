@@ -11,7 +11,7 @@ export type AddBoardChoice = {
   boardH: number
   /** picture for the tile; '' when this device has none */
   art: string
-  /** paid art without a licence: the tile points at Pro rather than drawing */
+  /** unavailable art: the tile explains that it cannot be selected */
   locked: boolean
   /** one of the user's own saved backgrounds */
   custom: boolean

@@ -1,3 +1,4 @@
+/** Legacy display constant retained for import compatibility. Local saved boards are unlimited. */
 export const FREE_EDITABLE_BOARD_LIMIT = 3
 
 export type SavedBoardRecord = Readonly<{ savedAt: string; access?: 'shared' }>
@@ -30,16 +31,13 @@ export function sharedBoardNames(boards: SavedBoardCollection): ReadonlySet<stri
   return new Set(Object.entries(boards).flatMap(([name, board]) => board.access === 'shared' ? [name] : []))
 }
 
-/** Free keeps every record, but only its three most recently edited personal records are writable. */
-export function editableBoardNames(boards: SavedBoardCollection, pro: boolean): ReadonlySet<string> {
-  const names = savedBoardNamesByRecency(boards)
-  const shared = sharedBoardNames(boards)
-  const personal = names.filter((name) => !shared.has(name))
-  return new Set(pro ? names : [...shared, ...personal.slice(0, FREE_EDITABLE_BOARD_LIMIT)])
+/** Every local saved board is editable. */
+export function editableBoardNames(boards: SavedBoardCollection, _pro: boolean): ReadonlySet<string> {
+  return new Set(savedBoardNamesByRecency(boards))
 }
 
-export function canCreateSavedBoard(boards: SavedBoardCollection, pro: boolean): boolean {
-  return pro || Object.values(boards).filter((board) => board.access !== 'shared').length < FREE_EDITABLE_BOARD_LIMIT
+export function canCreateSavedBoard(_boards: SavedBoardCollection, _pro: boolean): boolean {
+  return true
 }
 
 export type SlotSwapResult =

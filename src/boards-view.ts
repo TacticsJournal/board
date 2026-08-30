@@ -7,7 +7,7 @@ import { isBackgroundId } from './backgrounds'
 import { createBackgroundCache } from './background-cache'
 import { BOARD_W, Scene } from './types'
 import {
-  Board, EASES, FREE_PROJECT_LIMIT, HOLD_MS, LINK_DURATIONS, Library, Project, UNTITLED,
+  Board, EASES, HOLD_MS, LINK_DURATIONS, Library, Project, UNTITLED,
   addBoard, boardLabel, boardName, canAnimate, canCreateProject, currentProject, firstLine, noteBody,
   easings, frameAtPos, moveBoard, newProject, orderedProjects, projectDuration, removeBoard, touch,
 } from './projects'
@@ -35,9 +35,9 @@ export type BoardsHost = {
   deleteProject: (id: string) => void
   /** Index of the board the editor is holding. */
   currentIndex: () => number
-  /** Whether a licence or Pro is in force: free stops at three projects. */
+  /** Legacy paid-account status used by compatibility paths. */
   paid: () => boolean
-  /** Open the licence and Pro pane. */
+  /** Open the Pro pane. */
   openPro: () => void
   /**
    * Bytes for an uploaded background, which live outside the Project: on the
@@ -219,25 +219,8 @@ export class BoardsView {
         </span>
         <span class="projStrip">${project.boards.slice(0, 6).map(b => `<span>${this.preview(b, project.id)}</span>`).join('')}</span>
       </div>`).join('')
-    const room = canCreateProject(this.lib, this.host.paid())
     this.footEl.innerHTML = `<button data-act="new-project">${icon('plus')}New project</button>`
-      + (this.host.paid() ? '' : `<span class="libCount">${this.lib.projects.length} of ${FREE_PROJECT_LIMIT} on free</span>`)
-    if (!room) this.footEl.querySelector('button')!.classList.add('is-capped')
-  }
-
-  /** Say what the limit is and where to lift it, rather than just refusing. */
-  private showCap() {
-    const note = document.createElement('div')
-    note.className = 'libCap'
-    note.innerHTML = `<p>Free keeps ${FREE_PROJECT_LIMIT} projects on this device. Delete one, or take a licence for as many as you like.</p>`
-      + `<span><button data-cap="close">Not now</button><button data-cap="pro">See the licence</button></span>`
-    this.root.appendChild(note)
-    note.addEventListener('click', (e) => {
-      const act = (e.target as HTMLElement).closest<HTMLElement>('[data-cap]')?.dataset.cap
-      if (!act) return
-      note.remove()
-      if (act === 'pro') { this.open(null); this.host.openPro() }
-    })
+      + `<span class="libCount">${this.lib.projects.length} local</span>`
   }
 
   private playEnter(el: HTMLElement, i: number) {
@@ -355,7 +338,6 @@ export class BoardsView {
           return
         }
         case 'new-project': {
-          if (!canCreateProject(this.lib, this.host.paid())) { this.showCap(); return }
           const project = newProject(this.host.blankScene())
           this.lib.projects.push(project)
           // Opening first lets the normal current-project save path enforce
@@ -488,21 +470,12 @@ export class BoardsView {
     if (act === 'copy' || act === 'same') { this.addBoardHere(undefined, act === 'copy'); return }
     if (act === 'upload') { void this.uploadForNewBoard(pick); return }
     if (act !== 'pitch') return
-    if (pick.dataset.locked === '1') { this.wantLicense(); return }
+    if (pick.dataset.locked === '1') { this.addNote('That pitch is not available for this account.'); return }
     this.addBoardHere(pick.dataset.pitch)
   }
 
-  /** A locked pitch or a locked upload says what is missing and goes to buy it. */
-  private wantLicense() {
-    this.addNote('That one comes with the License. Opening the Pro tab.')
-    window.setTimeout(() => {
-      this.closeAddSheet(false)
-      this.host.openPro()
-    }, 400)
-  }
-
   private async uploadForNewBoard(tile: HTMLElement) {
-    if (tile.dataset.locked === '1') { this.wantLicense(); return }
+    if (tile.dataset.locked === '1') { this.addNote('Uploads are not available for this account.'); return }
     tile.classList.add('is-busy')
     // The picker has to be opened from inside this click, so nothing may be
     // awaited before it: the host clicks the input and hands back the promise.
@@ -1125,11 +1098,11 @@ function addTile(choice: AddBoardChoice): string {
   const shot = choice.art
     ? `<img class="pitchShotImg" src="${escapeText(choice.art)}" alt="">`
     : '<span class="pitchShotEmpty"></span>'
-  const tag = choice.locked ? '<span class="setTag setTagLicense pitchTag">License</span>' : ''
+  const tag = choice.locked ? '<span class="setTag pitchTag">Unavailable</span>' : ''
   const tick = choice.current && !choice.locked ? `<span class="pitchTick">${icon('check', 'ic')}</span>` : ''
   const size = `${BOARD_W} \u00d7 ${choice.boardH}`
   return `<button class="pitchTile${choice.current ? ' on' : ''}" data-add="pitch" data-pitch="${escapeText(choice.id)}"${choice.locked ? ' data-locked="1"' : ''}
-      aria-label="${escapeText(choice.label)}, ${size}${choice.locked ? ', License needed' : ''}">
+      aria-label="${escapeText(choice.label)}, ${size}${choice.locked ? ', unavailable' : ''}">
     <span class="pitchShot">${shot}${tick}${tag}</span>
     <span class="pitchTileName">${escapeText(choice.label)}</span>
     <span class="pitchTileSub">${size}</span>
@@ -1138,8 +1111,8 @@ function addTile(choice: AddBoardChoice): string {
 
 function uploadTile(locked: boolean): string {
   return `<button class="pitchTile pitchAdd" data-add="upload"${locked ? ' data-locked="1"' : ''}
-      aria-label="Upload image${locked ? ', License needed' : ''}">
-    <span class="pitchShot pitchAddShot">${icon('plus')}${locked ? '<span class="setTag setTagLicense pitchTag">License</span>' : ''}</span>
+      aria-label="Upload image${locked ? ', unavailable' : ''}">
+    <span class="pitchShot pitchAddShot">${icon('plus')}${locked ? '<span class="setTag pitchTag">Unavailable</span>' : ''}</span>
     <span class="pitchTileName">Upload image</span>
     <span class="pitchTileSub">Photo or screenshot</span>
   </button>`

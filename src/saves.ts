@@ -4,7 +4,7 @@ import { pitchById } from './pitches'
 import { nodeSegments, nodesToSvgPath, segmentEndTangent } from './path-nodes'
 import { canCreateAgentLink, hasPaidBoardAccess, isPro } from './entitlements'
 import { boardInvitationsUrl, boardSharesUrl, boardUserSearchUrl } from './board-api'
-import { FREE_EDITABLE_BOARD_LIMIT, canCreateSavedBoard, editableBoardNames, savedBoardNamesByRecency, sharedBoardNames, swapEditableSlot, writeSavedBoards } from './saved-board-policy'
+import { canCreateSavedBoard, editableBoardNames, savedBoardNamesByRecency, sharedBoardNames, swapEditableSlot, writeSavedBoards } from './saved-board-policy'
 import { icon } from './icons'
 import { mountSlidingPills } from './sliding-pill'
 import { getAsset } from './assets'
@@ -451,6 +451,8 @@ export class SavesPanel {
   onCreateAgentLink: (boardId: string) => Promise<string> = async () => {
     throw new Error('Agent links are unavailable.')
   }
+  /** Set by main: offer account backup when an explicit save reaches Free's limit. */
+  onFreeLimit: () => void = () => {}
   /** Set by main: what to call a board saved without anyone naming it. */
   defaultBoardName: () => string = () => ''
 
@@ -537,7 +539,7 @@ export class SavesPanel {
     if (this.currentName && all[this.currentName]) return this.autosaveNamed(this.currentName, all)
     if (Object.values(all).some(p => JSON.stringify(p.scene) === sceneJson)) return true
     if (!canCreateSavedBoard(all, hasPaidBoardAccess())) {
-      if (!quiet) this.showStatus(FREE_LIMIT_MESSAGE)
+      if (!quiet) { this.showStatus(FREE_LIMIT_MESSAGE); this.onFreeLimit() }
       return false
     }
     // a board saved in the background is named after the board it is, not
@@ -1010,6 +1012,7 @@ export class SavesPanel {
 
     if (!all[name] && !currentExists && !canCreateSavedBoard(all, hasPaidBoardAccess())) {
       this.showStatus(FREE_LIMIT_MESSAGE)
+      this.onFreeLimit()
       return
     }
 
@@ -1114,6 +1117,7 @@ export class SavesPanel {
     if (!canCreateSavedBoard(all, hasPaidBoardAccess())) {
       this.detachCurrent()
       this.showStatus(FREE_LIMIT_MESSAGE)
+      this.onFreeLimit()
       return false
     }
     let n = 1
@@ -1290,12 +1294,11 @@ export class SavesPanel {
     this.renderList()
   }
 
-  /** Root-list summary: the free limit is stated before you meet it. */
+  /** Root-list summary for unlimited local saved boards. */
   countLabel(): string {
     const all = readAll(this.storageKey)
     const total = savedBoardNamesByRecency(all).filter(name => all[name].access !== 'shared').length
-    if (hasPaidBoardAccess()) return total ? `${total}` : 'None yet'
-    return `${Math.min(total, FREE_EDITABLE_BOARD_LIMIT)} of ${FREE_EDITABLE_BOARD_LIMIT} editable`
+    return total ? `${total}` : 'None yet'
   }
 
   /** Open collaborator management for the owned board currently on screen. */
@@ -1855,7 +1858,7 @@ export class SavesPanel {
     const shared = sharedBoardNames(all)
     const list = this.el.querySelector('[data-sv="list"]')!
     if (!names.length) {
-      list.innerHTML = `<p class="setNote">No saved boards yet. Free keeps ${FREE_EDITABLE_BOARD_LIMIT} boards editable on this device.</p>`
+      list.innerHTML = '<p class="setNote">No saved boards yet. Local saved boards are unlimited.</p>'
       return
     }
     const row = (n: string, locked: boolean) => {
@@ -1882,14 +1885,11 @@ export class SavesPanel {
     const personal = names.filter(n => !shared.has(n))
     const open = personal.filter(n => editable.has(n))
     const locked = personal.filter(n => !editable.has(n))
-    const editableHead = hasPaidBoardAccess()
-      ? 'Saved boards'
-      : `Editable, ${open.length} of ${FREE_EDITABLE_BOARD_LIMIT} on free`
+    const editableHead = 'Saved boards'
     list.innerHTML = [
       sharedNames.length ? `<div class="setGroupHead">Shared with you</div><div class="setGroup">${sharedNames.map(n => row(n, false)).join('')}</div>` : '',
       open.length ? `<div class="setGroupHead">${editableHead}</div><div class="setGroup">${open.map(n => row(n, false)).join('')}</div>` : '',
-      locked.length ? `<div class="setGroupHead">Read-only</div><div class="setGroup">${locked.map(n => row(n, true)).join('')}</div>`
-        + `<p class="setNote">Free keeps ${FREE_EDITABLE_BOARD_LIMIT} personal boards editable. Loading a read-only board asks which personal board to swap. A license or Pro removes the limit.</p>` : '',
+      locked.length ? `<div class="setGroupHead">Read-only</div><div class="setGroup">${locked.map(n => row(n, true)).join('')}</div>` : '',
     ].join('')
   }
 }

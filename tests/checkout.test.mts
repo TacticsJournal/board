@@ -12,7 +12,6 @@ test('the checkout is created by the server, against the signed-in account', () 
   // Credentials, or the session never reaches the endpoint and every buyer
   // looks anonymous.
   assert.match(source, /credentials: 'include'/)
-  assert.match(source, /license: '\/api\/billing\/license-checkout'/)
   assert.match(source, /pro_monthly: '\/api\/billing\/pro-checkout'/)
   assert.match(source, /pro_yearly: '\/api\/billing\/pro-yearly-checkout'/)
   assert.match(source, /body: '\{\}'/)
@@ -48,7 +47,7 @@ test('buying needs no account, and the purchase makes one', () => {
   assert.match(source, /\/api\/billing\/claim/)
   assert.match(source, /claimPurchase/)
   const start = source.match(/export async function startCheckout[\s\S]*?\n}/)?.[0] ?? ''
-  assert.match(start, /if \(!signedIn && body\.client_secret\) claimed = await claimPurchase/)
+  assert.match(start, /if \(!signedIn\) \{[\s\S]*claimed = await claimPurchase\(body\.client_secret\)/)
 })
 
 test('an email that already has an account is told to check it, not signed in', () => {
@@ -57,6 +56,16 @@ test('an email that already has an account is told to check it, not signed in', 
   const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
   assert.match(main, /outcome\.checkEmail/)
   assert.match(main, /check your inbox for a sign-in code/)
+})
+
+test('a paid checkout that cannot be claimed or confirmed is not reported as success', () => {
+  assert.match(source, /reason: 'unconfirmed'/)
+  assert.match(source, /if \(!body\.client_secret\) return \{ ok: false, reason: 'unconfirmed' \}/)
+  assert.match(source, /if \(claimed === 'failed'\) return \{ ok: false, reason: 'unconfirmed' \}/)
+  assert.match(source, /if \(!await confirmPurchase\(product\)\) return \{ ok: false, reason: 'unconfirmed' \}/)
+  const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
+  assert.match(main, /Pro could not be confirmed yet/)
+  assert.match(main, /data-buy-note>Your grandfathered Hosted Board License/)
 })
 
 test('the page may embed Polar and pay in it, and nothing else new', () => {

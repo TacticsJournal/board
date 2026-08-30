@@ -59,15 +59,19 @@ import { BoardsView, type AddBoardUpload } from './boards-view'
 import { openComposer } from './composer'
 import { CATEGORY_SCENES_RECOVERED_SUFFIX, planCategorySnapshotRecovery } from './category-recovery'
 import { exportAnimation } from './animate-export'
+import { recordProductEvent } from './product-events'
+import { saveFreeBackupIntent, selectedFreeBackup, setSelectedFreeBackup, takeFreeBackupIntent, type FreeBackupSource } from './free-backup'
 import { downloadProjectImage, exportProjectImages, type ProjectImageFile } from './project-image-export'
 import { startAgentImport, type BoardImportResult } from './agent-import-ui'
 import { createBoardImportUrl, createProjectImportUrl, createStoredProjectImportUrl, isAgentImportTooLarge, type AgentImportDraft } from './agent-import'
 import {
-  addBoard, appendBoardCopy, appendProjectCopy, boardName, canAnimate, canCreateProject, currentProject, documentScene, freshDeviceDestination, FREE_PROJECT_LIMIT, loadLibrary, migrateProject, newProject, newProjectFromBoard, newProjectFromProjectCopy, orderedProjects, reconcileProjectLibrary, rememberBoard, saveLibrary, storedBoardIndex, touch,
+  addBoard, appendBoardCopy, appendProjectCopy, boardName, canAnimate, canCreateProject, currentProject, documentScene, freshDeviceDestination, loadLibrary, migrateProject, newProject, newProjectFromBoard, newProjectFromProjectCopy, orderedProjects, reconcileProjectLibrary, rememberBoard, saveLibrary, storedBoardIndex, touch,
   type BoardDocument, type Library, type Project,
 } from './projects'
 
 let extensionRuntime: ExtensionRuntime | null = null
+let authenticated = false
+let accountBinding: string | null = null
 
 // same image the tacticsjournal.com header uses (site avatar IMG_5503.png),
 // downscaled from 4096px for the 24px logo slot
@@ -1325,7 +1329,7 @@ function shelfHasContent() {
   return room === 'shapes' && board.interactionState !== 'node-edit' && (panelOpen || deskMode)
 }
 
-/* ---------- the licensed user's own assets ---------- */
+/* ---------- the user's own assets ---------- */
 
 /** Which asset the shelf is currently managing, if any. */
 let managingAssetId: string | null = null
@@ -1360,9 +1364,6 @@ function placeAsset(a: UserAsset) {
 
 /** Cells for this category: the user's own assets, then the way to add one. */
 function assetItems(cat: AssetCategory): ShelfItem[] {
-  if (!canUseAssets()) {
-    return [{ id: 'asset-add', title: 'Your own shapes come with the licence', art: shelfArt.addAsset, run: () => showAssetNote('Your own crests, keys and markers come with the licence.') }]
-  }
   const mine = listAssets(cat).map(a => ({
     id: `asset-${a.id}`,
     title: a.name,
@@ -2426,15 +2427,8 @@ function renderOptions() {
       html += seg([['16', 'S'], ['22', 'M'], ['30', 'L']], String(defaults.text.size), 'd-size')
       if (!styling) html += `<span class="hint">${tapVerb()} the board to write.</span>`
     } else if (t === 'ball') {
-      // A cone or goal needs a licence. Without one the options are omitted
-      // rather than shown and refused, and a stale selection falls back to the ball.
-      const coneAllowed = entitlements.canPlaceCone()
-      const place = defaults.place === 'marker' || ((defaults.place === 'cone' || defaults.place === 'goal') && !coneAllowed)
-        ? 'ball'
-        : defaults.place
-      const placeOptions: [string, string][] = coneAllowed
-        ? [['ball', 'Ball'], ['cone', 'Cone'], ['goal', 'Goal'], ['measure', 'Measure']]
-        : [['ball', 'Ball'], ['measure', 'Measure']]
+      const place = defaults.place === 'marker' ? 'ball' : defaults.place
+      const placeOptions: [string, string][] = [['ball', 'Ball'], ['cone', 'Cone'], ['goal', 'Goal'], ['measure', 'Measure']]
       if (!shelfShowing()) {
         html += seg(placeOptions, place, 'd-place')
         if (place === 'goal') html += seg([['small', 'Small'], ['normal', 'Normal']], defaults.goal.variant, 'd-goal-variant')
@@ -2448,7 +2442,6 @@ function renderOptions() {
           : place === 'goal' ? (defaults.goal.variant === 'normal' ? 'a full-size goal' : 'a small goal')
           : 'the ball'
         html += `<span class="hint">${tapVerb()} the board to place ${what}.</span>`
-        if (!coneAllowed) html += `<span class="hint">Cones and goals need a License. Your saved cones and goals stay on their boards.</span>`
       }
     }
   }
@@ -2778,12 +2771,6 @@ function nextStampName(): string {
 }
 
 function saveSelectionToShelf() {
-  if (!canUseAssets()) {
-    showBanner(`
-      <p>Saving your own combinations to the shelf comes with the licence. Grouping is always yours.</p>
-      <span class="appBannerActions"><button data-banner="dismiss">Dismiss</button></span>`, 'warn')
-    return
-  }
   const objs = selectedObjects()
   const box = selectionBounds()
   if (objs.length < 2 || !box) return
@@ -2999,6 +2986,7 @@ function dataUrlToBlob(url: string): Blob {
 
 function exportPng() {
   const url = board.exportPng()
+  void recordProductEvent('board_exported', 'png')
   const filename = store.scene.pitch === 'classic'
     ? 'Pitch - Board Tactics Journal.png'
     : 'tactics-board.png'
@@ -3057,7 +3045,7 @@ document.querySelector('.actionRow')!.addEventListener('click', (e) => {
   else if (k === 'boards') boardsView.toggleBoards()
   else if (k === 'note') editBoardNote()
   else if (k === 'match') openMatchSheet()
-  else if (k === 'live-shot') (document.querySelector('[data-live-file]') as HTMLInputElement).click()
+  else if (k === 'live-shot') void openLiveShotPicker()
 })
 
 /* ---------- projects and boards ----------
@@ -3596,7 +3584,7 @@ function makeCopyLink(body: HTMLElement) {
       let url: string
       const permanentProjectLink = scope === 'project'
         && window.location.hostname === 'board.tacticsjournal.com'
-        && entitlements.hasPaidBoardAccess()
+        && entitlements.isPro()
       try {
         if (scope === 'board') {
           await board.imagesReady()
@@ -3608,7 +3596,7 @@ function makeCopyLink(body: HTMLElement) {
         }
       } catch (error) {
         if (scope !== 'project' || permanentProjectLink || !isAgentImportTooLarge(error)) throw error
-        if (request === generation) status.textContent = 'Large whole-project links require a License.'
+        if (request === generation) status.textContent = 'Large whole-project links require Pro.'
         return
       }
       if (request !== generation) return
@@ -3793,10 +3781,9 @@ function openProjectImageSheet(files: readonly ProjectImageFile[]) {
   first?.focus()
 }
 
-function openExportSheet() {
+async function openExportSheet() {
   const project = currentProject(library)
   const many = canAnimate(project)
-  const licensed = entitlements.canExportAnimation()
   let kind: ExportKind = 'board'
   let withNotes = true
 
@@ -3816,10 +3803,7 @@ function openExportSheet() {
       <label class="expNotes"><input type="checkbox" data-exp-notes checked><span>Include the note on each board</span></label>
       <p class="expHint">${!many
         ? 'This project has one board, so there is nothing to animate yet.'
-        : licensed
-          ? 'The GIF and the video follow the timing on each link.'
-          : 'Animation is part of the License. The image export stays free.'}</p>
-      ${many && !licensed ? '<button class="expUnlock" data-exp="license">See the License</button>' : ''}
+        : 'The GIF and the video follow the timing on each link.'}</p>
       <p class="expStatus" data-exp-status role="status" aria-live="polite"></p>
     </div>`
   document.body.appendChild(sheet)
@@ -3838,8 +3822,8 @@ function openExportSheet() {
     notes.hidden = kind === 'board' || kind === 'images'
     opts.innerHTML = KINDS.map(o => {
       const animation = o.k === 'gif' || o.k === 'video'
-      const off = animation && (!many || !licensed)
-      const note = animation && !licensed && many ? 'Part of the License' : o.note
+      const off = animation && !many
+      const note = o.note
       return `<button class="expOpt${o.k === kind ? ' active' : ''}" data-kind="${o.k}" aria-pressed="${o.k === kind}"${off ? ' disabled' : ''}>
         ${icon(o.ic as Parameters<typeof icon>[0])}
         <span><b>${o.label}</b><small>${note}</small></span>
@@ -3883,7 +3867,6 @@ function openExportSheet() {
     }
     const act = (e.target as HTMLElement).closest<HTMLElement>('[data-exp]')?.dataset.exp
     if (act === 'cancel') { close(); return }
-    if (act === 'license') { close(); openSettings('pro'); return }
     if (act !== 'go') return
     if (kind === 'board') { close(); exportPng(); return }
     if (kind === 'images') {
@@ -3901,6 +3884,7 @@ function openExportSheet() {
         await exportProjectImages(currentProject(library), defaults, (done, total) => {
           status.textContent = `Building the project images\u2026 ${done} of ${total}`
         }, sharedBackgroundScope ?? undefined, individualFallback)
+        void recordProductEvent('board_exported', 'png')
         if (!fellBack) close()
       } catch (err) {
         setBusy(false)
@@ -3908,7 +3892,6 @@ function openExportSheet() {
       }
       return
     }
-    if (!licensed) { status.textContent = 'Animation is part of the License.'; return }
     setBusy(true)
     status.textContent = kind === 'gif' ? 'Building the GIF\u2026' : 'Recording the video\u2026'
     try {
@@ -3916,6 +3899,7 @@ function openExportSheet() {
         const pct = Math.round(done * 100 / total)
         status.textContent = kind === 'gif' ? `Building the GIF\u2026 ${pct}%` : `Recording the video\u2026 ${pct}%`
       }, sharedBackgroundScope ?? undefined)
+      void recordProductEvent('board_exported', kind)
       close()
     } catch (err) {
       setBusy(false)
@@ -3951,16 +3935,18 @@ const liveShotDecoder = {
 }
 
 /** A screenshot from the camera button is saved like any other background. */
-async function applyLiveShot(img: HTMLImageElement, name: string) {
+async function applyLiveShot(img: HTMLImageElement, name: string): Promise<boolean> {
   try {
     // The camera button is a broadcast still by definition; it only exists on
     // a broadcast board in the first place.
     useBackground(await addBackgroundFromImage(img, name, 'broadcast'))
     setNote('Screenshot saved to your backgrounds.')
     showToast('Screenshot saved to your backgrounds.')
+    return true
   } catch {
     setNote('That screenshot could not be saved on this device.')
     showToast('That screenshot could not be saved on this device.')
+    return false
   }
 }
 
@@ -3979,7 +3965,7 @@ function broadcastShotScene(meta: BackgroundMeta): Scene {
  * added after the board being edited. The editor lands on the first of them,
  * which is the one the user is looking for.
  */
-async function importLiveShots(files: readonly File[]) {
+async function importLiveShots(files: readonly File[]): Promise<boolean> {
   const result = await importBroadcastShots(files, {
     decode: file => decodeImageFile(file, liveShotDecoder),
     save: (img, name) => addBackgroundFromImage(img, name, 'broadcast'),
@@ -4002,6 +3988,11 @@ async function importLiveShots(files: readonly File[]) {
     loadBoardIntoEditor(opened.scene)
   }
   showToast(shotImportMessage(result))
+  return result.saved.length > 0
+}
+
+async function openLiveShotPicker(): Promise<void> {
+  ;(document.querySelector('[data-live-file]') as HTMLInputElement).click()
 }
 
 document.querySelector('[data-live-file]')!.addEventListener('change', (e) => {
@@ -4227,14 +4218,12 @@ settingsEl.innerHTML = `
         <button class="setItem" data-goto="pitch">
           ${icon('soccer-field')}
           <span class="setItemLabel">Pitch and background</span>
-          <span class="setTag setTagLicense" data-lock-tag="background" hidden>License</span>
           <span class="setItemValue setPitchSummary"><span data-pitch-name>Pitch</span><span data-bg-count></span></span>
           ${icon('chevron-right', 'ic setChev')}
         </button>
         ${BOARD_SELF_HOSTED ? `<button class="setItem" data-goto="assets">
           ${icon('file-plus')}
           <span class="setItemLabel">My assets</span>
-          <span class="setTag setTagLicense" data-lock-tag="assets" hidden>License</span>
           <span class="setItemValue" data-assets-count></span>
           ${icon('chevron-right', 'ic setChev')}
         </button>` : ''}
@@ -4262,6 +4251,11 @@ settingsEl.innerHTML = `
           </span>
           ${icon('chevron-right', 'ic setChev')}
         </button>
+        ${BOARD_SELF_HOSTED ? '' : `<button class="setItem" data-set="free-backup">
+          ${icon('arrows-exchange')}
+          <span class="setItemLabel" data-free-backup-label>Back up one project free</span>
+          <span class="setItemValue" data-free-backup-value></span>
+        </button>`}
         <button class="setItem" data-goto="boards">
           ${icon('arrows-exchange')}
           <span class="setItemLabel">Move to another device</span>
@@ -4305,14 +4299,13 @@ settingsEl.innerHTML = `
         </button>
         <button class="setItem" data-goto="pro">
           ${icon('license')}
-          <span class="setItemLabel">License and Pro</span>
+          <span class="setItemLabel">Plans</span>
           <span class="setItemValue" data-plan-name>Free</span>
           ${icon('chevron-right', 'ic setChev')}
         </button>
         <button class="setItem" data-goto="assets">
           ${icon('file-plus')}
           <span class="setItemLabel">My assets</span>
-          <span class="setTag setTagLicense" data-lock-tag="assets" hidden>License</span>
           <span class="setItemValue" data-assets-count></span>
           ${icon('chevron-right', 'ic setChev')}
         </button>
@@ -4352,14 +4345,14 @@ settingsEl.innerHTML = `
         <p><b>Players.</b> Open Players in the bottom menu, then tap + Player for a single dot or + XI for a full lineup. Set your clubs under Teams in Settings to load real squads and kit colors.</p>
         <p><b>Edit a dot.</b> Tap a player to pick a name from the roster, set the shirt number, and change its color. Drag any piece to move it; select it for resize handles.</p>
         <p><b>Icons, arrows, zones, text.</b> Pick the tool in the bottom menu, then tap or drag on the board. Use Icons → Measure for a straight measuring line anywhere; it has no middle bend handle.</p>
-        <p><b>View.</b> Pinch or scroll to zoom, drag the empty pitch to pan. The icon row above has export, fit view, undo, redo and new board. Screenshot import needs a License; use the camera button to bring a broadcast screenshot onto the live board.</p>
-        <p><b>Boards.</b> Free keeps three saved boards editable; older boards stay available read-only. Open Boards in Settings to name, load, or delete them, and to move every saved board to another device.</p>
+        <p><b>View.</b> Pinch or scroll to zoom, drag the empty pitch to pan. The icon row above has export, fit view, undo, redo and new board. Use the camera button to bring a broadcast screenshot onto the live board.</p>
+        <p><b>Boards.</b> Keep unlimited projects and saved boards on this device. Open Boards in Settings to name, load, delete, or move them to another device.</p>
       </div>
     </div>
     <div class="setPane hidden" data-pane="about">
       <div class="setTutorial">
         <strong>Privacy, data, copyright and use</strong>
-        ${BOARD_SELF_HOSTED ? '' : '<p><b>Privacy.</b> This website does not use advertising, analytics or cross-site tracking cookies. It uses essential and functional cookies for sign-in and site preferences. We collect personal information only when you provide it or use account features.</p>'}
+        ${BOARD_SELF_HOSTED ? '' : '<p><b>Privacy.</b> Board sends first-party aggregate counters for editor opens, exports, pricing, checkout starts, and free backup. These counters contain no IP address, account ID, visitor ID, URL, referrer, cookies, or arbitrary text and are kept for 14 months. We use no advertising, third-party analytics, or cross-site tracking cookies.</p>'}
         <p><b>Data sources.</b> Team search and kit colors use TheSportsDB public API. Squad names, shirt numbers and positions are read from current squad sections on Wikipedia through the Wikipedia API. Third-party data may be incomplete, delayed or inaccurate; verify it before publishing.</p>
         <p><b>Copyright.</b> Except for identified third-party materials, the software and bundled assets are available under the MIT license. Club names, player names, colors and other source data remain the property of their respective owners and data providers. Tactics Journal and Tactics Board names and logos are reserved trademarks.</p>
         <p><b>Interface icons.</b> The icons in Settings and the menus are <a href="https://tabler.io/icons" target="_blank" rel="noopener">Tabler Icons</a>, copyright Paweł Kuna, used under the MIT license. The full license text is served at <a href="/LICENSE-icons" target="_blank" rel="noopener">/LICENSE-icons</a>.</p>
@@ -4386,7 +4379,7 @@ settingsEl.innerHTML = `
       <div class="setGroup">
         <div class="setItem setItemStatic selfHostFact">
           ${icon('check')}
-          <span class="setItemLabel">Local editing and export features work without a Board License or a Pro account.</span>
+          <span class="setItemLabel">Local editing and export features are free on hosted and self-hosted Board.</span>
         </div>
         <div class="setItem setItemStatic selfHostFact">
           ${icon('puzzle')}
@@ -4425,7 +4418,7 @@ settingsEl.innerHTML = `
     <div class="setPane hidden" data-pane="pro">
       <div class="proHero">
         <h2 class="proTagline">Think it. Draw it. Share it.</h2>
-        <p class="proLede">Use the complete board free. The Annual Board License adds broadcast boards, custom assets, animation, and video. Pro syncs your projects across devices and lets collaborators or AI agents edit them.</p>
+        <p class="proLede">Every local editing and export feature is free. Pro adds automatic cloud sync, collaboration, sharing controls, and agent access.</p>
         <div class="proHeroCta" data-lic-area></div>
       </div>
       <h3 class="proChoose">Choose how you work</h3>
@@ -4433,50 +4426,36 @@ settingsEl.innerHTML = `
         <div class="proCard">
           <div class="proCardHead"><span class="proCardName">Free</span><span class="proCardPrice">Always</span></div>
           <ul>
-            <li>Draw with players, icons, arrows, zones, and text</li>
-            <li>Keep three boards editable on this device; older boards stay available read-only</li>
-            <li>Load real squads and kit colors</li>
-            <li>Add a scoreboard and match overlays</li>
-            <li>Export and share a PNG</li>
-            <li>Move every saved board to another device with one file</li>
+            <li>Use every drawing tool and pitch style</li>
+            <li>Keep unlimited local projects and saved boards</li>
+            <li>Import screenshots, backgrounds, and custom assets</li>
+            <li>Export PNG, GIF, and video</li>
+            <li>Back up one project to a free account</li>
+            <li>Move every project with one file</li>
           </ul>
         </div>
         <div class="proCard proCardAccent">
-          <div class="proCardHead"><span class="proCardName">Annual Board License</span></div>
-          <p class="proCardAmount">$7.99<span class="proCardPer">/month</span></p>
-          <p class="proCardBilled">Billed yearly at $95.88</p>
-          <ul>
-            <li>Use every pitch style: horizontal, vertical, training, two pitches, and live broadcast boards</li>
-            <li>Draw over a broadcast screenshot on the live board</li>
-            <li>Build with cones, goals, and your own reusable assets</li>
-            <li>Use your own backgrounds and export without a Tactics Journal mark</li>
-            <li>Keep unlimited boards editable on this device</li>
-            <li>Turn a multi-board project into a GIF or video</li>
-          </ul>
-          <div data-lic-card-cta></div>
-          <p class="proCardNote">Full refund within 14 days of your first payment or of an automatic yearly renewal.</p>
-        </div>
-        <div class="proCard">
           <div class="proCardHead proCardHeadRow">
-            <span class="proCardName">Pro</span>
+            <span class="proCardName">Pro · Recommended</span>
             <div class="proBilling" role="group" aria-label="Billing period">
               <button type="button" data-period="yearly" aria-pressed="true">Yearly</button>
               <button type="button" data-period="monthly" aria-pressed="false">Monthly</button>
             </div>
           </div>
-          <p class="proCardAmount"><span data-pro-amount>$14.99</span><span class="proCardPer">/month</span></p>
-          <p class="proCardBilled"><span data-pro-billed>Billed yearly at $179.88</span><span class="proSavePill" data-pro-save>Save $60</span></p>
+          <p class="proCardAmount"><span data-pro-amount>$149</span><span class="proCardPer">/year</span></p>
+          <p class="proCardBilled"><span data-pro-billed>Billed yearly at $149</span><span class="proSavePill" data-pro-save>Save $30.88 versus monthly</span></p>
           <ul>
-            <li>Everything in the Annual Board License</li>
-            <li>Begin on one device and continue on another with automatic board sync</li>
-            <li>See edits appear on your other devices and for people you invite</li>
-            <li>Invite a collaborator by @username to edit the project</li>
-            <li>Give ChatGPT, Claude, or another AI agent 24-hour access by link or MCP to read and edit boards and notes</li>
+            <li>Back up and sync every project across devices</li>
+            <li>See edits appear in real time for people you invite</li>
+            <li>Control hosted project sharing and invitations</li>
+            <li>Give ChatGPT, Claude, or another AI agent 24-hour access by link</li>
+            <li>Use MCP and WebMCP account access</li>
           </ul>
           <div data-pro-card-cta></div>
-          <p class="proCardNote">You pay for one plan. Pro includes the Annual Board License. If you upgrade an active License, you pay only the difference.</p>
+          <p class="proCardNote">Existing Hosted Board License holders keep their access and can upgrade to Pro.</p>
           <p class="proCardNote">Full refund within 14 days of your first payment or of an automatic yearly renewal.</p>
         </div>
+
       </div>
     </div>
     <div class="setPane hidden" data-pane="agents"></div>
@@ -4554,7 +4533,7 @@ settingsEl.innerHTML = `
         <span class="setStatusText" role="status" aria-live="polite" data-pitch-status-text></span>
         <button class="setStatusUndo" data-set="pitch-undo" aria-label="Undo the pitch change" hidden>Undo</button>
       </div>
-      <p class="setNote">A yearly license unlocks every pitch style, screenshot import, cones, goals and your own backgrounds.</p>
+      <p class="setNote">Every pitch style, screenshot import, cone, goal, and custom background is free.</p>
       <div class="setGroupHead">Your backgrounds<span class="setGroupCount" data-bg-usage></span></div>
       <div class="pitchGrid" data-bg-grid></div>
       <p class="setNote" data-bg-note></p>
@@ -4601,7 +4580,7 @@ const SCREEN_TITLES: Record<SetScreen, string> = {
   pitch: 'Pitch',
   boards: 'Move to another device',
   assets: 'My assets',
-  pro: 'License and Pro',
+  pro: 'Plans',
   agents: 'Claude and ChatGPT',
   skills: 'Skills',
   skill: 'Skill',
@@ -4822,6 +4801,7 @@ async function flushSkillsForAgentLink(boardId: string): Promise<void> {
 function showScreen(next: SetScreen) {
   const prev = screen
   screen = next
+  if (next === 'pro' && prev !== 'pro') void recordProductEvent('pricing_opened')
   clearPitchStatus()
   const titleEl = settingsEl.querySelector('[data-set-title]') as HTMLElement
   const incoming = settingsEl.querySelector<HTMLElement>(`[data-pane="${next}"]`)
@@ -4872,10 +4852,8 @@ function showScreen(next: SetScreen) {
 let projectsSummaryTimer: number | null = null
 
 function projectCountLabels() {
-  const count = library.projects.length
-  return entitlements.hasPaidBoardAccess()
-    ? { full: String(count), compact: String(count) }
-    : { full: `${count} of ${FREE_PROJECT_LIMIT}`, compact: `${count} of ${FREE_PROJECT_LIMIT}` }
+  const count = String(library.projects.length)
+  return { full: count, compact: count }
 }
 
 function stopProjectsSummaryTimer() {
@@ -4945,21 +4923,24 @@ function renderRootValues() {
   ;(settingsEl.querySelector('[data-bg-count]') as HTMLElement).textContent = bgCount ? ` · ${bgCount} saved` : ''
   const planName = settingsEl.querySelector<HTMLElement>('[data-plan-name]')
   if (planName) planName.textContent = entitlements.isPro() ? 'Pro' : entitlements.hasBoardLicense() ? 'License' : 'Free'
+  const backupButton = settingsEl.querySelector<HTMLButtonElement>('[data-set="free-backup"]')
+  const backupLabel = settingsEl.querySelector<HTMLElement>('[data-free-backup-label]')
+  const backupValue = settingsEl.querySelector<HTMLElement>('[data-free-backup-value]')
+  if (backupButton && backupLabel && backupValue) {
+    const backupId = selectedFreeBackup(localStorage, accountBinding)
+    const backedUp = saves.projectDocuments().find(row => row.rowId === backupId)
+    backupButton.disabled = entitlements.isPro()
+    backupLabel.textContent = entitlements.isPro() ? 'All projects sync with Pro' : 'Back up one project free'
+    backupValue.textContent = entitlements.isPro() ? 'Active' : backedUp ? backedUp.name : authenticated ? 'Choose current' : 'Sign in'
+  }
   renderAccountRow()
   renderProjectsSummary()
   syncLockTags()
   renderAssetList()
 }
 
-/**
- * A tag says what would open a row, so it has nothing to say once the row is
- * open. Custom backgrounds come with the License, not with Pro, which is what
- * these two rows were claiming.
- */
+/** Update the remaining Pro-only service tags. */
 function syncLockTags() {
-  const held = entitlements.canUploadBackground()
-  settingsEl.querySelectorAll<HTMLElement>('[data-lock-tag="background"]').forEach(tag => { tag.hidden = held })
-  settingsEl.querySelectorAll<HTMLElement>('[data-lock-tag="assets"]').forEach(tag => { tag.hidden = canUseAssets() })
   settingsEl.querySelectorAll<HTMLElement>('[data-lock-tag="agents"]').forEach(tag => { tag.hidden = entitlements.isPro() })
   renderAgentSettings()
 }
@@ -4975,7 +4956,7 @@ function renderAgentSettings() {
       <div class="setGroup">
         <button class="setItem" data-goto="pro">
           ${icon('license')}
-          <span class="setItemLabel">See License and Pro</span>
+          <span class="setItemLabel">See plans</span>
           ${icon('chevron-right', 'ic setChev')}
         </button>
       </div>`
@@ -5109,11 +5090,6 @@ function renderAssetList() {
   if (!host || !note || !count) return
   const all = listAssets()
   count.textContent = all.length + listStamps().length ? String(all.length + listStamps().length) : ''
-  if (!canUseAssets()) {
-    host.innerHTML = `<p class="setNote">Your own crests, keys and markers come with the licence. They sit in the Shapes shelf beside the built-in ones.</p>`
-    note.textContent = ''
-    return
-  }
   const label: Record<AssetCategory, string> = { players: 'Players', arrows: 'Arrows', zones: 'Zones', equipment: 'Equipment' }
   const saved = listStamps()
   host.innerHTML = all.map(a => `
@@ -5494,27 +5470,20 @@ window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change',
   if (saved === 'system') setThemeResolved(prefersDark(), 'system')
 })
 
-/* ----- License call to action -----
+/* ----- Pro checkout and grandfathered License status -----
  *
- * The board has no server of its own, but it is where someone wants the
- * licence, so the purchase happens here: Tactics Journal creates the checkout
- * against the signed-in account and Polar's overlay opens over the board. The
- * buyer never leaves the board they are working on.
+ * Tactics Journal creates the Pro checkout and Polar opens it over the board.
+ * Existing License holders keep a status and management link, but the retired
+ * product is not offered to new customers.
  */
 
 const LICENSE_MANAGE_URL = `${TJ_ORIGIN}/settings/`
 
 /**
- * The Licence and Pro are live. Preview and development builds keep both
- * purchase surfaces available for review too. Opening either sale also
- * requires its server product configuration.
+ * Pro is live. Preview and development builds keep its purchase surface
+ * available for review. Opening the sale also requires server configuration.
  */
-const LICENSE_CHECKOUT_OPEN = true
 const PRO_CHECKOUT_OPEN = true
-
-function licenseCheckoutOpen(): boolean {
-  return LICENSE_CHECKOUT_OPEN || entitlements.isTrustedPreviewBuild()
-}
 
 function proCheckoutOpen(): boolean {
   return PRO_CHECKOUT_OPEN || entitlements.isTrustedPreviewBuild()
@@ -5534,46 +5503,27 @@ function manageLink(): string {
 
 function renderLicenseCta() {
   const area = settingsEl.querySelector('[data-lic-area]') as HTMLElement | null
-  const cardCta = settingsEl.querySelector('[data-lic-card-cta]') as HTMLElement | null
   if (!area) return
 
   if (entitlements.isPro()) {
-    area.innerHTML = `
-      <p class="proHeroNote">Pro is active, and it includes the Annual Board License.</p>
-      ${manageLink()}`
-    if (cardCta) cardCta.innerHTML = ''
+    area.innerHTML = `<p class="proHeroNote">Pro is active.</p>${manageLink()}`
     return
   }
   if (entitlements.hasBoardLicense()) {
     area.innerHTML = `
-      <p class="proHeroNote">Your License is active. It renews yearly.</p>
+      <p class="proHeroNote" data-buy-note>Your grandfathered Hosted Board License is active. You keep the access you bought and can upgrade to Pro.</p>
       ${manageLink()}`
-    if (cardCta) cardCta.innerHTML = ''
     return
   }
 
-  if (!licenseCheckoutOpen()) {
-    area.innerHTML = comingSoon('The License')
-    if (cardCta) cardCta.innerHTML = ''
-    return
-  }
-
-  area.innerHTML = `
-    ${buyButton('Get License', 'license')}
-    <p class="proHeroNote" data-buy-note>${usingBillingSandbox()
-      ? 'This build is pointed at the Polar sandbox. Nothing here charges a real card, and the account it signs into is the sandbox one, not your real Tactics Journal account.'
-      : 'The License belongs to your Tactics Journal account. This board unlocks as soon as checkout finishes.'}</p>`
-  // The same action again, under the list that justifies it. The first button
-  // is there to be seen without scrolling; this one is there once someone has
-  // read what they would be paying for.
-  if (cardCta) cardCta.innerHTML = buyButton('Get License', 'license')
+  area.innerHTML = `<p class="proHeroNote" data-buy-note>${usingBillingSandbox()
+    ? 'This build is pointed at the Polar sandbox. Nothing here charges a real card, and the account it signs into is the sandbox one, not your real Tactics Journal account.'
+    : 'Pro belongs to your Tactics Journal account and unlocks as soon as checkout finishes.'}</p>`
 }
 
 /**
- * Pro's own button. Pro includes the licence, so a Pro subscriber is never
- * offered either, and a licence holder is offered the upgrade rather than a
- * second purchase: buying Pro swaps the price on the subscription they already
- * have, it does not start a new one.
+ * A License holder sees the same Pro upgrade button. The backend preserves the
+ * existing in-place upgrade rather than starting a second subscription.
  */
 /** Yearly is the price the card leads with, and the toggle switches it. */
 let proBillingPeriod: 'yearly' | 'monthly' = 'yearly'
@@ -5602,8 +5552,8 @@ function renderProBilling() {
   const amount = settingsEl.querySelector('[data-pro-amount]')
   const billed = settingsEl.querySelector('[data-pro-billed]')
   const save = settingsEl.querySelector('[data-pro-save]') as HTMLElement | null
-  if (amount) amount.textContent = yearly ? '$14.99' : '$19.99'
-  if (billed) billed.textContent = yearly ? 'Billed yearly at $179.88' : 'Billed every month'
+  if (amount) amount.textContent = yearly ? '$149' : '$14.99'
+  if (billed) billed.textContent = yearly ? 'Billed yearly at $149' : 'Billed every month'
   if (save) save.hidden = !yearly
   for (const button of settingsEl.querySelectorAll('[data-period]')) {
     button.setAttribute('aria-pressed', String(button.getAttribute('data-period') === proBillingPeriod))
@@ -5653,6 +5603,7 @@ async function buy(button: HTMLButtonElement): Promise<void> {
 
   button.disabled = true
   button.textContent = 'Opening checkout...'
+  void recordProductEvent('checkout_opened', product)
   try {
     const theme = document.documentElement.getAttribute('data-theme-resolved') === 'dark' ? 'dark' : 'light'
     const outcome = await startCheckout(product, theme, (stage) => {
@@ -5667,7 +5618,7 @@ async function buy(button: HTMLButtonElement): Promise<void> {
       // in, because typing someone else's address would then be a way into
       // their account. The code in their inbox is.
       if (outcome.checkEmail) {
-        say('Paid. That email already has a Tactics Journal account, so check your inbox for a sign-in code and the License is waiting.')
+        say('Paid. That email already has a Tactics Journal account, so check your inbox for a sign-in code and the purchase is waiting.')
       }
       return
     }
@@ -5675,6 +5626,8 @@ async function buy(button: HTMLButtonElement): Promise<void> {
       say('Checkout is not open yet. Nothing was charged.')
     } else if (outcome.reason === 'failed') {
       say('Checkout could not be opened. Nothing was charged.')
+    } else if (outcome.reason === 'unconfirmed') {
+      say('Checkout finished, but Pro could not be confirmed yet. Check your Tactics Journal account or email before trying again.')
     } else {
       say('Checkout closed. Nothing was charged.')
     }
@@ -5764,7 +5717,7 @@ function pitchTile(id: string, label: string, boardH: number, art: string, opts:
   const shot = art
     ? `<img class="pitchShotImg" src="${art}" alt="">`
     : '<span class="pitchShotEmpty"></span>'
-  const tag = opts.locked ? '<span class="setTag setTagLicense pitchTag">License</span>' : ''
+  const tag = opts.locked ? '<span class="setTag pitchTag">Unavailable</span>' : ''
   const tick = current && !opts.locked ? `<span class="pitchTick">${icon('check', 'ic')}</span>` : ''
   const more = opts.own
     ? `<span class="pitchMore" role="button" tabindex="0" data-bg-menu="${id}" aria-label="More options for ${esc(label)}">${icon('dots')}</span>`
@@ -6019,10 +5972,6 @@ settingsEl.addEventListener('click', (e) => {
   const bgAdd = (e.target as HTMLElement).closest('[data-bg-add]') as HTMLElement | null
   if (bgAdd) {
     closeBackgroundMenu()
-    if (!entitlements.canUploadBackground()) {
-      setNote('Your own backgrounds come with the License. Open the Pro tab to get one.')
-      return
-    }
     openKindChooser()
     return
   }
@@ -6030,10 +5979,7 @@ settingsEl.addEventListener('click', (e) => {
   if (pitchBtn) {
     closeBackgroundMenu()
     const style = pitchById(pitchBtn.dataset.pitch)
-    if (!entitlements.canPickPitch(style)) {
-      setNote('Every pitch style comes with the License. Open the Pro tab to get one.')
-      return
-    }
+    if (!entitlements.canPickPitch(style)) return
     const saved = style.custom ? backgrounds.get(style.id) : null
     if (saved) useBackground(saved)
     else if (style.custom) setNote('That background is not saved on this device.')
@@ -6066,6 +6012,7 @@ settingsEl.addEventListener('click', (e) => {
   else if (k === 'pitch-undo') undoPitchChange()
   else if (k === 'boards-export') exportBoardsFile()
   else if (k === 'projects') openProjectsScreen()
+  else if (k === 'free-backup') void requestFreeBackup('settings')
   else if (k === 'signin') openSignIn()
   else if (k === 'signout') void signOutFromSettings()
 })
@@ -6341,8 +6288,22 @@ appBanner.addEventListener('click', (e) => {
   } else if (action === 'conflict-keep') {
     saves.keepCurrentConflict()
     hideBanner()
+  } else if (action === 'free-backup') {
+    hideBanner()
+    void requestFreeBackup('fourth_save')
   }
 })
+
+saves.onFreeLimit = () => {
+  if (BOARD_SELF_HOSTED || entitlements.isPro()) return
+  void recordProductEvent('free_backup_prompted', 'fourth_save')
+  showBanner(`
+    <p>Local projects are unlimited. Back up one project to your Tactics Journal account free, or use Pro to sync every project.</p>
+    <span class="appBannerActions">
+      <button data-banner="dismiss">Not now</button>
+      <button data-banner="free-backup">Back up one project</button>
+    </span>`)
+}
 
 // Multi-tab conflict: another tab saved a newer version of the board this
 // tab has open. Let the user grab a backup of their local copy before
@@ -6364,12 +6325,10 @@ saves.onExternalConflict = (_name, state) => {
 // tacticsjournal.com and dispatches auth-changed. Wire that into the
 // entitlements module so the board reflects the server's answer. The two
 // products are read separately: `site_access` for the Pro subscription and
-// `board_license` for the one-time license.
-let wasPaid = entitlements.hasPaidBoardAccess()
+// `board_license` for a grandfathered License.
+let wasPro = entitlements.isPro()
 /** Authentication permits shared-board sync even without a Pro entitlement. */
-let authenticated = false
 let boardSessionReady = false
-let accountBinding: string | null = null
 let syncGeneration = 0
 window.addEventListener('tacticsjournal:auth-changed', ((event: CustomEvent) => {
   // Authentication changes are a collaboration boundary, even when the
@@ -6414,19 +6373,22 @@ window.addEventListener('tacticsjournal:auth-changed', ((event: CustomEvent) => 
   // fills blanks only, so a session landing later never clobbers an edit
   prefillFeedback()
   entitlements.setServerEntitlement(serverPro, serverLicense, serverBoardAdmin)
+  if (authenticated && !previousAuthenticated) {
+    const intent = takeFreeBackupIntent(sessionStorage)
+    if (intent) queueMicrotask(() => { void requestFreeBackup(intent.source, intent.boardId) })
+  }
   renderPitchSeg()
   // the tags say what is still to buy, so they answer to the new access at once
   syncLockTags()
-  // Access loss only (not a fresh page load, and not merely offline/unknown):
-  // tell the user paid features are now limited. Nothing is deleted - saved
-  // boards over the free limit simply become read-only until access returns.
-  const isPaid = entitlements.hasPaidBoardAccess()
-  if (wasPaid && !isPaid) {
+  // Pro loss only. Local work remains fully editable; only hosted account
+  // services stop when Pro ends.
+  const isPro = entitlements.isPro()
+  if (wasPro && !isPro) {
     showBanner(`
-      <p>Paid access has ended, so some features are now limited. Your saved boards have not been deleted; boards past the free limit are read-only until access returns.</p>
+      <p>Pro access has ended. Local projects remain editable and exportable; all-project sync, collaboration, sharing controls, and agent access are paused.</p>
       <span class="appBannerActions"><button data-banner="dismiss">Dismiss</button></span>`, 'warn')
   }
-  wasPaid = isPaid
+  wasPro = isPro
   // Auth can change while entitlement flags remain false. It still starts or
   // stops shared-board sync and its live nudge channel immediately.
   void runSync()
@@ -6530,14 +6492,20 @@ async function runSyncPass(): Promise<void> {
   const rowsBeforeSync = saves.projectDocuments()
   const passGeneration = requestedGeneration
   const passStore = syncStore
+  const freeBackupId = !entitlements.isPro() ? selectedFreeBackup(localStorage, requestedBinding) : null
   const result = await sync.syncOnce(passStore, syncApi, new Date().toISOString(), undefined, {
-    includeOwned: entitlements.isPro(),
+    includeOwned: entitlements.isPro() || !!freeBackupId,
+    ...(freeBackupId ? { ownedId: freeBackupId, freeBackupId } : {}),
     stillCurrent: () => passGeneration === syncGeneration && requestedBinding === accountBinding,
   })
   // A response started under another account may update its account-scoped
   // local records, but it must not replace the board now on screen.
   if (passGeneration !== syncGeneration) return
   const openConflict = reconcileProjectSync(rowsBeforeSync, result)
+  if (!entitlements.isPro() && !freeBackupId && requestedBinding) {
+    const restored = saves.projectDocuments().find(row => row.access !== 'shared' && result.remoteIds.includes(row.rowId))
+    if (restored) setSelectedFreeBackup(localStorage, requestedBinding, restored.rowId)
+  }
   await personalSync
   if (passGeneration !== syncGeneration) return
   // Only speak up for an accepted server conflict, never a network failure.
@@ -6561,6 +6529,84 @@ function serializeProjectSync<T>(work: () => Promise<T>): Promise<T> {
   const run = projectSyncQueue.then(() => work(), () => work())
   projectSyncQueue = run.then(() => undefined, () => undefined)
   return run
+}
+
+function freeBackupCandidate(requestedId?: string) {
+  const rows = saves.projectDocuments().filter(row => row.access !== 'shared')
+  if (requestedId) return rows.find(row => row.rowId === requestedId) ?? null
+  const currentId = saves.currentBoardId()
+  return rows.find(row => row.rowId === currentId)
+    ?? rows.sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))[0]
+    ?? null
+}
+
+async function requestFreeBackup(source: FreeBackupSource, requestedId?: string): Promise<void> {
+  if (BOARD_SELF_HOSTED) return
+  if (entitlements.isPro()) { showToast('Pro already backs up every project.'); return }
+  const row = freeBackupCandidate(requestedId)
+  if (!row) { showToast('Save a project on this device before turning on backup.'); return }
+  if (source === 'settings') void recordProductEvent('free_backup_prompted', source)
+  if (!authenticated || !accountBinding) {
+    if (!saveFreeBackupIntent(sessionStorage, { boardId: row.rowId, source })) {
+      showToast('This browser could not preserve the backup request. Sign in, then try again.')
+      return
+    }
+    showToast('Sign in to back up this project free.')
+    openSignIn()
+    return
+  }
+  const previous = selectedFreeBackup(localStorage, accountBinding)
+  if (previous && previous !== row.rowId) {
+    const old = freeBackupCandidate(previous)
+    if (!window.confirm(`Replace ${old?.name || 'your current free backup'} with ${row.name}? The old project stays on this device.`)) return
+  }
+  await serializeProjectSync(() => syncFreeBackupProject(row.rowId, source))
+}
+
+async function syncFreeBackupProject(boardId: string, source: FreeBackupSource): Promise<void> {
+  const requestedGeneration = syncGeneration
+  const requestedBinding = accountBinding
+  if (!authenticated || !requestedBinding || entitlements.isPro()) return
+  boardSessionReady = await ensureBoardSession(requestedBinding)
+  if (!boardSessionReady || requestedGeneration !== syncGeneration || requestedBinding !== accountBinding) {
+    showToast('Could not connect this backup to your account. Try again.')
+    return
+  }
+  if (!saves.flushCurrentForSync()) {
+    showToast('Could not save the current project on this device. Nothing was uploaded.')
+    return
+  }
+  const row = freeBackupCandidate(boardId)
+  if (!row) { showToast('That project is no longer saved on this device.'); return }
+  const rowsBeforeSync = saves.projectDocuments()
+  const result = await sync.syncOnce(syncStore, syncApi, new Date().toISOString(), undefined, {
+    includeOwned: true,
+    ownedId: boardId,
+    targetId: boardId,
+    freeBackupId: boardId,
+    advanceMarkers: false,
+    stillCurrent: () => requestedGeneration === syncGeneration && requestedBinding === accountBinding,
+  })
+  if (requestedGeneration !== syncGeneration || requestedBinding !== accountBinding) return
+  reconcileProjectSync(rowsBeforeSync, result)
+  if (result.status === 'ok' && result.conflicts > 0) {
+    showToast('Another version was already backed up. Both versions stay on this device; choose the project again after reviewing them.')
+    return
+  }
+  if (result.status !== 'ok') {
+    if (result.reason === 'free_backup_creation_cap') {
+      showToast('This account has used its three free backup records. Pro backs up every project; your local work is unchanged.')
+      openSettings('pro')
+    } else showToast('The project stayed on this device, but backup did not finish. Try again.')
+    return
+  }
+  if (!setSelectedFreeBackup(localStorage, requestedBinding, boardId)) {
+    showToast('Backup finished, but this browser could not remember the selection.')
+    return
+  }
+  void recordProductEvent('free_backup_enabled', source)
+  renderRootValues()
+  showToast(`${row.name} is backed up to your account.`)
 }
 
 async function runTargetedSyncPass(
@@ -6690,9 +6736,10 @@ saves.onCreateAgentLink = async (boardId: string): Promise<string> => {
 const SYNC_DEBOUNCE = 700
 function scheduleSync(delay = SYNC_DEBOUNCE, change: { shared: boolean } = { shared: false }): void {
   if (!(authenticated || entitlements.isPro())) return
-  // A signed-in Free user only pushes edits to shared boards. Pulls still run
-  // from visibility, online, auth, and live-channel triggers above.
-  if (authenticated && !entitlements.isPro() && !change.shared) return
+  // A signed-in Free user pushes shared edits and, when chosen, one personal
+  // backup. Other owned projects never leave the device.
+  if (authenticated && !entitlements.isPro() && !change.shared
+    && !selectedFreeBackup(localStorage, accountBinding)) return
   if (syncTimer !== null) clearTimeout(syncTimer)
   syncTimer = window.setTimeout(() => { syncTimer = null; void runSync() }, delay)
 }
@@ -6873,8 +6920,8 @@ async function updateLiveChannel(): Promise<void> {
 // When entitlements change after session load, update UI elements that
 // were rendered with the initial (fail-closed) state.
 window.addEventListener('tbm:entitlements-changed', ((event: CustomEvent) => {
-  // The licence panel is rendered fail-closed on load, before the session
-  // answers, so it has to be redrawn once the answer arrives.
+  // The Plans pane renders fail-closed on load, before the session answers,
+  // so it has to be redrawn once the answer arrives.
   renderLicenseCta()
   renderProCta()
   saves.refresh()
@@ -6960,9 +7007,6 @@ function addSharedProject(draft: AgentImportDraft, projectId: string | null): Bo
     return { status: 'added', projectId: project.id, projectName: project.name, boardId: firstBoardId }
   }
 
-  if (!canCreateProject(library, entitlements.hasPaidBoardAccess())) {
-    return { status: 'failed', message: 'Free keeps three projects. Add these boards to an existing project, delete one, or take a licence.' }
-  }
   const project = newProjectFromProjectCopy(source, draft.name)
   if (!saves.persistProjectDocuments([project])) {
     return { status: 'failed', message: 'The project could not be saved on this device.' }
@@ -6993,9 +7037,6 @@ function addSharedBoard(draft: AgentImportDraft, projectId: string | null): Boar
     return { status: 'added', projectId: project.id, projectName: project.name, boardId: added.id }
   }
 
-  if (!canCreateProject(library, entitlements.hasPaidBoardAccess())) {
-    return { status: 'failed', message: 'Free keeps three projects. Add this board to an existing project, delete one, or take a licence.' }
-  }
   const project = newProjectFromBoard(source, draft.name)
   if (!saves.persistProjectDocuments([project])) {
     return { status: 'failed', message: 'The board could not be saved on this device.' }
@@ -7025,6 +7066,8 @@ if (!BOARD_SELF_HOSTED) startAgentImport({
   addProject: addSharedProject,
   openProject: openLibraryProject,
 })
+
+if (!BOARD_SELF_HOSTED) void recordProductEvent('editor_opened')
 
 // debugging/testing handle
 ;(window as any).__tbm = { store, board, importer, saves, entitlements, backgrounds, pitchById, officialExtensions }

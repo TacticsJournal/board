@@ -1,6 +1,6 @@
 import type { SyncedAsset } from './asset-sync'
 
-/** A licensed user's own shapes: crests, coaching keys, custom tokens. */
+/** A user's own shapes: crests, coaching keys, custom tokens. */
 export type AssetCategory = 'players' | 'arrows' | 'zones' | 'equipment'
 export const ASSET_CATEGORIES: AssetCategory[] = ['players', 'arrows', 'zones', 'equipment']
 
