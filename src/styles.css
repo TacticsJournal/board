@@ -8,6 +8,9 @@
   --line: #d2d2d7;
   --ink: #1d1d1f;
   --ink-soft: #6e6e73;
+  /* A proposed version, which is neither an error nor a confirmation: it is
+     something waiting on a decision. Used only by the proposals screen. */
+  --propose: #9a5b12;
   /* Compatibility alias while the last `--orange` usages are converted: the
      blue is the only accent now, and highlight and action are the same job. */
   --orange: var(--action);
@@ -85,6 +88,7 @@ html[data-theme-resolved="dark"] {
   --line: #38383a;
   --ink: #f5f5f7;
   --ink-soft: #98989d;
+  --propose: #e0a048;
   --orange: var(--action);
   --action: #0a84ff;
   --pill: #48484a;
@@ -2730,6 +2734,74 @@ html[data-theme-resolved="dark"] .mThumb { background: #0a0a0a; }
   .histItem { flex-wrap: wrap; }
   .histItem .histMeta { flex: 1 1 60%; }
   .histConfirm { flex-basis: 100%; justify-content: flex-start; margin-top: 2px; }
+}
+
+/* proposals: one project, two versions of it, one decision. The list is the
+   same shape as the version-history list; the review below it is the only
+   place in Settings that draws boards, because a version nobody can see is
+   not something anyone should be asked to accept. */
+.propItem { gap: 11px; align-items: center; }
+.propItem .propMeta { flex: 1 1 120px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.propItem .propMeta strong { font-weight: 400; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.propItem .propMeta span { font-size: 12.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.propTag {
+  flex: none;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.propStale { color: var(--propose); border-color: var(--propose); }
+.propEmpty { font-size: 13px; color: var(--ink-soft); display: block; }
+.propPane .saveStatus:empty { display: none; }
+
+.propHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+/* the three views are one control: which of the two versions is on screen */
+.propViews { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.propView {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--ink-soft);
+  border: 0;
+  border-left: 1px solid var(--line);
+  cursor: pointer;
+}
+.propView:first-child { border-left: 0; }
+.propViewOn { background: var(--ink); color: var(--bg); }
+.propSummary { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--ink-soft); margin-bottom: 12px; }
+.propRenamed { color: var(--ink); }
+.propStaleNote { color: var(--propose); }
+
+.propBoards { display: flex; flex-direction: column; gap: 14px; }
+.propBoardHead {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 0 0 6px; font-size: 13px; font-weight: 500;
+}
+.propPanes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.propPanes:has(> :only-child) { grid-template-columns: 1fr; }
+.propSide { margin: 0; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.propSide figcaption { font-size: 11.5px; color: var(--ink-soft); }
+.propPrev { display: block; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--settings-bg); }
+.propPrev svg { display: block; width: 100%; height: auto; }
+/* a board the other version does not have: the gap is the information */
+.propGone {
+  display: grid; place-items: center; min-height: 72px;
+  font-size: 12px; color: var(--ink-soft); border-style: dashed;
+}
+.propSideProposed .propPrev { border-color: var(--propose); }
+.propActions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; padding: 10px 0 0; }
+.propConfirm { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.propConfirmText { font-size: 12.5px; color: var(--ink-soft); }
+.sheet .setItemAction.propDo { color: #c2554b; }
+/* the mode a link is issued with, chosen before the link exists */
+.agentModes .setItemNote { display: block; font-size: 12px; color: var(--ink-soft); }
+@media (max-width: 430px) {
+  .propPanes { grid-template-columns: 1fr; }
+  .propItem { flex-wrap: wrap; }
+  .propItem .propMeta { flex: 1 1 60%; }
 }
 
 /* team sheet: side switch + one editor */

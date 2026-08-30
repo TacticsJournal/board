@@ -14,6 +14,7 @@ import type { NodeCurve, PathNode } from './path-nodes'
 import { ImportPanel } from './importer'
 import { SavesPanel } from './saves'
 import { BoardHistoryPanel, createBoardHistoryApi, type BoardHistoryTarget, type RestoredBoard } from './board-history'
+import { BoardProposalsPanel, createBoardProposalsApi, type AcceptedBoard, type BoardProposalsTarget } from './board-proposals'
 import { formatElapsedSince } from './last-updated'
 import { mountSlidingPills } from './sliding-pill'
 import { TeamPanel, teamCode, type TeamSide } from './teams'
@@ -39,7 +40,7 @@ import {
 import * as live from './live'
 import * as collaboration from './collaboration'
 import { TJ_ORIGIN, usingBillingSandbox } from './origin'
-import { boardAgentLinksUrl, boardInvitationUrl, boardPresenceUrl, boardSkillsUrl, ensureBoardSession, resetBoardSession } from './board-api'
+import { boardAgentLinksUrl, boardInvitationUrl, boardPresenceUrl, boardSkillsUrl, ensureBoardSession, resetBoardSession, type AgentAccessMode } from './board-api'
 import { startCheckout, type CheckoutProduct } from './checkout'
 import * as entitlements from './entitlements'
 import {
@@ -50,7 +51,7 @@ import {
   MAX_CAT_LENGTH, MAX_STAMP_OBJECTS, Stamp, StampQuotaError,
   addStamp, customCats, listStamps, normalizeCat, removeStamp, updateStamp, stampLibrarySyncStore, subscribe as subscribeStamps,
 } from './stamps'
-import { sceneShapesSvg } from './saves'
+import { previewSvg, sceneShapesSvg } from './saves'
 import { icon } from './icons'
 import { ExtensionRuntime, type ExtensionManifest } from './extension-runtime'
 import { OfficialExtensions } from './extensions/official/manager.ts'
@@ -3461,7 +3462,7 @@ function shareEntries(): ShareEntry[] {
       key: 'agent', label: 'Invite an agent', ic: 'prompt',
       // a preview build shares the billing sandbox and must never mint a real
       // credential, so a Pro account here is told why rather than sold to
-      note: 'A link that can read and draw on this board for 24 hours',
+      note: 'A link that can read and draw on this board for 24 hours, proposing or editing as you choose',
       // a preview build shares the billing sandbox and grants Pro to everyone
       // on it, so it must never mint a real credential: that is a different
       // reason from not having bought Pro, and it gets a different answer
@@ -3471,7 +3472,7 @@ function shareEntries(): ShareEntry[] {
           ? { tag: 'Board', toast: 'Agent links are issued only from board.tacticsjournal.com.' }
           : { tag: 'Pro', toast: UPGRADE_TOAST },
       run: () => shareStep('Invite an agent', (body) => {
-        void makeAgentLink(body)
+        makeAgentLink(body)
         return true
       }),
     },
@@ -3642,10 +3643,33 @@ function makeCopyLink(body: HTMLElement) {
   void generate('board')
 }
 
-async function makeAgentLink(body: HTMLElement) {
+/**
+ * The one thing to decide before an agent gets a link: whether what it saves
+ * lands on the project or waits for you. The choice is made here, before any
+ * credential exists, because it cannot be changed on a link already issued.
+ */
+function makeAgentLink(body: HTMLElement) {
+  body.innerHTML = `<p class="shareStatus">What may this agent do with the project?</p>
+    <div class="setGroup agentModes">
+      <button class="setItem" data-agent-mode="propose">
+        <span class="setItemLabel">Propose changes<span class="setItemNote">Its work waits in Proposals until you accept it</span></span>
+      </button>
+      <button class="setItem" data-agent-mode="edit">
+        <span class="setItemLabel">Edit directly<span class="setItemNote">It changes the project as you would; earlier versions stay in History</span></span>
+      </button>
+    </div>`
+  body.querySelectorAll<HTMLButtonElement>('[data-agent-mode]').forEach(button => {
+    button.addEventListener('click', () => {
+      void issueAgentLink(body, button.dataset.agentMode === 'edit' ? 'edit' : 'propose')
+    })
+  })
+  body.querySelector<HTMLButtonElement>('[data-agent-mode]')?.focus()
+}
+
+async function issueAgentLink(body: HTMLElement, mode: AgentAccessMode) {
   body.innerHTML = '<p class="shareStatus">Saving and creating agent link…</p>'
   try {
-    const result = await saves.currentAgentLink()
+    const result = await saves.currentAgentLink(mode)
     if (result.status !== 'ok') {
       body.innerHTML = `<p class="shareStatus">${result.status === 'save-first'
         ? 'This board could not be saved on this device, so there is nothing to give an agent yet.'
@@ -3653,7 +3677,10 @@ async function makeAgentLink(body: HTMLElement) {
       return
     }
     const url = result.url
-    body.innerHTML = `<p class="shareStatus">Paste this link into your coding agent. It expires after 24 hours and can only read and draw on this project.</p>
+    body.innerHTML = `<p class="shareStatus">Paste this link into your coding agent. It expires after 24 hours and can only read and draw on this project.
+      ${mode === 'propose'
+        ? 'What it saves waits for you in Proposals.'
+        : 'What it saves changes the project straight away.'}</p>
       <span class="linkField">
         <input type="text" readonly data-agent-link aria-label="Agent link">
         <button type="button" class="copyIconButton" data-agent-link-copy aria-label="Copy agent link">${copyButtonIcons()}</button>
@@ -4566,6 +4593,9 @@ settingsEl.innerHTML = `
     <div class="setPane hidden" data-pane="history">
       <div data-history-host></div>
     </div>
+    <div class="setPane hidden" data-pane="proposals">
+      <div data-proposals-host></div>
+    </div>
     <div class="impStatus" data-set-note role="status" aria-live="polite"></div>
   </div>`
 document.body.appendChild(settingsEl)
@@ -4595,8 +4625,28 @@ const boardHistory = new BoardHistoryPanel({
 })
 settingsEl.querySelector('[data-history-host]')!.appendChild(boardHistory.el)
 
+/**
+ * Proposals is Version history's twin: one project, opened from the saved
+ * list, returning to it. Where history looks backwards at versions this
+ * account made, proposals looks at versions an agent link suggested and never
+ * applied. Accepting one takes the same path a restore takes, so an accepted
+ * version reaches the canvas and the Projects library like any other change.
+ */
+const boardProposals = new BoardProposalsPanel({
+  api: createBoardProposalsApi(),
+  renderScene: (scene) => previewSvg(scene ?? undefined),
+  onAccepted: (board: AcceptedBoard, target: BoardProposalsTarget) => applyRestoredVersion(board, { ...target, savedAt: board.updatedAt }),
+  onDone: (message, boardId) => {
+    showScreen('boards')
+    saves.refresh()
+    saves.announce(message)
+    if (!saves.focusProposalsAction(boardId)) settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
+  },
+})
+settingsEl.querySelector('[data-proposals-host]')!.appendChild(boardProposals.el)
+
 /** Settings is one list plus push screens; every screen but root has a back arrow. */
-type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'history' | 'pro' | 'agents' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets' | 'self-host'
+type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'history' | 'proposals' | 'pro' | 'agents' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets' | 'self-host'
 
 const SCREEN_TITLES: Record<SetScreen, string> = {
   root: 'Settings',
@@ -4604,6 +4654,7 @@ const SCREEN_TITLES: Record<SetScreen, string> = {
   pitch: 'Pitch',
   boards: 'Move to another device',
   history: 'Version history',
+  proposals: 'Proposals',
   assets: 'My assets',
   pro: 'Plans',
   agents: 'Claude and ChatGPT',
@@ -5474,6 +5525,12 @@ saves.onOpenHistory = (target) => {
   showScreen('history')
   settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
 }
+saves.onOpenProposals = (target) => {
+  setNote('')
+  boardProposals.start(target)
+  showScreen('proposals')
+  settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
+}
 
 function setThemeResolved(dark: boolean, selected: 'system' | 'light' | 'dark') {
   // same attribute tacticsjournal.com uses, so the palettes stay in sync
@@ -6042,7 +6099,7 @@ settingsEl.addEventListener('click', (e) => {
     disposeExtensionRuntime()
     if (screen === 'skill') editingSkillDraft = null
     showScreen(screen === 'skill' || screen === 'extension' || screen === 'official' ? 'skills'
-      : screen === 'history' ? 'boards' : 'root')
+      : screen === 'history' || screen === 'proposals' ? 'boards' : 'root')
   }
   else if (k === 'theme-system') applyThemeChoice('system')
   else if (k === 'theme-light') applyTheme(false)
@@ -6777,14 +6834,14 @@ async function prepareSavedBoardsForSharing(boardId: string): Promise<string> {
 }
 
 saves.onPrepareShare = (boardId: string) => prepareSavedBoardsForSharing(boardId)
-saves.onCreateAgentLink = async (boardId: string): Promise<string> => {
+saves.onCreateAgentLink = async (boardId: string, mode: AgentAccessMode = 'propose'): Promise<string> => {
   const finalBoardId = await prepareSavedBoardsForSharing(boardId)
   await flushSkillsForAgentLink(finalBoardId)
   const response = await fetch(boardAgentLinksUrl(), {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ board_id: finalBoardId }),
+    body: JSON.stringify({ board_id: finalBoardId, access_mode: mode }),
   })
   if (!response.ok) throw new Error(`The server returned ${response.status}.`)
   const data = await response.json() as { url?: unknown }
@@ -6994,7 +7051,8 @@ window.addEventListener('tbm:entitlements-changed', ((event: CustomEvent) => {
   saves.refresh()
   // A lapsed or signed-out account must not be left standing on a screen its
   // project list no longer offers.
-  if (screen === 'history' && !(authenticated && entitlements.isPro() && !BOARD_SELF_HOSTED)) showScreen('boards')
+  if ((screen === 'history' || screen === 'proposals')
+    && !(authenticated && entitlements.isPro() && !BOARD_SELF_HOSTED)) showScreen('boards')
   // Pro just resolved, which is the first moment sync is allowed to run.
   void runSync()
   void updateLiveChannel()

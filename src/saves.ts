@@ -6,6 +6,8 @@ import { canCreateAgentLink, hasPaidBoardAccess, isPro } from './entitlements'
 import { boardInvitationsUrl, boardSharesUrl, boardUserSearchUrl } from './board-api'
 import { canCreateSavedBoard, editableBoardNames, savedBoardNamesByRecency, sharedBoardNames, swapEditableSlot, writeSavedBoards } from './saved-board-policy'
 import { canOpenBoardHistory, type BoardHistoryContext } from './board-history'
+import { canReviewBoardProposals } from './board-proposals'
+import type { AgentAccessMode } from './board-api'
 import { icon } from './icons'
 import { mountSlidingPills } from './sliding-pill'
 import { getAsset } from './assets'
@@ -448,8 +450,12 @@ export class SavesPanel {
   onPrepareShare: (boardId: string) => Promise<string> = async () => {
     throw new Error('Board sharing is unavailable.')
   }
-  /** Set by main: flushes/syncs all saved boards and returns the issued link URL. */
-  onCreateAgentLink: (boardId: string) => Promise<string> = async () => {
+  /**
+   * Set by main: flushes/syncs all saved boards and returns the issued link
+   * URL. `mode` is what the link may do with the project: propose a version
+   * for review, or edit it directly.
+   */
+  onCreateAgentLink: (boardId: string, mode: AgentAccessMode) => Promise<string> = async () => {
     throw new Error('Agent links are unavailable.')
   }
   /** Set by main: offer account backup when an explicit save reaches Free's limit. */
@@ -462,6 +468,8 @@ export class SavesPanel {
   historyContext: () => BoardHistoryContext = () => ({ pro: false, signedIn: false, selfHosted: true, accountBinding: null })
   /** Set by main: open the version-history screen for one owned saved project. */
   onOpenHistory: (target: { id: string; name: string; savedAt: string; accountBinding: string }) => void = () => {}
+  /** Set by main: open the proposals screen for one owned saved project. */
+  onOpenProposals: (target: { id: string; name: string; accountBinding: string }) => void = () => {}
   /** Set by main: what to call a board saved without anyone naming it. */
   defaultBoardName: () => string = () => ''
 
@@ -509,6 +517,7 @@ export class SavesPanel {
       else if (k === 'delete') this.remove(btn.dataset.name!)
       else if (k === 'agent-link') void this.createAgentLink(btn.dataset.id!)
       else if (k === 'history') this.openHistory(btn.dataset.name!)
+      else if (k === 'proposals') this.openProposals(btn.dataset.name!)
     })
     window.addEventListener('storage', (event) => {
       if (event.storageArea !== localStorage || event.key !== this.storageKey) return
@@ -686,7 +695,7 @@ export class SavesPanel {
     status.textContent = message
   }
   /** Return an agent link for the board on screen without opening Settings. */
-  async currentAgentLink(): Promise<
+  async currentAgentLink(mode: AgentAccessMode = 'propose'): Promise<
     { status: 'ok'; url: string } | { status: 'save-first' | 'not-allowed' }
   > {
     if (!canCreateAgentLink()) return { status: 'not-allowed' }
@@ -696,7 +705,7 @@ export class SavesPanel {
     if (!this.currentName || !this.currentId || !this.isCurrentSaved()) this.autosaveCurrent(true)
     const id = this.currentBoardId()
     if (!id || !this.isCurrentSaved()) return { status: 'save-first' }
-    const url = await this.onCreateAgentLink(id)
+    const url = await this.onCreateAgentLink(id, mode)
     if (!url) throw new Error('The server returned no agent link.')
     return { status: 'ok', url }
   }
@@ -708,12 +717,12 @@ export class SavesPanel {
     }
     this.showStatus('Saving and creating agent link…')
     try {
-      const url = await this.onCreateAgentLink(boardId)
+      const url = await this.onCreateAgentLink(boardId, 'propose')
       if (!url) throw new Error('The server returned no agent link.')
       try {
         if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
         await navigator.clipboard.writeText(url)
-        this.showStatus('Agent instructions copied to your clipboard. Paste it in your coding agent. The link expires in 24 hours.')
+        this.showStatus('Agent instructions copied to your clipboard. Paste it in your coding agent. What the agent saves waits for you in Proposals. The link expires in 24 hours.')
       } catch {
         this.showManualAgentLink(url)
       }
@@ -1871,6 +1880,21 @@ export class SavesPanel {
     return !!button
   }
 
+  /** Move keyboard focus to one saved row's Proposals button, when it still exists. */
+  focusProposalsAction(boardId: string): boolean {
+    const button = this.el.querySelector<HTMLElement>(`[data-sv="proposals"][data-id="${CSS.escape(boardId)}"]`)
+    button?.focus()
+    return !!button
+  }
+
+  private openProposals(name: string): void {
+    const saved = readAll(this.storageKey)[name]
+    if (!saved?.id) return
+    const locked = !editableBoardNames(readAll(this.storageKey), hasPaidBoardAccess()).has(name)
+    if (!canReviewBoardProposals({ ...saved, locked }, this.historyContext())) return
+    this.onOpenProposals({ id: saved.id, name, accountBinding: saved.syncAccount! })
+  }
+
   private openHistory(name: string): void {
     const saved = readAll(this.storageKey)[name]
     if (!saved?.id) return
@@ -1905,6 +1929,7 @@ export class SavesPanel {
         <span class="saveMeta" data-sv="load" data-name="${safe}"><strong>${safe}</strong><span>${isShared ? `${owner}${readOnly ? ' - read-only' : ''}` : `${dateText} - ${count} objects`}</span></span>
         ${locked || readOnly ? `<span class="saveReadOnly">${icon('lock')}Read-only</span>` : ''}
         ${!locked && canCreateAgentLink() && all[n].id ? `<button class="setItemAction" data-sv="agent-link" data-id="${safeId}">Copy agent link</button>` : ''}
+        ${canReviewBoardProposals({ ...project, locked }, this.historyContext()) ? `<button class="setItemAction" data-sv="proposals" data-name="${safe}" data-id="${safeId}" aria-label="Proposed versions of ${safe}">Proposals</button>` : ''}
         ${canOpenBoardHistory({ ...project, locked }, this.historyContext()) ? `<button class="setItemAction" data-sv="history" data-name="${safe}" data-id="${safeId}" aria-label="Version history for ${safe}">History</button>` : ''}
         <button class="setItemAction" data-sv="load" data-name="${safe}">${locked ? 'Open' : 'Load'}</button>
         ${!isShared ? `<button class="setItemAction danger" data-sv="delete" data-name="${safe}" aria-label="Delete ${safe}">${icon('trash')}</button>` : ''}
