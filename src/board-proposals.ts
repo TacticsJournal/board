@@ -589,7 +589,7 @@ export class BoardProposalsPanel {
       </div>
       ${summary}
       <div class="propBoards">${boards}</div>
-      <div class="setGroup propActions">${decision}</div>`
+      <div class="propActions">${decision}</div>`
   }
 
   private changeHtml(change: BoardChange): string {
