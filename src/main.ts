@@ -4442,8 +4442,8 @@ settingsEl.innerHTML = `
               <button type="button" data-period="monthly" aria-pressed="false">Monthly</button>
             </div>
           </div>
-          <p class="proCardAmount"><span data-pro-amount>$12.42</span><span class="proCardPer">/month</span></p>
-          <p class="proCardBilled"><span data-pro-billed>Billed yearly at $149</span><span class="proSavePill" data-pro-save>Save $30.88 versus monthly</span></p>
+          <p class="proCardAmount"><span data-pro-amount>$12.99</span><span class="proCardPer">/month</span></p>
+          <p class="proCardBilled"><span data-pro-billed>Billed yearly at $155.88</span><span class="proSavePill" data-pro-save>Save $24 versus monthly</span></p>
           <ul>
             <li>Back up and sync every project across devices</li>
             <li>See edits appear in real time for people you invite</li>
@@ -5552,8 +5552,8 @@ function renderProBilling() {
   const amount = settingsEl.querySelector('[data-pro-amount]')
   const billed = settingsEl.querySelector('[data-pro-billed]')
   const save = settingsEl.querySelector('[data-pro-save]') as HTMLElement | null
-  if (amount) amount.textContent = yearly ? '$12.42' : '$14.99'
-  if (billed) billed.textContent = yearly ? 'Billed yearly at $149' : 'Billed monthly at $14.99'
+  if (amount) amount.textContent = yearly ? '$12.99' : '$14.99'
+  if (billed) billed.textContent = yearly ? 'Billed yearly at $155.88' : 'Billed monthly at $14.99'
   if (save) save.hidden = !yearly
   for (const button of settingsEl.querySelectorAll('[data-period]')) {
     button.setAttribute('aria-pressed', String(button.getAttribute('data-period') === proBillingPeriod))
