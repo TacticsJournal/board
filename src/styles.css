@@ -8,6 +8,9 @@
   --line: #d2d2d7;
   --ink: #1d1d1f;
   --ink-soft: #6e6e73;
+  /* A proposed version, which is neither an error nor a confirmation: it is
+     something waiting on a decision. Used only by the proposals screen. */
+  --propose: #9a5b12;
   /* Compatibility alias while the last `--orange` usages are converted: the
      blue is the only accent now, and highlight and action are the same job. */
   --orange: var(--action);
@@ -85,6 +88,7 @@ html[data-theme-resolved="dark"] {
   --line: #38383a;
   --ink: #f5f5f7;
   --ink-soft: #98989d;
+  --propose: #e0a048;
   --orange: var(--action);
   --action: #0a84ff;
   --pill: #48484a;
@@ -2732,6 +2736,77 @@ html[data-theme-resolved="dark"] .mThumb { background: #0a0a0a; }
   .histConfirm { flex-basis: 100%; justify-content: flex-start; margin-top: 2px; }
 }
 
+/* proposals: one project, two versions of it, one decision. The list is the
+   same shape as the version-history list; the review below it is the only
+   place in Settings that draws boards, because a version nobody can see is
+   not something anyone should be asked to accept. */
+.propItem { gap: 11px; align-items: center; }
+.propItem .propMeta { flex: 1 1 120px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.propItem .propMeta strong { font-weight: 400; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.propItem .propMeta span { font-size: 12.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.propTag {
+  flex: none;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.propStale { color: var(--propose); border-color: var(--propose); }
+.propEmpty { font-size: 13px; color: var(--ink-soft); display: block; }
+.propPane .saveStatus:empty { display: none; }
+
+.propHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+/* the three views are one control: which of the two versions is on screen */
+.propViews { flex-wrap: wrap; }
+.propSummary { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--ink-soft); margin-bottom: 12px; }
+.propRenamed { color: var(--ink); }
+.propStaleNote { color: var(--propose); }
+
+.propBoards { display: flex; flex-direction: column; gap: 14px; }
+.propBoardHead {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 0 0 6px; font-size: 13px; font-weight: 500;
+}
+.propPanes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.propPanes:has(> :only-child) { grid-template-columns: 1fr; }
+.propSide { margin: 0; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.propSide figcaption { font-size: 11.5px; color: var(--ink-soft); }
+.propPrev { display: block; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--settings-bg); }
+.propPrev svg { display: block; width: 100%; height: auto; }
+/* a board the other version does not have: the gap is the information */
+.propGone {
+  display: grid; place-items: center; min-height: 72px;
+  font-size: 12px; color: var(--ink-soft); border-style: dashed;
+}
+.propSideProposed .propPrev { border-color: var(--propose); }
+/* the decision is two buttons, not two rows: they sit together at the end of
+   the boards, and on a phone they share the width rather than stacking into
+   something that reads like more list */
+.propActions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; padding: 12px 0 0; }
+.propConfirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; flex: 1 1 auto; }
+.propConfirmText { flex: 1 1 100%; font-size: 12.5px; color: var(--ink-soft); text-align: right; }
+.sheet .propActions .setItemAction {
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 15px;
+}
+.sheet .setItemAction.propDo { color: #c2554b; }
+/* the mode a link is issued with, chosen before the link exists */
+.agentModes .setItemNote { display: block; font-size: 12px; color: var(--ink-soft); }
+@media (max-width: 430px) {
+  .propPanes { grid-template-columns: 1fr; }
+  .propItem { flex-wrap: wrap; }
+  .propItem .propMeta { flex: 1 1 60%; }
+  /* one row, two equal buttons, thumb-sized */
+  .sheet .propActions .setItemAction { flex: 1 1 0; padding: 10px 12px; }
+  .propConfirmText { text-align: left; }
+}
+
 /* team sheet: side switch + one editor */
 .tmSides { display: flex; flex-direction: column; gap: 0; min-width: 0; }
 /* Home and Away side by side: picking a side, not two long cards to scroll */
@@ -3089,6 +3164,46 @@ button.libTitle:focus-visible { outline: 2px solid var(--grip); outline-offset: 
 .projMore { min-height: 26px; padding: 2px 4px; color: var(--ink-soft); }
 .projMore svg { width: 15px; height: 15px; display: block; }
 .projMore:disabled { opacity: 0.28; }
+/* the one thing on a card that is news: a version somebody proposed and
+   nobody has answered. It sits with the name, not with the actions. */
+.projWait {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--propose);
+  border: 1px solid var(--propose);
+  border-radius: 999px;
+  padding: 0 7px;
+  line-height: 17px;
+  white-space: nowrap;
+}
+/* one menu instead of a row of icons: the actions get words, and a card in a
+   scrolling grid keeps a sheet rather than a menu hung off its corner */
+.projSheetBody { gap: 6px; }
+.projOpt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+}
+.projOpt svg { width: 18px; height: 18px; flex: none; color: var(--ink-soft); }
+.projOpt:disabled { opacity: 0.4; }
+.projOptDanger, .projOptDanger svg { color: #c2554b; }
+.projSheetCount {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--propose);
+}
+
 .projStrip { display: flex; gap: 5px; align-items: flex-start; }
 .projStrip span { flex: 1 1 0; max-width: 92px; }
 

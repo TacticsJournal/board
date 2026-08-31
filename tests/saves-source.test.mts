@@ -124,10 +124,10 @@ test('the share button owns copy links, invitations, and export', () => {
   assert.match(main, /label: 'Invite a person'/)
   assert.match(main, /label: 'Invite an agent'/)
   assert.match(main, /shareStep\('Invite an agent',[\s\S]*?makeAgentLink\(body\)/)
-  assert.match(main, /saves\.currentAgentLink\(\)/)
+  assert.match(main, /saves\.currentAgentLink\(mode\)/)
   assert.match(main, /data-agent-link aria-label="Agent link"/)
   assert.match(main, /entry\.key !== 'username' && entry\.key !== 'board-link' && entry\.key !== 'agent'/)
-  const currentAgentLink = saves.match(/async currentAgentLink\(\)[\s\S]*?\n  }/)?.[0] ?? ''
+  const currentAgentLink = saves.match(/async currentAgentLink\(mode: AgentAccessMode = 'propose'\)[\s\S]*?\n  }/)?.[0] ?? ''
   assert.doesNotMatch(currentAgentLink, /this\.open\(\)/)
   assert.match(main, /label: 'Export/)
   // invitations are answered inside the share sheet rather than moving into Settings
