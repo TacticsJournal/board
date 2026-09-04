@@ -4653,16 +4653,17 @@ settingsEl.innerHTML = `
         <p class="skillsIntro">Your own extensions run in a sandbox and stay on this device and project.</p>
         <div class="setGroup" data-extensions-list></div>
         <div class="setGroup" data-extension-paths-list></div>
-      </div>` : `<div class="skillsSection skillsSectionUnavailable" aria-disabled="true">
+      </div>` : `<div class="skillsSection skillsSectionUnavailable">
         <h3 class="skillsHeading">Self-hosted extensions</h3>
         <p class="skillsIntro">Your own sandboxed extensions are available only when you self-host Board.</p>
-        <div class="setGroup">
+        <div class="setGroup" aria-disabled="true">
           <div class="setItem setItemStatic">
             ${icon('puzzle')}
             <span class="setItemLabel">Self-hosted extensions</span>
             <span class="setItemValue">Self-hosted only</span>
           </div>
         </div>
+        <p class="setNote"><a class="skillsSelfHostLink" href="https://github.com/TacticsJournal/board" target="_blank" rel="noopener noreferrer">Instructions to self-host are on Github</a></p>
       </div>`}
     </div>
     <div class="setPane hidden" data-pane="skill"></div>

@@ -1580,8 +1580,13 @@ textarea {
 /* Skills and extensions use plain groups. They are local project settings,
    not another sales panel. */
 .skillsSection { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 18px; }
-.skillsSectionUnavailable { opacity: 0.52; }
+/* dim the unavailable rows themselves, so the self-host link below them stays readable */
+.skillsSectionUnavailable > .skillsHeading,
+.skillsSectionUnavailable > .skillsIntro,
+.skillsSectionUnavailable > .setGroup { opacity: 0.52; }
 .skillsSectionUnavailable .setItem { pointer-events: none; }
+.skillsSelfHostLink { color: var(--action); text-decoration: none; }
+.skillsSelfHostLink:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; border-radius: 4px; }
 .skillsHeading { margin: 0; padding: 0 6px; font-size: 17px; font-weight: 650; letter-spacing: -0.015em; text-transform: none; }
 .skillsIntro { margin: 0; padding: 0 6px; color: var(--ink-soft); font-size: 14px; line-height: 1.45; }
 .skillsEmpty { padding: 12px 14px; color: var(--ink-soft); font-size: 14px; }
