@@ -84,6 +84,10 @@ test('the library asks the host to open the screens, and never decides itself', 
   assert.match(opener, /boardProposals\.start\(actions\.target\)/)
 })
 
+test('startup has no orphaned carry menu handler', () => {
+  assert.doesNotMatch(main, /carryMenuEl\.addEventListener/)
+})
+
 test('counts are read when the library opens, by an account that can have them', () => {
   const refresh = main.match(/async function refreshProposalCounts\(\): Promise<void> \{[\s\S]*?\n\}/)?.[0] ?? ''
   assert.match(refresh, /if \(BOARD_SELF_HOSTED \|\| !authenticated \|\| !entitlements\.isPro\(\) \|\| !accountBinding\)/)
