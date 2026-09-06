@@ -1131,9 +1131,14 @@ const shelfArt = {
   /** A keeper is the same token in the keeper's colour - nothing else differs. */
   keeper: (color: string) =>
     `<svg viewBox="0 0 34 34" style="filter:drop-shadow(1.2px 1.8px 3.5px rgba(0,0,0,.3))"><circle cx="17" cy="17" r="10" fill="${color}" stroke="#0b0b0e" stroke-width="3.8"/></svg>`,
+  /**
+   * A whole side, drawn as three tokens rather than eleven: at 34px a full
+   * formation collapses into a speckle, so the cell shows the smallest group
+   * that still reads as a team, in the token's own fill and stroke.
+   */
   eleven: (color: string) => {
-    const dot = (x: number, y: number) => `<circle cx="${x}" cy="${y}" r="4" fill="${color}" stroke="#0b0b0e" stroke-width="1.5"/>`
-    return `<svg viewBox="0 0 34 34">${dot(7, 8)}${dot(17, 8)}${dot(27, 8)}${dot(7, 17)}${dot(17, 17)}${dot(27, 17)}${dot(12, 26)}${dot(22, 26)}</svg>`
+    const dot = (x: number, y: number) => `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#0b0b0e" stroke-width="1.9"/>`
+    return `<svg viewBox="0 0 34 34">${dot(17, 10)}${dot(9, 24)}${dot(25, 24)}</svg>`
   },
   /** Side picker: the kit token the board draws, plus that team's code. */
   teamPick: (color: string, code: string) =>

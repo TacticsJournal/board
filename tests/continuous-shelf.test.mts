@@ -84,3 +84,16 @@ test('project switches rebuild the shelf when pitch and broadcast shapes differ'
   // project restored directly onto an uploaded broadcast still.
   assert.match(main, /backgrounds\.subscribe\(\(\) => \{ renderRootValues\(\); syncPanelPitchMode\(\) \}\)/)
 })
+
+test('the full-lineup cell reads as three player tokens', () => {
+  const eleven = main.slice(main.indexOf('eleven: (color: string)'), main.indexOf('teamPick: (color: string'))
+  // Three tokens, not a formation: eight dots speckled at this size.
+  assert.equal((eleven.match(/\$\{dot\(/g) ?? []).length, 3)
+  assert.match(eleven, /\$\{dot\(17, 10\)\}\$\{dot\(9, 24\)\}\$\{dot\(25, 24\)\}/)
+  // Still the board's token: the team's colour under the same near-black ring.
+  assert.match(eleven, /r="5" fill="\$\{color\}" stroke="#0b0b0e" stroke-width="1\.9"/)
+  assert.match(eleven, /viewBox="0 0 34 34"/)
+  // Only the picture changed - the cell still names and places a whole eleven.
+  assert.match(main, /title: `\$\{team\.name\} eleven`/)
+  assert.match(main, /art: shelfArt\.eleven\(team\.color\)/)
+})
