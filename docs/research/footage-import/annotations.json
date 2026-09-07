@@ -1,0 +1,170 @@
+{
+  "completeness": "complete for the 20 visible players; referee excluded; no defensible semantic pitch-point set",
+  "coordinate_convention": "pixel points use a top-left origin; normalized values divide by image width and height",
+  "field_points_px": [],
+  "field_target_points_norm": [],
+  "players": [
+    {
+      "foot_px": [
+        459,
+        410
+      ],
+      "id": "red-01",
+      "team": "red"
+    },
+    {
+      "foot_px": [
+        544,
+        418
+      ],
+      "id": "red-02",
+      "team": "red"
+    },
+    {
+      "foot_px": [
+        554,
+        411
+      ],
+      "id": "red-03",
+      "team": "red"
+    },
+    {
+      "foot_px": [
+        631,
+        418
+      ],
+      "id": "red-04",
+      "team": "red"
+    },
+    {
+      "foot_px": [
+        668,
+        410
+      ],
+      "id": "red-05",
+      "team": "red"
+    },
+    {
+      "foot_px": [
+        742,
+        401
+      ],
+      "id": "red-06",
+      "team": "red"
+    },
+    {
+      "foot_px": [
+        770,
+        407
+      ],
+      "id": "red-07",
+      "team": "red"
+    },
+    {
+      "foot_px": [
+        851,
+        414
+      ],
+      "id": "red-08",
+      "team": "red"
+    },
+    {
+      "foot_px": [
+        945,
+        402
+      ],
+      "id": "red-09",
+      "team": "red"
+    },
+    {
+      "foot_px": [
+        1029,
+        410
+      ],
+      "id": "red-10",
+      "team": "red"
+    },
+    {
+      "foot_px": [
+        480,
+        410
+      ],
+      "id": "yellow-01",
+      "team": "yellow"
+    },
+    {
+      "foot_px": [
+        492,
+        412
+      ],
+      "id": "yellow-02",
+      "team": "yellow"
+    },
+    {
+      "foot_px": [
+        593,
+        410
+      ],
+      "id": "yellow-03",
+      "team": "yellow"
+    },
+    {
+      "foot_px": [
+        619,
+        416
+      ],
+      "id": "yellow-04",
+      "team": "yellow"
+    },
+    {
+      "foot_px": [
+        681,
+        407
+      ],
+      "id": "yellow-05",
+      "team": "yellow"
+    },
+    {
+      "foot_px": [
+        759,
+        408
+      ],
+      "id": "yellow-06",
+      "team": "yellow"
+    },
+    {
+      "foot_px": [
+        882,
+        403
+      ],
+      "id": "yellow-07",
+      "team": "yellow"
+    },
+    {
+      "foot_px": [
+        892,
+        413
+      ],
+      "id": "yellow-08",
+      "team": "yellow"
+    },
+    {
+      "foot_px": [
+        905,
+        403
+      ],
+      "id": "yellow-09",
+      "team": "yellow"
+    },
+    {
+      "foot_px": [
+        1008,
+        586
+      ],
+      "id": "goalkeeper",
+      "team": "green_goalkeeper"
+    }
+  ],
+  "schema_version": 1,
+  "source": "manual visual annotation of scripts/fixtures/match-real.jpg"
+}

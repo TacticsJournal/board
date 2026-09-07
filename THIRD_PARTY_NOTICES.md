@@ -10,6 +10,8 @@ The interface icons come from [Tabler Icons](https://tabler.io/icons), copyright
 
 `scripts/fixtures/match-real.jpg` is "Football match at the i2i Stadium" by Bill Boaden, via Geograph Britain and Ireland and Wikimedia Commons. It is available under [CC BY-SA 2.0](https://creativecommons.org/licenses/by-sa/2.0/). Source page: [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Football_match_at_the_i2i_Stadium_-_geograph.org.uk_-_5307336.jpg). Keep the attribution and share-alike terms when redistributing it.
 
+The sample images and visual overlays under `docs/research/footage-import/` are modified versions of that fixture. They remain under CC BY-SA 2.0 with the same attribution.
+
 ## TheSportsDB data
 
 `public/teams-index.json` was generated from official TheSportsDB API endpoints and contains API-returned team data. TheSportsDB's terms allow API-returned content to be copied and modified with source credit. Credit TheSportsDB when using or republishing this data, and check the [current TheSportsDB terms](https://www.thesportsdb.com/docs_terms_of_use.php) before redistribution.
