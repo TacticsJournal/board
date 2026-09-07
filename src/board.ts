@@ -1899,13 +1899,11 @@ export class Board {
       return
     }
 
-    // multi-select: outlines only
+    // multi-select: one outline around the whole group
     if (ids.length > 1) {
       this.transformer.nodes([])
-      for (const id of ids) {
-        const sel = this.store.obj(id)
-        if (sel) this.addSelectionOutline(sel)
-      }
+      const sels = ids.map(id => this.store.obj(id)).filter(Boolean) as SceneObj[]
+      if (sels.length) this.addSelectionOutline(sels)
       return
     }
 
@@ -1932,39 +1930,46 @@ export class Board {
     if (hasNodeEdit(sel)) this.addEditIcon(sel)
   }
 
-  /** Dashed halo so a selected object is visibly selected. */
-  private addSelectionOutline(sel: SceneObj) {
-    const r = this.objectRect(sel)
+  /** Union of the board-space boxes the given objects occupy. */
+  private outlineRect(sels: SceneObj[]) {
+    const rects = sels.map(sel => this.objectRect(sel))
+    const minX = Math.min(...rects.map(r => r.x))
+    const minY = Math.min(...rects.map(r => r.y))
+    const maxX = Math.max(...rects.map(r => r.x + r.width))
+    const maxY = Math.max(...rects.map(r => r.y + r.height))
     const pad = 5
+    return { x: minX - pad, y: minY - pad, width: maxX - minX + pad * 2, height: maxY - minY + pad * 2 }
+  }
+
+  /**
+   * Dashed halo so a selection is visibly selected. A group of objects gets a
+   * single box around all of them rather than one box each.
+   */
+  private addSelectionOutline(sel: SceneObj | SceneObj[]) {
+    const sels = Array.isArray(sel) ? sel : [sel]
+    const r = this.outlineRect(sels)
     const outline = new Konva.Rect({
       name: 'selbox',
-      x: r.x - pad, y: r.y - pad,
-      width: r.width + pad * 2, height: r.height + pad * 2,
+      x: r.x, y: r.y,
+      width: r.width, height: r.height,
       stroke: '#4a90d9',
       strokeWidth: 1.5 / this.screenScale(),
       dash: [6 / this.screenScale(), 4 / this.screenScale()],
       cornerRadius: 6,
       listening: false,
     })
-    outline.setAttr('selectionId', sel.id)
+    outline.setAttr('selectionIds', sels.map(s => s.id))
     this.uiLayer.add(outline)
   }
 
-  /** Keep every selected object's halo attached while gesture data changes. */
+  /** Keep the selection halo attached while gesture data changes. */
   private syncSelectionUiDuringMove() {
-    const pad = 5
     this.uiLayer.find('.selbox').forEach(node => {
-      const id = node.getAttr('selectionId')
-      if (typeof id !== 'string') return
-      const obj = this.store.obj(id)
-      if (!obj) return
-      const rect = this.objectRect(obj)
-      node.setAttrs({
-        x: rect.x - pad,
-        y: rect.y - pad,
-        width: rect.width + pad * 2,
-        height: rect.height + pad * 2,
-      })
+      const ids = node.getAttr('selectionIds')
+      if (!Array.isArray(ids)) return
+      const objs = ids.map((id: string) => this.store.obj(id)).filter(Boolean) as SceneObj[]
+      if (!objs.length) return
+      node.setAttrs(this.outlineRect(objs))
     })
     if (this.transformer.nodes().length) this.transformer.forceUpdate()
   }
