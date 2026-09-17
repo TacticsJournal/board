@@ -3823,10 +3823,11 @@ quickSetEl.addEventListener('change', (e) => {
 function esc(s: string) {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 }
+/** One row of swatches: a palette is one thing, so it wraps and moves as one. */
 function sw(colors: string[], active: string, key: string) {
-  return colors.map(c =>
+  return `<span class="swRow">${colors.map(c =>
     `<button class="sw ${c === active ? 'active' : ''}" data-opt="${key}" data-v="${c}" style="background:${c}"></button>`
-  ).join('')
+  ).join('')}</span>`
 }
 /** The curve through the selected node, drawn rather than named. */
 function nodeCurveSeg(active: NodeCurve | null) {
