@@ -52,8 +52,8 @@ test('every non-admin pitch layout is Free', () => {
   assert.equal(publicPitches.every(p => !p.pro), true)
 })
 
-test('Vertical, Training, Two pitches, and Live are Free', () => {
-  for (const label of ['Vertical', 'Training', 'Two pitches', 'Live']) {
+test('Vertical, Full Pitch, Training, Two pitches, and Live are Free', () => {
+  for (const label of ['Vertical', 'Full Pitch', 'Training', 'Two pitches', 'Live']) {
     const pitch = PITCHES.find(p => p.label === label)
     assert.ok(pitch, `${label} pitch should exist`)
     assert.equal(pitch!.pro, false, `${label} should be Free`)
@@ -110,10 +110,12 @@ test('Free and Pro keep every local saved board editable', () => {
   assert.equal(editableBoardNames(boards, true).size, 10)
 })
 
-// Branding rule: our mark rides on our pitch artwork. A user-supplied
+// Branding rule: our mark rides on our own graphics. A user-supplied
 // background — an uploaded image or an imported broadcast screenshot —
-// replaces our graphics, so it carries no Tactics Journal logo or domain.
-test('exports on a user background carry no Tactics Journal branding', async () => {
+// replaces our pitch art, so nothing is written onto the frame itself. The
+// live scoreboard is the exception: it is our own plate laid over the frame,
+// and it carries the logo and the domain wherever it is drawn.
+test('a user background carries no branding, but its scoreboard does', async () => {
   const { readFile } = await import('node:fs/promises')
   const board = await readFile(new URL('../src/board.ts', import.meta.url), 'utf8')
   const main = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8')
@@ -122,19 +124,22 @@ test('exports on a user background carry no Tactics Journal branding', async () 
   // A saved background and an imported screenshot are the same thing here.
   assert.match(board, /return !!\(style\.custom \|\| style\.live\)/)
 
-  // Both places that draw the mark must be gated on it.
-  assert.match(board, /if \(this\.brandsExport\(\)\) \{/)
+  // The pitch-art scoreboard still asks before drawing the mark.
   assert.match(board, /if \(sb\.logo && this\.brandsExport\(\)\) \{/)
 
-  // No unguarded draw of the domain text survives.
-  for (const match of board.matchAll(/text: 'tacticsjournal\.com'/g)) {
-    const before = board.slice(0, match.index)
-    assert.match(before.slice(-600), /brandsExport\(\)/, 'domain text must sit inside a brandsExport() guard')
-  }
+  // The live scoreboard does not: the domain is drawn unconditionally, and the
+  // logo waits only on its own image, so the brand column is never blank.
+  const live = board.slice(board.indexOf('if (m.showScoreboard && live)'), board.indexOf('} else if (m.showScoreboard)'))
+  assert.match(live, /text: 'tacticsjournal\.com'/)
+  assert.doesNotMatch(live, /brandsExport\(\)/)
+  assert.match(live, /if \(this\.logoImg\.complete && this\.logoImg\.naturalWidth\) \{\n\s+const logoW/)
+  // a late-loading logo redraws the overlay rather than leaving a gap
+  assert.match(board, /this\.logoImg\.onload = \(\) => this\.drawOverlay\(\)/)
 
-  // The terms must state the rule rather than demand the mark unconditionally.
+  // The terms distinguish branding on the image from branding in the optional scoreboard.
   assert.match(main, /Where an export uses Tactics Journal pitch artwork/)
-  assert.match(main, /carries no Tactics Journal branding and no such condition/)
+  assert.match(main, /adds no branding to the image itself/)
+  assert.match(main, /If you add the Tactics Journal scoreboard, that scoreboard includes its logo and domain/)
 })
 
 // The one-time license and the Pro subscription are separate products. The
@@ -310,7 +315,11 @@ test('the board header keeps the canonical Tactics Journal links in order', () =
   const boardNav = names(main.match(/<nav class="site-nav"[\s\S]*?<\/nav>/)?.[0] ?? '')
   assert.deepEqual(boardNav, ['Opinion', 'Research', 'Community', 'About', 'Archive', 'Follow', 'Contact', 'Key'])
 
-  const boardPanel = names(main.match(/site-menu-primary[\s\S]*?site-menu-theme/)?.[0] ?? '')
+  // The board carries one link the site has no use for: What's new, which
+  // opens the board's own changelog panel. Every other link matches the site.
+  const boardMenu = (main.match(/site-menu-primary[\s\S]*?site-menu-theme/)?.[0] ?? '')
+    .replace(/<a[^>]*site-menu-changelog-link[\s\S]*?<\/a>/g, '')
+  const boardPanel = names(boardMenu)
   assert.deepEqual(boardPanel, ['Opinion', 'Research', 'Community', 'About', 'AMA', 'Tactics Board', 'Search', 'Archive', 'Follow', 'Contact', 'Key'])
 })
 

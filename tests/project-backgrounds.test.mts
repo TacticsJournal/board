@@ -92,7 +92,9 @@ test('board cards, the project strip and the player all draw uploaded background
   assert.match(view, /scenePitchImage\(board\.scene, this\.background\(board\.scene, projectId\)\)/)
   // a board card and a strip thumbnail both say which project they belong to
   assert.match(view, /this\.preview\(board, project\.id\)/)
-  assert.match(view, /this\.preview\(b, project\.id\)/)
+  // Project strips fill through the incremental queue, which keeps the real
+  // board and project id together when a slot is eventually painted.
+  assert.match(view, /slot\.innerHTML = this\.preview\(item\.board, item\.projectId\)/)
   assert.match(view, /const pitch = scenePitchImage\(frame\.scene, this\.background\(frame\.scene, project\.id\)\)/)
   // the ground is still only rewritten when the markup changes
   assert.match(view, /if \(pitch !== groundFor\) \{ groundFor = pitch; ground\.innerHTML = pitch \}/)

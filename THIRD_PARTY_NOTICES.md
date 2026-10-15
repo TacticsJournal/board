@@ -6,6 +6,10 @@ This file identifies third-party material that is present in, generated for, or 
 
 The interface icons come from [Tabler Icons](https://tabler.io/icons), copyright 2020-2026 Paweł Kuna. They are used under the MIT license. The license text shipped with the app is [`public/LICENSE-icons`](public/LICENSE-icons).
 
+## Bundled fonts
+
+`public/fonts/` holds Latin subsets of Anton, Archivo, Barlow Condensed, Bebas Neue, Fira Sans Condensed, IBM Plex Sans, Inter Tight, JetBrains Mono, Oswald, Playfair Display, Roboto Condensed, Rubik, Source Serif 4, Space Grotesk, Teko and Work Sans, fetched from [Fontsource](https://fontsource.org). Each family is available under the [SIL Open Font License 1.1](https://openfontlicense.org). The other families in `src/font-catalogue.json` are not bundled. The board loads them from Fontsource packages on jsDelivr when someone picks one, and they keep their upstream licenses.
+
 ## Match fixture
 
 `scripts/fixtures/match-real.jpg` is "Football match at the i2i Stadium" by Bill Boaden, via Geograph Britain and Ireland and Wikimedia Commons. It is available under [CC BY-SA 2.0](https://creativecommons.org/licenses/by-sa/2.0/). Source page: [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Football_match_at_the_i2i_Stadium_-_geograph.org.uk_-_5307336.jpg). Keep the attribution and share-alike terms when redistributing it.

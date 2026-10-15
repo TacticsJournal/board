@@ -1,7 +1,7 @@
-import { BOARD_W, emptyScene, migrate, uid } from './types.ts'
+import { BOARD_H, BOARD_W, emptyScene, migrate, uid } from './types.ts'
 import type { ArrowObj, PlayerObj, Pt, Scene, SceneObj } from './types.ts'
 import { nodeSegments, segmentPoint } from './path-nodes.ts'
-import { pitchById } from './pitches.ts'
+import { PITCHES, pitchById } from './pitches.ts'
 
 /**
  * A project is an ordered set of boards with a link between each pair. Each
@@ -69,28 +69,233 @@ export const EASES: LinkEase[] = ['in-out', 'linear', 'out']
 export const UNTITLED = 'Untitled project'
 
 const KEY = 'tbm-board-projects-v1'
+/** Full Project documents used by saves and account sync. */
+const SAVED_PROJECTS_KEY = 'tbm-projects-v1'
 /** Where a single sequence lived before there were projects. */
 const LEGACY_KEY = 'tbm-sequence-v1'
 const activeProjectKey = (storageKey: string) => `${storageKey}:active-project`
 
+type StoredProjectRef = { id: string }
+type StoredLibrary = Omit<Library, 'version' | 'projects'> & {
+  version: 3
+  projects: (Project | StoredProjectRef)[]
+}
+
+/**
+ * How tall a scene's board is. A photograph carries its own height, because
+ * the height is what keeps the picture at the shape it was taken in; a drawn
+ * pitch is always the height of its art, whatever height an older scene may
+ * still be carrying. This is the same rule the canvas and the SVG use, so the
+ * three never disagree about the size of the board.
+ */
 export function boardHeight(scene: Scene): number {
   const style = pitchById(scene.pitch)
   const h = Number(scene.board?.h)
-  return Number.isFinite(h) && h > 0 ? h : style.boardH
+  return style.live && Number.isFinite(h) && h > 0 ? h : style.boardH
 }
 
 export function fullView(scene: Scene): BoardView {
   return { x: 0, y: 0, w: BOARD_W, h: boardHeight(scene) }
 }
 
+/**
+ * The heights our own drawn pitches are. A saved view that spans the whole
+ * width at exactly one of these heights was written as the whole of a board
+ * that is no longer the board this scene has.
+ */
+const DRAWN_FULL_HEIGHTS = new Set(PITCHES.map(style => style.boardH))
+
+function atOrigin(view: BoardView): boolean {
+  return Math.abs(view.x) < 0.5 && Math.abs(view.y) < 0.5 && Math.abs(view.w - BOARD_W) < 0.5
+}
+
+/**
+ * Whether a saved view is the whole of a board this board no longer is. Only
+ * two cases are certain enough to touch: a view too tall to fit the board at
+ * all, and a full-width view at the exact height of one of our drawn pitches,
+ * which is a view written before the background was swapped. Anything else —
+ * including a full-width view at some other height — is left as it was saved,
+ * because it may be a camera the user framed on purpose.
+ */
+function staleFullView(view: BoardView, scene: Scene): boolean {
+  if (!atOrigin(view)) return false
+  const full = fullView(scene)
+  if (Math.abs(view.h - full.h) < 0.5) return false
+  if (view.h > full.h) return true
+  return DRAWN_FULL_HEIGHTS.has(Math.round(view.h))
+}
+
 export function isFullView(board: Board): boolean {
   const full = fullView(board.scene)
-  return board.view.x === full.x && board.view.y === full.y
-    && board.view.w === full.w && board.view.h === full.h
+  const view = board.view
+  return !!view && view.x === full.x && view.y === full.y
+    && view.w === full.w && view.h === full.h
 }
+
+function clamp(value: number, low: number, high: number): number {
+  return Math.max(low, Math.min(high, value))
+}
+
+/**
+ * The view a board should actually be drawn with: the saved one, repaired
+ * only where it cannot be right. Nonsense, and a view left behind by a
+ * swapped background, fall back to the whole board; a deliberate zoom keeps
+ * its shape exactly and only slides far enough to sit inside the board it is
+ * looking at. Nothing here changes a view's shape, so a held board is always
+ * drawn at the shape it is.
+ */
+export function boardView(board: Board): BoardView {
+  return viewFor(board.view, board.scene)
+}
+
+function viewFor(v: BoardView | undefined, scene: Scene): BoardView {
+  const full = fullView(scene)
+  if (!v) return full
+  const sane = [v.x, v.y, v.w, v.h].every(n => Number.isFinite(n)) && v.w > 0 && v.h > 0
+  if (!sane || staleFullView(v, scene)) return full
+  const k = Math.min(1, BOARD_W / v.w, full.h / v.h)
+  const w = v.w * k
+  const h = v.h * k
+  return { x: clamp(v.x, 0, BOARD_W - w), y: clamp(v.y, 0, full.h - h), w, h }
+}
+
+/**
+ * The view a board should carry once `next` is its scene. The old scene is
+ * still on the board here, so this is knowledge rather than a guess: a board
+ * showing the whole of its old background shows the whole of the new one, and
+ * any other camera is kept and only fitted to the board it now looks at.
+ */
+export function viewAfterScene(board: Board, next: Scene): BoardView {
+  if (isFullView(board)) return fullView(next)
+  return viewFor(board.view, next)
+}
+
+/**
+ * The one shape a film is made in. Boards can be different shapes — a
+ * broadcast still is as tall as the photograph it was cut from — but a video
+ * or a GIF is a single size of picture, so a project picks the shape it is
+ * mostly seen in and every frame is cropped to it. Photograph boards decide
+ * it when there are any: they are what the play is watched on, and framing
+ * the film to a tall drawn pitch would leave a phone showing a stripe.
+ */
+export function exportAspect(project: Project): number {
+  const views = project.boards.map(board => ({ board, view: boardView(board) }))
+    .filter(item => item.view.w > 0 && item.view.h > 0)
+  const shots = views.filter(item => pitchById(item.board.scene.pitch).live)
+  const pool = shots.length ? shots : views
+  if (!pool.length) return BOARD_H / BOARD_W
+  // the commonest shape among them, and the earliest board breaks a tie
+  const counts = new Map<string, { aspect: number; n: number }>()
+  for (const item of pool) {
+    const aspect = item.view.h / item.view.w
+    const key = aspect.toFixed(4)
+    const seen = counts.get(key)
+    if (seen) seen.n += 1
+    else counts.set(key, { aspect, n: 1 })
+  }
+  let best = { aspect: pool[0].view.h / pool[0].view.w, n: 0 }
+  for (const entry of counts.values()) if (entry.n > best.n) best = entry
+  return best.aspect
+}
+
+/**
+ * `view` cropped around its centre until it is `aspect` tall. Cropping is the
+ * one way to put a frame of one shape into a film of another without either
+ * squashing the picture or banding it with empty space.
+ */
+export function coverView(view: BoardView, aspect: number): BoardView {
+  if (!(aspect > 0) || !(view.w > 0) || !(view.h > 0)) return view
+  const w = Math.min(view.w, view.h / aspect)
+  const h = Math.min(view.h, view.w * aspect)
+  return { x: view.x + (view.w - w) / 2, y: view.y + (view.h - h) / 2, w, h }
+}
+
 
 export function cloneScene(scene: Scene): Scene {
   return migrate(JSON.parse(JSON.stringify(scene)))
+}
+
+export type CarrySelection = 'all' | readonly string[]
+
+export type CarryResult = {
+  boards: number
+  objects: number
+  skipped: number
+  /** Exactly what this carry added, so it can be taken back again. */
+  added: CarryAddition[]
+}
+
+/** The copies one carry put on one board, by id. */
+export type CarryAddition = { boardId: string; objectIds: string[] }
+
+/** Copy objects from one board to existing boards without changing the source. */
+export function carryObjects(
+  project: Project,
+  source: Board | string,
+  targetBoardIds: readonly string[],
+  selection: CarrySelection = 'all',
+): CarryResult {
+  const sourceId = typeof source === 'string' ? source : source?.id
+  const sourceBoard = project?.boards?.find(board => board.id === sourceId)
+  if (!sourceBoard || !Array.isArray(sourceBoard.scene?.objects)) {
+    return { boards: 0, objects: 0, skipped: 0, added: [] }
+  }
+
+  const selected = selection === 'all' ? null : new Set(selection)
+  const sourceObjects = sourceBoard.scene.objects.filter(object => !selected || selected.has(object.id))
+  let changedBoards = 0
+  let copiedObjects = 0
+  let skippedObjects = 0
+  const seenTargets = new Set<string>()
+  const added: CarryAddition[] = []
+
+  for (const targetId of targetBoardIds ?? []) {
+    if (seenTargets.has(targetId)) continue
+    seenTargets.add(targetId)
+    const target = project.boards.find(board => board.id === targetId)
+    if (!target || target.id === sourceBoard.id || !Array.isArray(target.scene?.objects)) continue
+    const existing = new Set(target.scene.objects.map(object => object.id))
+    const copies: SceneObj[] = []
+    for (const object of sourceObjects) {
+      if (existing.has(object.id)) {
+        skippedObjects++
+        continue
+      }
+      const copy = JSON.parse(JSON.stringify(object)) as SceneObj
+      copies.push(copy)
+      existing.add(copy.id)
+    }
+    if (!copies.length) continue
+    target.scene.objects.push(...copies)
+    added.push({ boardId: target.id, objectIds: copies.map(copy => copy.id) })
+    changedBoards++
+    copiedObjects += copies.length
+  }
+
+  if (copiedObjects) touch(project)
+  return { boards: changedBoards, objects: copiedObjects, skipped: skippedObjects, added }
+}
+
+/**
+ * Take one carry back. Only the copies that carry added come off: a target
+ * object that was already there kept its id and was skipped, so it was never
+ * recorded here. Where an id somehow appears twice the last one goes, which is
+ * the copy that was pushed on the end.
+ */
+export function undoCarry(project: Project, added: readonly CarryAddition[]): number {
+  let removed = 0
+  for (const entry of added ?? []) {
+    const board = project?.boards?.find(item => item.id === entry.boardId)
+    if (!board || !Array.isArray(board.scene?.objects)) continue
+    for (const id of entry.objectIds) {
+      const at = board.scene.objects.map(object => object.id).lastIndexOf(id)
+      if (at < 0) continue
+      board.scene.objects.splice(at, 1)
+      removed++
+    }
+  }
+  if (removed) touch(project)
+  return removed
 }
 
 export function makeBoard(scene: Scene, title = ''): Board {
@@ -248,7 +453,12 @@ type LooseBoard = Partial<Board> & { notes?: Record<string, string> }
 function migrateBoard(raw: LooseBoard, links?: BoardLink[], index = 0): Board | null {
   if (!raw || typeof raw !== 'object' || !raw.scene) return null
   const scene = migrate(raw.scene)
-  const view = raw.view && Number.isFinite(raw.view.w) && raw.view.w > 0 ? raw.view : fullView(scene)
+  /* a saved view was written against whatever background the board had then;
+     read it back against the background the board has now */
+  const saved = raw.view
+  const view = viewFor(saved ? {
+    x: Number(saved.x) || 0, y: Number(saved.y) || 0, w: Number(saved.w), h: Number(saved.h),
+  } : undefined, scene)
   const stored = raw.link ?? links?.[index]
   // four note slots collapsed into one: keep what was written, in reading order
   const note = typeof raw.note === 'string'
@@ -258,7 +468,7 @@ function migrateBoard(raw: LooseBoard, links?: BoardLink[], index = 0): Board | 
     id: raw.id || uid(),
     title: typeof raw.title === 'string' ? raw.title : '',
     label: typeof raw.label === 'string' && raw.label ? raw.label : undefined,
-    view: { x: Number(view.x) || 0, y: Number(view.y) || 0, w: Number(view.w), h: Number(view.h) },
+    view,
     scene,
     note,
     link: {
@@ -398,29 +608,81 @@ export function rememberBoard(lib: Library, projectId: string, boardId: string |
   lib.lastBoardIds = { ...(lib.lastBoardIds ?? {}), [projectId]: boardId }
 }
 
-export function migrateLibrary(raw: unknown): Library | null {
-  const lib = raw as Partial<Library>
+function savedProjectMap(storageKey = SAVED_PROJECTS_KEY): Map<string, Project> {
+  const projects = new Map<string, Project>()
+  try {
+    const raw = JSON.parse(localStorage.getItem(storageKey) ?? '{}')
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return projects
+    for (const value of Object.values(raw as Record<string, unknown>)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+      const project = migrateProject((value as { scene?: unknown }).scene)
+      if (!project) continue
+      const earlier = projects.get(project.id)
+      if (!earlier || project.updated > earlier.updated) projects.set(project.id, project)
+    }
+  } catch { /* missing, blocked, or malformed saves leave inline Projects authoritative */ }
+  return projects
+}
+
+function hydrateLibrary(raw: unknown, saved: ReadonlyMap<string, Project>): Library | null {
+  const lib = raw as Partial<Library> & { projects?: unknown[] }
   if (!lib || typeof lib !== 'object' || !Array.isArray(lib.projects)) return null
-  const projects = lib.projects.map(migrateProject).filter((p): p is Project => !!p)
+  const projects: Project[] = []
+  const seen = new Set<string>()
+  for (const value of lib.projects) {
+    const inline = migrateProject(value)
+    const refId = !inline && value && typeof value === 'object' && !Array.isArray(value)
+      && typeof (value as StoredProjectRef).id === 'string' ? (value as StoredProjectRef).id : ''
+    const durable = saved.get(inline?.id ?? refId)
+    // Version 3 writes a full inline Project only while it differs from the
+    // durable row. Preserve that newer local intent even if the device clock
+    // moved backwards, then give reconciliation a monotonic revision to save.
+    if (inline && lib.version === 3 && durable
+      && JSON.stringify(inline) !== JSON.stringify(durable)
+      && inline.updated <= durable.updated) inline.updated = durable.updated + 1
+    const project = inline && (lib.version === 3 || !durable || inline.updated >= durable.updated) ? inline : durable
+    if (!project || seen.has(project.id)) continue
+    projects.push(project)
+    seen.add(project.id)
+  }
+  // The larger library write may have failed after the durable Project save.
+  // Add those rows here so a reload can still honor the tiny active pointer.
+  for (const project of saved.values()) {
+    if (seen.has(project.id)) continue
+    projects.push(project)
+    seen.add(project.id)
+  }
   if (!projects.length) return null
-  const currentId = projects.some(p => p.id === lib.currentId) ? lib.currentId! : projects[0].id
+  const currentId = projects.some(project => project.id === lib.currentId) ? lib.currentId! : projects[0].id
   const lastBoardIds = sanitizeLastBoardIds(lib.lastBoardIds, projects)
   return { version: 2, currentId, projects, ...(lastBoardIds ? { lastBoardIds } : {}) }
 }
 
-export function loadLibrary(storageKey = KEY, legacyKey = LEGACY_KEY): Library | null {
+export function migrateLibrary(raw: unknown): Library | null {
+  return hydrateLibrary(raw, new Map())
+}
+
+export function loadLibrary(
+  storageKey = KEY,
+  legacyKey = LEGACY_KEY,
+  savedProjectsKey = SAVED_PROJECTS_KEY,
+): Library | null {
+  const saved = savedProjectMap(savedProjectsKey)
   try {
     const raw = localStorage.getItem(storageKey)
-    const lib = raw ? migrateLibrary(JSON.parse(raw)) : null
+    const lib = raw ? hydrateLibrary(JSON.parse(raw), saved) : null
     if (lib) {
-      // Project documents can make the library value large enough for a write
-      // to fail. The small navigation value is written separately, so it is
-      // still authoritative when the stored library trails the last click.
       const activeId = localStorage.getItem(activeProjectKey(storageKey))
       if (activeId && lib.projects.some(project => project.id === activeId)) lib.currentId = activeId
       return lib
     }
-  } catch { /* unreadable: fall through to the old single sequence */ }
+  } catch { /* unreadable: fall through to durable rows and the old sequence */ }
+  if (saved.size) {
+    const projects = [...saved.values()]
+    const activeId = (() => { try { return localStorage.getItem(activeProjectKey(storageKey)) } catch { return null } })()
+    const currentId = activeId && saved.has(activeId) ? activeId : projects[0].id
+    return { version: 2, currentId, projects }
+  }
   try {
     // whatever was in the sequence becomes the first project
     const old = localStorage.getItem(legacyKey)
@@ -430,11 +692,24 @@ export function loadLibrary(storageKey = KEY, legacyKey = LEGACY_KEY): Library |
   return null
 }
 
-export function saveLibrary(lib: Library, storageKey = KEY) {
-  // Write navigation first. If the larger document write hits the browser's
-  // storage limit, refresh still returns to the project the person opened.
+export function saveLibrary(lib: Library, storageKey = KEY, savedProjectsKey = SAVED_PROJECTS_KEY): boolean {
+  // Matching durable rows need only a tiny reference here. Dirty and new
+  // Projects stay inline until autosave commits their full document.
+  const saved = savedProjectMap(savedProjectsKey)
+  const projects = lib.projects.map<Project | StoredProjectRef>(project => {
+    const durable = saved.get(project.id)
+    return durable && JSON.stringify(durable) === JSON.stringify(project) ? { id: project.id } : project
+  })
+  const stored: StoredLibrary = {
+    version: 3,
+    currentId: lib.currentId,
+    projects,
+    ...(lib.lastBoardIds ? { lastBoardIds: lib.lastBoardIds } : {}),
+  }
+  // Navigation is separate, so a failed document write cannot send reload to
+  // whichever Project happened to be current in an older library value.
   try { localStorage.setItem(activeProjectKey(storageKey), lib.currentId) } catch { /* storage full or blocked */ }
-  try { localStorage.setItem(storageKey, JSON.stringify(lib)) } catch { /* storage full or blocked */ }
+  try { localStorage.setItem(storageKey, JSON.stringify(stored)); return true } catch { return false }
 }
 
 export function currentProject(lib: Library): Project {
@@ -626,10 +901,20 @@ function railsBetween(a: Scene, b: Scene): Map<string, ArrowObj> {
 }
 
 /**
+ * The instant a move hands the board over: the last of `a` has just faded out
+ * and the first of `b` has not begun to fade in, so it is the one moment where
+ * the pitch or photograph under them can be cut without either board's own
+ * assets being seen over the other board's ground.
+ */
+export const HANDOFF = 0.45
+
+/**
  * The scene shown `t` of the way from `a` to `b`: an object present in both
  * travels, one that only exists in `a` fades out where it stands, and one that
  * only exists in `b` fades in where it will be. A player with an arrow to its
- * destination travels along the arrow rather than straight across.
+ * destination travels along the arrow rather than straight across. The ground
+ * and everything else the scene carries is `a`'s up to the handoff and `b`'s
+ * from it, so an arriving asset never appears over the outgoing photograph.
  */
 export function tweenScene(a: Scene, b: Scene, t: number): { scene: Scene; fading: Set<string>; arriving: Set<string>; riding: Set<string> } {
   const target = new Map(b.objects.map(o => [o.id, o]))
@@ -667,7 +952,7 @@ export function tweenScene(a: Scene, b: Scene, t: number): { scene: Scene; fadin
   }
   // a rail is read for as long as it is ridden, then leaves as its rider lands
   for (const arrow of rails.values()) if (fading.delete(arrow.id)) riding.add(arrow.id)
-  return { scene: { ...a, objects }, fading, arriving, riding }
+  return { scene: { ...(t < HANDOFF ? a : b), objects }, fading, arriving, riding }
 }
 
 /**
@@ -691,10 +976,11 @@ export const easings: Record<LinkEase, (t: number) => number> = {
   out: t => 1 - Math.pow(1 - t, 3),
 }
 
-/* An object leaving is gone before the halfway mark and one arriving is fully
-   there before the move ends, so the two never sit on top of each other. */
-function exitAlpha(p: number): number { return Math.max(0, 1 - p / 0.45) }
-function enterAlpha(p: number): number { return Math.max(0, Math.min(1, (p - 0.45) / 0.35)) }
+/* An object leaving is gone by the handoff and one arriving starts there and
+   is fully there before the move ends, so the two never sit on top of each
+   other and neither is ever seen over the other board's ground. */
+function exitAlpha(p: number): number { return Math.max(0, 1 - p / HANDOFF) }
+function enterAlpha(p: number): number { return Math.max(0, Math.min(1, (p - HANDOFF) / 0.35)) }
 /* A rail is still the thing being read while it is being ridden, so it holds
    its ink until the last stretch and goes as the player reaches the tip. */
 function rideAlpha(p: number): number { return Math.max(0, 1 - Math.max(0, p - 0.82) / 0.18) }
@@ -739,7 +1025,7 @@ export function frameAtPos(project: Project, pos: number): PlayFrame {
   return {
     index,
     current: p > 0.5 ? Math.min(index + 1, last) : index,
-    view: tweenView(from.view, to.view, p),
+    view: tweenView(boardView(from), boardView(to), p),
     scene,
     fading,
     exitAlpha: exitAlpha(p),
@@ -778,7 +1064,7 @@ export function frameAt(project: Project, ms: number): PlayFrame {
   return {
     index: seg.index,
     current: seg.move && p > 0.5 ? seg.index + 1 : seg.index,
-    view: tweenView(from.view, to.view, p),
+    view: tweenView(boardView(from), boardView(to), p),
     scene,
     fading,
     exitAlpha: exitAlpha(p),

@@ -17,6 +17,7 @@
 
 import { TJ_ORIGIN } from './origin'
 import { clearBoardSession } from './board-api'
+import { createAccountAvatar } from './account-avatar'
 import { googleSignInUrl } from './signin-return'
 
 const TJ = TJ_ORIGIN
@@ -25,13 +26,22 @@ function api(path: string, init?: RequestInit): Promise<Response> {
   return fetch(TJ + path, { credentials: 'include', ...init })
 }
 
-export function initTjHeader(): { closeMenu: () => void; closeInline: () => void; openAccount: () => void; signOut: () => Promise<void> } {
+type TjHeaderOptions = {
+  /** Called once the What's new panel has been closed, whichever way it closed. */
+  onChangelogClose?: () => void
+}
+
+export function initTjHeader(options: TjHeaderOptions = {}): { closeMenu: () => void; closeInline: () => void; openAccount: () => void; openChangelog: () => void; signOut: () => Promise<void> } {
   const header = document.querySelector<HTMLElement>('.site-header')
-  if (!header) return { closeMenu: () => {}, closeInline: () => {}, openAccount: () => {}, signOut: async () => {} }
+  if (!header) return { closeMenu: () => {}, closeInline: () => {}, openAccount: () => {}, openChangelog: () => {}, signOut: async () => {} }
   const actions = header.querySelector<HTMLElement>('.site-actions')!
   const toggles = header.querySelectorAll<HTMLElement>('[data-inline-toggle]')
   const searchPanel = header.querySelector<HTMLElement>('#site-search-panel')
+  // The signed-in reader's picture replaces the outline account icon; it is
+  // fed by the one account session snapshot this header already reads.
+  const accountAvatar = createAccountAvatar(header.querySelector<HTMLElement>('.site-action-account-toggle'), TJ)
   const accountPanel = header.querySelector<HTMLElement>('#site-account-panel')
+  const changelogPanel = header.querySelector<HTMLElement>('#site-changelog-panel')
   const q = <T extends HTMLElement>(sel: string) => accountPanel ? accountPanel.querySelector<T>(sel) : null
   const accountLoading = q('.site-account-loading')
   const accountLoggedOut = q('.site-account-logged-out')
@@ -171,7 +181,8 @@ export function initTjHeader(): { closeMenu: () => void; closeInline: () => void
     actions.removeAttribute('data-inline-open')
     header!.removeAttribute('data-inline-open')
     setExpanded(null)
-    ;[searchPanel, accountPanel].forEach((panel) => {
+    const changelogWasOpen = !!changelogPanel && !changelogPanel.hidden
+    ;[searchPanel, accountPanel, changelogPanel].forEach((panel) => {
       if (!panel || panel.hidden) return
       panel.classList.remove('active', 'is-open')
       panel.classList.add('closing')
@@ -179,6 +190,7 @@ export function initTjHeader(): { closeMenu: () => void; closeInline: () => void
     })
     document.body.classList.remove('site-account-open', 'site-panel-open')
     releaseBodyScrollIfClear()
+    if (changelogWasOpen) options.onChangelogClose?.()
   }
 
   function showAccountError(message: string) {
@@ -325,6 +337,7 @@ export function initTjHeader(): { closeMenu: () => void; closeInline: () => void
   function setAuthenticatedEverywhere(data: any) {
     accountSessionData = data || { authenticated: true }
     accountSessionLoaded = true
+    accountAvatar.update(accountSessionData)
     if (accountPanel && !accountPanel.hidden) renderAccountSession(accountSessionData, true)
     if (!data || data.source !== 'auth-event') {
       announcedSignature = sessionSignature(accountSessionData)
@@ -338,6 +351,9 @@ export function initTjHeader(): { closeMenu: () => void; closeInline: () => void
   // and re-evaluate entitlements, which is not free.
   let announcedSignature: string | null = null
 
+  // avatar_url is deliberately absent: the account picture is applied directly
+  // from every snapshot below, so a changed picture is never missed, and a new
+  // picture is no reason to make every listener restart sync.
   function sessionSignature(data: any): string {
     if (!data || data.authenticated !== true) return 'anonymous'
     return [data.email || '', data.site_access || '', data.board_license === true ? '1' : '0', data.account_binding || '', data.plan_name || ''].join('|')
@@ -374,6 +390,10 @@ export function initTjHeader(): { closeMenu: () => void; closeInline: () => void
       .then((data) => {
         accountSessionData = data || { authenticated: false }
         accountSessionLoaded = true
+        // The one snapshot the board already reads also decides whether the
+        // account control shows the reader's picture. No second request:
+        // initial load, popup sign-in and every refresh come through here.
+        accountAvatar.update(accountSessionData)
         // Everything outside this header learns about entitlements from this
         // event. Without it the panel knew the visitor held Pro while the rest
         // of the app still believed they were on Free, because only an explicit
@@ -384,6 +404,7 @@ export function initTjHeader(): { closeMenu: () => void; closeInline: () => void
       .catch(() => {
         accountSessionData = { authenticated: false }
         accountSessionLoaded = true
+        accountAvatar.update(accountSessionData)
         announceSession()
         return accountSessionData
       })
@@ -426,6 +447,7 @@ export function initTjHeader(): { closeMenu: () => void; closeInline: () => void
     let panel: HTMLElement | null = null
     if (name === 'search') panel = searchPanel
     if (name === 'account') panel = accountPanel
+    if (name === 'changelog') panel = changelogPanel
 
     if (panel) {
       panel.hidden = false
@@ -446,7 +468,21 @@ export function initTjHeader(): { closeMenu: () => void; closeInline: () => void
       lockBodyScroll()
       loadAccountSession()
       updateGoogleStartLink()
+      return
     }
+    if (name === 'changelog') {
+      document.body.classList.add('site-panel-open')
+      lockBodyScroll()
+      animatePanelContent(panel)
+    }
+  }
+
+  function openChangelog() {
+    if (actions.getAttribute('data-inline-open') === 'changelog') return
+    closeMenu()
+    // Same reason as openAccount: the click that asked for the panel is still
+    // on its way to the handler that closes panels on an outside click.
+    window.setTimeout(() => { openInline('changelog') }, 0)
   }
 
   function openAccount() {
@@ -482,9 +518,10 @@ export function initTjHeader(): { closeMenu: () => void; closeInline: () => void
   toggles.forEach((toggle) => {
     toggle.addEventListener('click', (e) => {
       const name = toggle.getAttribute('data-inline-toggle')!
-      // Account is inline everywhere; search still hands desktop over to the
-      // site's own search page, which is a page the board does not carry.
-      if (!mobileQuery.matches && name !== 'account') return
+      // Account and What's new are inline everywhere; search still hands
+      // desktop over to the site's own search page, which the board does not
+      // carry.
+      if (!mobileQuery.matches && name === 'search') return
 
       e.preventDefault()
       if (actions.getAttribute('data-inline-open') === name) {
@@ -691,9 +728,10 @@ export function initTjHeader(): { closeMenu: () => void; closeInline: () => void
     await clearBoardSession()
     accountSessionData = { authenticated: false }
     accountSessionLoaded = true
+    accountAvatar.update(accountSessionData)
     showAccountLoggedOut()
     announceSession()
   }
 
-  return { closeMenu, closeInline, openAccount, signOut }
+  return { closeMenu, closeInline, openAccount, openChangelog, signOut }
 }

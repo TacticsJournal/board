@@ -1,24 +1,35 @@
 import { icon } from './icons'
 import { renderMarkdown } from './markdown'
+import { ensureFont } from './fonts.ts'
 import { sceneShapesSvg, scenePitchImage, boardArtDefs, boardArt } from './saves'
 import { pitchById } from './pitches'
 import { AddBoardChoice, AddBoardChoices } from './add-board-options'
 import { isBackgroundId } from './backgrounds'
 import { createBackgroundCache } from './background-cache'
+import { createIncrementalTaskQueue } from './project-preview-scheduler'
 import { BOARD_W, Scene } from './types'
 import {
   Board, EASES, HOLD_MS, LINK_DURATIONS, Library, Project, UNTITLED,
-  addBoard, boardLabel, boardName, canAnimate, canCreateProject, currentProject, firstLine, noteBody,
+  addBoard, boardLabel, boardName, boardView, canAnimate, canCreateProject, currentProject, firstLine, noteBody,
+  type CarrySelection,
   easings, frameAtPos, moveBoard, newProject, orderedProjects, projectDuration, removeBoard, touch,
 } from './projects'
 
 export type BoardsHost = {
   /** Put a board of the current project into the editor. */
-  openBoard: (index: number) => void
+  openBoard: (index: number, options?: { stash?: boolean }) => void
+  /** Bank the editor before a structural change shifts board indices. */
+  stashBoard: () => void
   /** Make another project current, opening its first board. */
   openProject: (id: string) => void
   /** Scene a "New board" should start from: empty, on the pitch in the editor. */
   blankScene: () => Scene
+  /**
+   * Scene a "New project" should start from: like `blankScene`, and with the
+   * loaded home and away teams cleared, so a blank project never opens holding
+   * the teams of the project left behind.
+   */
+  blankProjectScene: () => Scene
   /** Scene for a board started on a chosen pitch or saved background. */
   blankSceneOn: (pitchId: string) => Scene
   /** Everything a new board may start on. `changed` fires when a thumbnail lands. */
@@ -46,12 +57,16 @@ export type BoardsHost = {
    * is given.
    */
   resolveBackground: (id: string, projectId: string) => Promise<string | null>
+  /** Apply a carry request after the target picker closes. */
+  carryObjects: (sourceBoardId: string, targetBoardIds: readonly string[], scope: CarrySelection) => void
   /**
    * What this account may do with one project beyond renaming and deleting
    * it, and how many proposed versions are waiting on it. The library shows
    * what it is given and decides nothing itself.
    */
   projectActions: (projectId: string) => ProjectActions
+  /** The same answer for all cards in one Projects render. */
+  projectActionsFor: (projectIds: readonly string[]) => ReadonlyMap<string, ProjectActions>
   /** Leave the library for one project's Version history. */
   openProjectHistory: (projectId: string) => void
   /** Leave the library for one project's Proposals. */
@@ -66,6 +81,14 @@ export type AddBoardUpload = { pitchId: string } | { error: string } | null
 
 type Screen = 'boards' | 'projects'
 
+type CarryMode = {
+  sourceId: string
+  /** Decided in the editor before this screen opened; never asked again. */
+  scope: CarrySelection
+  count: number
+  targets: Set<string>
+}
+
 const ENTER_MS = 240
 
 export class BoardsView {
@@ -77,6 +100,7 @@ export class BoardsView {
   private upEl!: HTMLElement
   private footEl!: HTMLElement
   private screen: Screen = 'boards'
+  private carryMode: CarryMode | null = null
   private addSheet: HTMLElement | null = null
   private addIndex = 0
   private addTrigger: HTMLElement | null = null
@@ -90,6 +114,10 @@ export class BoardsView {
   )
   /** Anyone drawing outside a render pass, waiting for bytes to land. */
   private bgWaiting = new Set<() => void>()
+  private previewWork = createIncrementalTaskQueue(
+    run => window.requestAnimationFrame(run),
+    handle => window.cancelAnimationFrame(handle),
+  )
 
   constructor(root: HTMLElement, host: BoardsHost) {
     this.root = root
@@ -124,8 +152,10 @@ export class BoardsView {
 
   /** Show Boards, or Projects, or neither. */
   open(screen: Screen | null) {
+    this.previewWork.invalidate()
     this.closeAddSheet(false)
     this.closeProjectSheet(false)
+    if (screen !== 'boards') this.carryMode = null
     if (!screen) {
       this.root.hidden = true
       document.body.classList.remove('lib-open')
@@ -151,13 +181,51 @@ export class BoardsView {
     if (this.isOpen && this.screen === 'projects') this.renderProjects()
   }
 
+  /**
+   * Open the real board list as a bounded target picker. What is being carried
+   * was settled in the editor, so this screen only asks where it lands, and
+   * only boards after the source can answer.
+   */
+  openCarry(sourceId: string, scope: CarrySelection, count: number) {
+    const project = currentProject(this.lib)
+    const sourceIndex = project.boards.findIndex(board => board.id === sourceId)
+    const next = sourceIndex >= 0 ? project.boards[sourceIndex + 1] : undefined
+    this.carryMode = {
+      sourceId,
+      scope: scope === 'all' ? 'all' : [...scope],
+      count,
+      targets: new Set(next ? [next.id] : []),
+    }
+    this.open('boards')
+    this.root.querySelector<HTMLElement>('[data-act="carry-select-all"]')?.focus()
+  }
+
+  /** Boards that can take a carry: the ones after the source. */
+  private carryTargetIds(project: Project): string[] {
+    const carry = this.carryMode
+    if (!carry) return []
+    const at = project.boards.findIndex(board => board.id === carry.sourceId)
+    return at < 0 ? [] : project.boards.slice(at + 1).map(board => board.id)
+  }
+
+  private renderCarryAndFocus(selector: string) {
+    this.render()
+    this.root.querySelector<HTMLElement>(selector)?.focus()
+  }
+
   /** Redraw after the editor changed the board it is holding. */
   refresh() { if (!this.root.hidden) this.render() }
 
   /* ---------- render ---------- */
 
   private preview(board: Board, projectId: string): string {
-    const v = board.view
+    /* the stored view may have been written against an older background: read
+       it back at the size the board is now, or the thumbnail crops the photo */
+    const v = boardView(board)
+    /* A card can be the first sight of a family this device has never fetched:
+       an inline SVG draws in whatever the page has loaded, so ask for the file
+       and let the arrival redraw the grid, as an uploaded background does. */
+    this.wantFont(board.scene?.appearance?.font)
     return `<svg viewBox="${v.x} ${v.y} ${v.w} ${v.h}" preserveAspectRatio="xMidYMid meet" class="libShot">`
       + scenePitchImage(board.scene, this.background(board.scene, projectId))
       + sceneShapesSvg(board.scene) + '</svg>'
@@ -174,6 +242,13 @@ export class BoardsView {
   private background(scene: Scene | undefined, projectId: string): string {
     const id = scene?.pitch
     return isBackgroundId(id) ? this.bg.get(projectId, id!) : ''
+  }
+
+  private fontsAsked = new Set<string>()
+  private wantFont(id: unknown) {
+    if (typeof id !== 'string' || !id || this.fontsAsked.has(id)) return
+    this.fontsAsked.add(id)
+    ensureFont(id).then(ok => { if (ok && !this.root.hidden) this.render() })
   }
 
   private backgroundArrived() {
@@ -193,8 +268,10 @@ export class BoardsView {
   }
 
   private renderBoards() {
+    this.previewWork.invalidate()
     const project = currentProject(this.lib)
     const live = this.host.currentIndex()
+    const carry = this.carryMode
     this.upEl.hidden = false
     const title = document.createElement('button')
     title.type = 'button'
@@ -203,52 +280,83 @@ export class BoardsView {
     title.textContent = project.name
     title.setAttribute('aria-label', `Rename project, currently ${project.name}`)
     this.titleEl.replaceChildren(title)
-    this.listEl.innerHTML = project.boards.map((board, i) => {
+    const eligible = carry ? this.carryTargetIds(project) : []
+    const sourceIndex = carry ? project.boards.findIndex(board => board.id === carry.sourceId) : -1
+    this.listEl.innerHTML = (carry ? `<div class="carryBar">
+        <span class="carryBarText">Carry ${carry.count} object${carry.count === 1 ? '' : 's'} onto later boards</span>
+        <button class="carryLink" data-act="carry-select-all"${eligible.length ? '' : ' disabled'}>Select all</button>
+        <button class="carryLink" data-act="carry-clear"${carry.targets.size ? '' : ' disabled'}>Clear</button>
+        <span class="carryCount" role="status" aria-live="polite">${carry.targets.size} of ${eligible.length} board${eligible.length === 1 ? '' : 's'}</span>
+      </div>` : '') + project.boards.map((board, i) => {
       const line = firstLine(noteBody(board.note))
       const last = i === project.boards.length - 1
-      return `<div class="libCard boardCard${i === live ? ' is-live' : ''}" data-board="${board.id}">
-          <span class="boardNum">${boardLabel(project, i)}</span>
+      // only a board after the source can take a carry; the source and the
+      // ones before it stay in the list for their place in the sequence
+      const takeable = !!carry && i > sourceIndex
+      const picked = !!carry && takeable && carry.targets.has(board.id)
+      const pick = carry
+        ? takeable
+          ? `<button class="carryPick" data-act="carry-pick" data-id="${board.id}" role="checkbox" aria-checked="${picked}" aria-label="Carry to ${escapeText(boardName(project, i))}">${icon('check')}</button>`
+          : '<span class="carryPick carryPick--source" aria-hidden="true"></span>'
+        : ''
+      return `<div class="libCard boardCard${carry ? ' carryRow' : ''}${carry && !takeable ? ' carryRow--locked' : ''}${i === live ? ' is-live' : ''}${picked ? ' is-picked' : ''}" data-board="${board.id}"${carry && !takeable ? ' aria-disabled="true"' : ''}>
+          ${pick}<span class="boardNum">${boardLabel(project, i)}</span>
           <span class="boardShot">${this.preview(board, project.id)}</span>
           <span class="boardMeta">
             <span class="boardTitle">${escapeText(boardName(project, i))}</span>
             ${line ? `<span class="boardNote">${escapeText(line)}</span>` : '<span class="boardNote boardNote--empty">No note</span>'}
           </span>
           <span class="boardActs">
-            <button data-act="up" data-id="${board.id}" title="Move earlier"${i === 0 ? ' disabled' : ''}>${icon('chevron-up')}</button>
-            <button data-act="down" data-id="${board.id}" title="Move later"${last ? ' disabled' : ''}>${icon('chevron-down')}</button>
-            <button data-act="del" data-id="${board.id}" title="Delete this board"${project.boards.length < 2 ? ' disabled' : ''}>${icon('trash')}</button>
+            <button data-act="up" data-id="${board.id}" title="Move earlier"${carry || i === 0 ? ' disabled' : ''}>${icon('chevron-up')}</button>
+            <button data-act="down" data-id="${board.id}" title="Move later"${carry || last ? ' disabled' : ''}>${icon('chevron-down')}</button>
+            <button data-act="del" data-id="${board.id}" title="Delete this board"${carry || project.boards.length < 2 ? ' disabled' : ''}>${icon('trash')}</button>
           </span>
         </div>
         ${last ? '' : `<div class="libLink">
-          <button data-act="dur" data-i="${i}" title="How long this move takes">${(board.link.dur / 1000).toFixed(1)}s</button>
-          <button data-act="ease" data-i="${i}" title="How this move accelerates">${board.link.ease}</button>
-          <button data-act="insert" data-i="${i}" title="Add a board here">${icon('plus')}</button>
+          <button data-act="dur" data-i="${i}" title="How long this move takes"${carry ? ' disabled' : ''}>${(board.link.dur / 1000).toFixed(1)}s</button>
+          <button data-act="ease" data-i="${i}" title="How this move accelerates"${carry ? ' disabled' : ''}>${board.link.ease}</button>
+          <button data-act="insert" data-i="${i}" title="Add a board here"${carry ? ' disabled' : ''}>${icon('plus')}</button>
         </div>`}`
     }).join('')
     const many = canAnimate(project)
-    this.footEl.innerHTML = `
-      <button data-act="add">${icon('plus')}Add board</button>
-      <button data-act="play"${many ? '' : ' disabled title="A project needs two boards to animate"'}>${icon('player-play')}View animation</button>`
+    this.footEl.innerHTML = carry
+      ? `<button data-act="carry-cancel">Cancel</button><button data-act="carry-apply" class="carryGo"${carry.targets.size ? '' : ' disabled'}>${icon('copy')}Carry to ${carry.targets.size} board${carry.targets.size === 1 ? '' : 's'}</button>`
+      : `<button data-act="add">${icon('plus')}Add board</button><button data-act="play"${many ? '' : ' disabled title="A project needs two boards to animate"'}>${icon('player-play')}View animation</button>`
   }
 
   private renderProjects() {
+    this.previewWork.invalidate()
     this.upEl.hidden = true
     const title = document.createElement('b')
     title.className = 'libTitle'
     title.textContent = 'Projects'
     this.titleEl.replaceChildren(title)
-    this.listEl.innerHTML = orderedProjects(this.lib).map(project => `
+    const projects = orderedProjects(this.lib)
+    const projectActions = this.host.projectActionsFor(projects.map(project => project.id))
+    const previewItems: Array<{ board: Board; projectId: string }> = []
+    this.listEl.innerHTML = projects.map(project => {
+      const boards = project.boards.slice(0, 6)
+      previewItems.push(...boards.map(board => ({ board, projectId: project.id })))
+      return `
       <div class="libCard projCard${project.id === this.lib.currentId ? ' is-live' : ''}" data-project="${project.id}">
         <span class="projTop">
           <span class="projName">${escapeText(project.name)}</span>
-          ${this.waitingChip(project.id)}
+          ${this.waitingChip(projectActions.get(project.id)?.waiting ?? 0)}
           <span class="projMeta">${project.boards.length} · ${ago(project.updated)}</span>
           <button class="projMore" data-act="proj-menu" data-id="${project.id}" title="More" aria-haspopup="dialog" aria-label="More for ${escapeText(project.name)}">${icon('dots')}</button>
         </span>
-        <span class="projStrip">${project.boards.slice(0, 6).map(b => `<span>${this.preview(b, project.id)}</span>`).join('')}</span>
-      </div>`).join('')
+        <span class="projStrip">${boards.map(() => '<span></span>').join('')}</span>
+      </div>`
+    }).join('')
     this.footEl.innerHTML = `<button data-act="new-project">${icon('plus')}New project</button>`
       + `<span class="libCount">${this.lib.projects.length} local</span>`
+
+    const slots = Array.from(this.listEl.querySelectorAll<HTMLElement>('.projStrip > span'))
+    this.previewWork.enqueue(previewItems.map((item, i) => () => {
+      const slot = slots[i]
+      if (!slot?.isConnected || !this.isOpen || this.screen !== 'projects') return
+      slot.innerHTML = this.preview(item.board, item.projectId)
+    }))
   }
 
   private playEnter(el: HTMLElement, i: number) {
@@ -261,6 +369,10 @@ export class BoardsView {
 
   private commit() {
     const project = currentProject(this.lib)
+    if (this.carryMode) {
+      const eligible = new Set(this.carryTargetIds(project))
+      this.carryMode.targets = new Set([...this.carryMode.targets].filter(id => eligible.has(id)))
+    }
     touch(project)
     this.host.changed(project)
     this.render()
@@ -326,8 +438,37 @@ export class BoardsView {
       const i = Number(btn.dataset.i)
       const project = currentProject(this.lib)
       switch (act) {
-        case 'to-projects': this.open('projects'); return
+        case 'carry-select-all': {
+          if (!this.carryMode) return
+          this.carryMode.targets = new Set(this.carryTargetIds(project))
+          this.renderCarryAndFocus('[data-act="carry-select-all"]')
+          return
+        }
+        case 'carry-clear': {
+          if (!this.carryMode) return
+          this.carryMode.targets.clear()
+          // Clear disables itself once it succeeds, so leave keyboard focus on
+          // the still-available inverse action instead of dropping it.
+          this.renderCarryAndFocus('[data-act="carry-select-all"]')
+          return
+        }
+        case 'carry-pick': {
+          if (!this.carryMode || !this.carryTargetIds(project).includes(id)) return
+          if (this.carryMode.targets.has(id)) this.carryMode.targets.delete(id)
+          else this.carryMode.targets.add(id)
+          this.renderCarryAndFocus(`[data-act="carry-pick"][data-id="${id}"]`)
+          return
+        }
+        case 'carry-cancel':
         case 'close': this.open(null); return
+        case 'carry-apply': {
+          if (!this.carryMode || !this.carryMode.targets.size) return
+          const mode = this.carryMode
+          this.host.carryObjects(mode.sourceId, [...mode.targets], mode.scope)
+          this.open(null)
+          return
+        }
+        case 'to-projects': this.open('projects'); return
         case 'rename-current': this.renameCurrentProject(); return
         case 'add': this.addAfter(project.boards.length - 1, btn); return
         case 'insert': this.addAfter(i, btn); return
@@ -338,18 +479,37 @@ export class BoardsView {
           const to = act === 'up' ? index - 1 : index + 1
           if (index < 0 || to < 0 || to >= project.boards.length) return
           const live = this.host.currentIndex()
+          const liveId = project.boards[live]?.id
+          // Save by identity before indices move. Otherwise openBoard would
+          // bank the editor into whichever board shifted under the old index.
+          this.host.stashBoard()
           moveBoard(project, index, to)
           this.commit()
-          // the editor follows the board it was holding, not the position
-          if (live === index) this.host.openBoard(to)
-          else if (live === to) this.host.openBoard(index)
+          if (live === index || live === to) {
+            const next = project.boards.findIndex(board => board.id === liveId)
+            if (next >= 0) {
+              this.host.openBoard(next, { stash: false })
+              this.render()
+            }
+          }
           return
         }
         case 'del': {
+          const deletedIndex = project.boards.findIndex(board => board.id === id)
+          if (deletedIndex < 0 || project.boards.length < 2) return
+          const liveId = project.boards[this.host.currentIndex()]?.id
+          // The editor may be holding the board being removed. Bank it before
+          // removal, then open the surviving board without stashing again.
+          this.host.stashBoard()
           if (removeBoard(project, id)) {
-            const live = Math.min(this.host.currentIndex(), project.boards.length - 1)
+            const next = liveId === id
+              ? Math.min(deletedIndex, project.boards.length - 1)
+              : project.boards.findIndex(board => board.id === liveId)
             this.commit()
-            this.host.openBoard(live)
+            if (next >= 0) {
+              this.host.openBoard(next, { stash: false })
+              this.render()
+            }
           }
           return
         }
@@ -366,7 +526,7 @@ export class BoardsView {
           return
         }
         case 'new-project': {
-          const project = newProject(this.host.blankScene())
+          const project = newProject(this.host.blankProjectScene())
           this.lib.projects.push(project)
           // Opening first lets the normal current-project save path enforce
           // the saved-board limit before this Project receives a durable row.
@@ -385,7 +545,16 @@ export class BoardsView {
     const boardCard = target.closest<HTMLElement>('[data-board]')
     if (boardCard) {
       const project = currentProject(this.lib)
-      const index = project.boards.findIndex(b => b.id === boardCard.dataset.board)
+      const boardId = boardCard.dataset.board!
+      if (this.carryMode) {
+        if (this.carryTargetIds(project).includes(boardId)) {
+          if (this.carryMode.targets.has(boardId)) this.carryMode.targets.delete(boardId)
+          else this.carryMode.targets.add(boardId)
+          this.render()
+        }
+        return
+      }
+      const index = project.boards.findIndex(b => b.id === boardId)
       if (index >= 0) { this.host.openBoard(index); this.open(null) }
       return
     }
@@ -397,8 +566,7 @@ export class BoardsView {
   }
 
   /** The amber word on a card that something is waiting, or nothing at all. */
-  private waitingChip(projectId: string): string {
-    const waiting = this.host.projectActions(projectId).waiting
+  private waitingChip(waiting: number): string {
     if (waiting < 1) return ''
     const label = waiting === 1 ? '1 waiting' : `${waiting} waiting`
     return `<span class="projWait" title="Proposed versions waiting for you">${label}</span>`
@@ -597,9 +765,12 @@ export class BoardsView {
     const project = currentProject(this.lib)
     const scene = pitchId ? this.host.blankSceneOn(pitchId) : this.host.blankScene()
     this.closeAddSheet(false)
+    // Adding before the open board shifts its index too, so save first and do
+    // not let the subsequent open write through the stale index.
+    this.host.stashBoard()
     addBoard(project, index, copy, scene)
     this.commit()
-    this.host.openBoard(index + 1)
+    this.host.openBoard(index + 1, { stash: false })
     this.open(null)
   }
 

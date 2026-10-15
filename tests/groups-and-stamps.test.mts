@@ -11,8 +11,8 @@ test('a group id rides on every kind of object and survives a reload', () => {
   assert.match(types, /export type Grouped = \{ group\?: string \}/)
   assert.match(types, /export type SceneObj = \([\s\S]{0,200}\) & Grouped/)
   // sanitize keeps it, so a saved board comes back grouped
-  assert.match(types, /const group = boundedString\(\(value as Record<string, any>\)\.group, 64\)\.trim\(\)/)
-  assert.match(types, /return group \? \{ \.\.\.clean, group \} : clean/)
+  assert.match(types, /const group = boundedString\(raw\.group, 64\)\.trim\(\)/)
+  assert.match(types, /return \{ \.\.\.clean, \.\.\.\(group \? \{ group \} : \{\}\), \.\.\.carry \}/)
 })
 
 test('touching one member of a group takes the whole group', () => {

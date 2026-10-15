@@ -89,3 +89,17 @@ test('the hosted privacy page describes tracking and personal data accurately', 
   assert.match(about, /kept for 14 months/)
   assert.match(about, /no advertising, third-party analytics, or cross-site tracking cookies/)
 })
+
+test('every icon in a settings row is one CSS sizes, not a bare SVG', () => {
+  /* `.setItem .ic` is what gives a row's icon its 19px. An SVG pasted in
+     without that class has no size at all and takes the whole row: the gear on
+     Board settings did, and pushed its own label down to "Board ...". */
+  assert.match(styles, /\.setItem \.ic\s*\{[^}]*width:/)
+  const rows = main.match(/<button class="setItem[^"]*"[\s\S]{0,400}?<\/button>/g) ?? []
+  assert.ok(rows.length > 10, `expected the settings rows, found ${rows.length}`)
+  for (const row of rows) {
+    const label = /class="setItemLabel"[^>]*>([^<]*)/.exec(row)?.[1] ?? row.slice(0, 60)
+    assert.doesNotMatch(row, /\$\{ICONS\./, `the ${label.trim()} row pastes an unsized SVG`)
+    assert.doesNotMatch(row, /<svg(?![^>]*class=)/, `the ${label.trim()} row has an SVG with no class`)
+  }
+})

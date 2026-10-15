@@ -8,7 +8,9 @@ const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8'
 const extension = await readFile(new URL('../src/extensions/official/3d-view/index.ts', import.meta.url), 'utf8')
 
  test('the official extension owns the accessible 3D toolbar control and preference', () => {
-  assert.match(main, /data-ext-toolbar/)
+  // The bar owns placement now: the manager hands controls over, and Tool
+  // settings decides whether one is on the bar at all.
+  assert.match(main, /officialExtensions\.createToolbarButton\(id\)/)
   assert.match(main, /new OfficialExtensions\(/)
   assert.doesNotMatch(main, /id="tiltBtn"|data-top="tilt"|setBoardTilt/)
   assert.match(extension, /tbm-board-3d-v1/)
@@ -44,6 +46,14 @@ test('camera state is bounded, fitted, centred, and resettable', () => {
   assert.match(css, /rotateZ\(var\(--cam-yaw/)
   assert.match(css, /\.boardReset[\s\S]*?min-width: 44px;[\s\S]*?min-height: 44px;/)
   assert.match(css, /\.boardReset:focus-visible[\s\S]*?outline:/)
+})
+
+test('bottom menus update the next fit without moving the board', () => {
+  const setter = board.match(/set bottomInset\(v: number\) \{[\s\S]*?\n  \}/)?.[0]
+  assert.ok(setter)
+  assert.match(setter, /this\.inset = next/)
+  assert.doesNotMatch(setter, /this\.fit\(\)/)
+  assert.match(main, /function syncPanelHeight\(\)[\s\S]*?board\.bottomInset = h/)
 })
 
 test('3D stays on the live Konva content and remaps pointers through the inverse', () => {

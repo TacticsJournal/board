@@ -47,7 +47,16 @@ export type BoardImportReadyRow = {
   action: string
   primary?: boolean
   chevron?: boolean
+  destructive?: boolean
 }
+
+/**
+ * How an import lands: added to a project's boards, created as a new project,
+ * or swapped in for a deleted one.
+ */
+export type BoardImportMode = 'append' | 'new' | 'replace'
+
+const CAPPED_NEW_PROJECT_DETAIL = 'Free keeps three projects. See what you can do'
 
 export function boardImportReadyRows(name: string, destinationCount: number, canCreateProject: boolean): BoardImportReadyRow[] {
   const existing: BoardImportReadyRow = {
@@ -87,14 +96,39 @@ export function projectImportReadyRows(
   return rows
 }
 
+/**
+ * What a capped free account can do about a shared copy that wants a project
+ * spot. A licence is one answer, but not the only one, so the dialog offers
+ * making room alongside it.
+ */
+export function projectLimitChoiceRows(destinationCount: number): BoardImportReadyRow[] {
+  const many = destinationCount === 1 ? 'your project' : `one of your ${destinationCount} projects`
+  return [
+    { label: 'Upgrade', detail: 'License or Pro removes the three-project limit', action: 'pro', primary: true },
+    { label: 'Remove a project', detail: `Delete ${many}, then add this copy`, action: 'remove-project', chevron: true },
+  ]
+}
+
+/** The last screen before anything is deleted. It names what goes. */
+export function projectLimitConfirmRows(projectName: string, boardCount: number): BoardImportReadyRow[] {
+  const boards = `${boardCount} board${boardCount === 1 ? '' : 's'}`
+  // The safe way out is first, so a stray Tab and Enter cannot delete a project.
+  return [
+    { label: 'Choose another project', detail: 'Nothing has changed yet', action: 'destination-back' },
+    { label: `Delete “${projectName}”`, detail: `Deletes ${boards}, then adds the copy`, action: 'confirm', primary: true, destructive: true },
+  ]
+}
+
 export type AgentImportSource = { kind: 'inline' | 'stored' | 'board' | 'stored-board' | 'project-copy' | 'stored-project-copy'; value: string }
 
 export function agentImportSource(location: Pick<Location, 'pathname' | 'search' | 'hash'>): AgentImportSource | null {
   if (location.pathname !== '/import') return null
   const query = new URLSearchParams(location.search)
   const queryKeys = Array.from(query.keys())
-  if (!location.hash && queryKeys.length === 1 && queryKeys[0] === 'board') {
-    const id = query.get('board')
+  // A Community post links to the board it is about. The id is stored the same
+  // way a copy link's is, so the import that opens it is the same import.
+  if (!location.hash && queryKeys.length === 1 && (queryKeys[0] === 'board' || queryKeys[0] === 'community')) {
+    const id = query.get(queryKeys[0])
     return id && STORED_DRAFT_ID.test(id) ? { kind: 'stored-board', value: id } : null
   }
   if (queryKeys.length) return null
@@ -229,6 +263,101 @@ async function storeTemporaryCopy(
   }
   const root = origin.replace(/\/$/, '')
   return scope === 'board' ? `${root}/import?board=${body.id}` : `${root}/import#project-copy=${body.id}`
+}
+
+export const MAX_COMMUNITY_POST_CAPTION_CHARS = 5000
+
+export type CommunityPostResult = {
+  postId: string
+  communityUrl: string
+  boardUrl: string
+  moderationPending: boolean
+  message: string
+}
+
+const COMMUNITY_POST_FAILED = 'This board could not be posted. Try again.'
+
+/** Only what the sheet can safely show: a short sentence, never a payload. */
+function safeCommunityError(body: unknown): string {
+  if (!isRecord(body) || typeof body.error !== 'string') return COMMUNITY_POST_FAILED
+  const message = body.error.trim().replace(/\s+/g, ' ')
+  return message && message.length <= 300 ? message : COMMUNITY_POST_FAILED
+}
+
+function communityPostUrl(value: unknown, postId: string): string | null {
+  if (typeof value !== 'string' || value.length > 2000) return null
+  let url: URL
+  try { url = new URL(value) } catch { return null }
+  const keys = Array.from(url.searchParams.keys())
+  return url.origin === 'https://tacticsjournal.com' && url.pathname === '/community/' && !url.hash
+    && keys.length === 1 && keys[0] === 'post' && url.searchParams.get('post') === postId
+    ? url.toString() : null
+}
+
+function boardCommunityUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 2000) return null
+  let url: URL
+  try { url = new URL(value) } catch { return null }
+  const keys = Array.from(url.searchParams.keys())
+  return url.origin === 'https://board.tacticsjournal.com' && url.pathname === '/import' && !url.hash
+    && keys.length === 1 && keys[0] === 'community'
+    && /^[A-Za-z0-9_-]{22}$/.test(url.searchParams.get('community') || '')
+    ? url.toString() : null
+}
+
+/**
+ * Publish this board as an ordinary Community post. The board travels as the
+ * same bounded copy a share link carries, so the post opens as a board.
+ */
+export async function postBoardToCommunity(
+  name: string,
+  document: BoardDocument,
+  preview: string,
+  caption: string,
+  origin = window.location.origin,
+  fetcher: typeof fetch = fetch,
+  // The board copy this post already has, when the board is being sent again.
+  // Given, the post is rewritten in place; absent, a post is created.
+  shareId: string | null = null,
+): Promise<CommunityPostResult> {
+  if (caption.length > MAX_COMMUNITY_POST_CAPTION_CHARS) {
+    throw new AgentImportError(`A caption can be at most ${MAX_COMMUNITY_POST_CAPTION_CHARS} characters.`)
+  }
+  if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(preview) || preview.length > 500_000) {
+    throw new AgentImportError('This board preview could not be created.')
+  }
+  if (shareId !== null && !/^[A-Za-z0-9_-]{22}$/.test(shareId)) {
+    throw new AgentImportError(COMMUNITY_POST_FAILED)
+  }
+  const payload = await createCompressedPayload('board', name, document, TEMPORARY_IMPORT_LIMITS)
+  let response: Response
+  try {
+    response = await fetcher(`${origin.replace(/\/$/, '')}/api/board/community-posts`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(shareId ? { id: shareId, payload, preview, caption } : { payload, preview, caption }),
+    })
+  } catch { throw new AgentImportError(COMMUNITY_POST_FAILED) }
+  let body: unknown
+  try { body = await response.json() } catch { body = null }
+  if (!response.ok) throw new AgentImportError(safeCommunityError(body))
+  const postId = isRecord(body) && typeof body.post_id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(body.post_id)
+    ? body.post_id : ''
+  const communityUrl = isRecord(body) ? communityPostUrl(body.community_url, postId) : null
+  const boardUrl = isRecord(body) ? boardCommunityUrl(body.board_url) : null
+  if (!isRecord(body) || !postId
+    || !communityUrl || !boardUrl || typeof body.moderation_pending !== 'boolean'
+    || typeof body.message !== 'string' || body.message.length > 300) {
+    throw new AgentImportError(COMMUNITY_POST_FAILED)
+  }
+  return {
+    postId,
+    communityUrl,
+    boardUrl,
+    moderationPending: body.moderation_pending,
+    message: body.message.trim().replace(/\s+/g, ' '),
+  }
 }
 
 /** Store a board copy behind a short-lived id so the share URL stays short. */

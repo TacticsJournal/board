@@ -313,6 +313,24 @@ header.site-header {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+/* The account control keeps one fixed box so the header spacing does not move
+   when the outline icon is replaced by the signed-in reader's picture. */
+.site-action-account-toggle {
+  width: 24px;
+  height: 24px;
+}
+.site-action-account-toggle.has-avatar svg { display: none; }
+.site-action-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+html[data-theme-resolved="dark"] .site-action-avatar {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
 .site-menu {
   position: relative;
   z-index: 125;
@@ -440,6 +458,7 @@ header.site-header {
 .site-menu[open] .site-menu-secondary a:nth-of-type(6) { transition-delay: 0.36s; }
 .site-menu[open] .site-menu-secondary a:nth-of-type(7) { transition-delay: 0.38s; }
 .site-menu[open] .site-menu-secondary a:nth-of-type(8) { transition-delay: 0.4s; }
+.site-menu[open] .site-menu-secondary a:nth-of-type(9) { transition-delay: 0.42s; }
 
 /* Search lives in the icon row on desktop only. On mobile the icon goes and
    the Search link in the menu carries it, same as tacticsjournal.com. */
@@ -552,23 +571,152 @@ header.site-header {
   }
 }
 
+/* ---------- what's new ---------- */
+
+/* The hamburger is the only always-visible way in, so the unread mark rides
+   its corner. It carries no number: how many changes there are is not the
+   point, only that there are some. */
+.site-menu-badge {
+  position: absolute;
+  top: -1px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--action);
+  pointer-events: none;
+}
+.site-changelog-panel {
+  color: var(--ink);
+}
+.site-changelog-head { margin-bottom: 22px; }
+.site-changelog-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.site-changelog-intro {
+  margin: 6px 0 0;
+  color: var(--ink-soft);
+  font-size: 15px;
+}
+.site-changelog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.site-changelog-entry {
+  display: flex;
+  gap: 10px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.site-changelog-entry:first-child { border-top: 0; }
+/* Read entries keep the column so the titles stay on one line down the list. */
+.site-changelog-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: transparent;
+  transition: background-color 0.2s ease;
+}
+.site-changelog-entry.is-unread .site-changelog-dot { background: var(--action); }
+.site-changelog-entry-text { min-width: 0; }
+.site-changelog-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 2px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+.site-changelog-tag {
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 12px;
+}
+.site-changelog-entry-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.site-changelog-body {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1.45;
+}
+.site-changelog-more {
+  margin: 20px 0 0;
+  font-size: 15px;
+}
+.site-changelog-more a { color: var(--action); }
+@media (prefers-reduced-motion: reduce) {
+  .site-changelog-dot { transition: none; }
+}
+
+/* ---------- the /changelog page ---------- */
+
+.changelogPage {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+  color: var(--ink);
+}
+.changelogPageTitle {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.changelogPageIntro {
+  margin: 8px 0 0;
+  color: var(--ink-soft);
+  font-size: 16px;
+}
+.changelogPageBack {
+  display: inline-block;
+  margin-top: 16px;
+  color: var(--action);
+  font-size: 15px;
+}
+.changelogMonth { margin-top: 40px; }
+.changelogMonthTitle {
+  margin: 0 0 8px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.changelogPage .site-changelog-list { border-top: 1px solid var(--line); }
+.changelogPage .site-changelog-entry { padding-left: 0; }
+.changelogPage .site-changelog-entry:first-child { border-top: 1px solid var(--line); }
+.changelogEmpty { margin-top: 32px; color: var(--ink-soft); }
+
 /* ---------- action row below the nav ---------- */
 .actionRow {
   flex: none;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 38px;
+  gap: 24px;
   min-height: 44px;
   padding: 0 12px;
   background: transparent;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
-.actGroup {
-  display: inline-flex;
-  align-items: center;
-  gap: 24px;
-}
+/* The bar is one row of controls the reader orders. A wider gap falls wherever
+   the run changes kind - board actions, history, then the board's own things -
+   so reordering moves the seam rather than losing it. */
+.iconBtn.barGap { margin-left: 14px; }
 .actionRow button {
   color: #333;
   background: transparent;
@@ -606,9 +754,258 @@ header.site-header {
    both, or the row reads at two weights. */
 .iconBtn svg * { stroke-width: 1.3; }
 @media (max-width: 400px) {
-  .actionRow { gap: 26px; }
-  .actGroup { gap: 18px; }
+  .actionRow { gap: 18px; }
+  .iconBtn.barGap { margin-left: 8px; }
 }
+
+/* The bar's own menu: Extensions and Tool settings, both of which open
+   Settings. It hangs under the dots and never off the edge of a phone. */
+.barMenu {
+  position: absolute;
+  top: calc(100% - 4px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
+}
+.barMenu[hidden] { display: none; }
+.barMenu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.barMenu button:hover { background: var(--bg); }
+.barMenu svg { width: 19px; height: 19px; flex: none; color: var(--ink-soft); }
+
+/* Tool settings: the bar as a list. The arrows move a control one place, and
+   the switch takes it off the bar - into the menu, never away.
+   `button` gives every button 40px of height and 8px of padding, which a row of
+   three controls cannot afford, so each one here says its own size. */
+.setToolsIntro { margin: 12px 16px 4px; }
+.setToolRow { gap: 10px; }
+.setToolRow.isOff .setItemLabel { color: var(--ink-soft); }
+.setToolMove { display: inline-flex; flex: none; gap: 6px; }
+.sheet .setToolMove button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.sheet .setToolMove button:disabled { opacity: 0.3; cursor: default; }
+.setToolMove svg { width: 16px; height: 16px; }
+/* Each row wears the mark it wears on the bar: the list is recognised, not
+   read. The bar sizes its own icons from the button, so they are sized here. */
+.setToolIcon { display: grid; place-items: center; flex: none; width: 22px; color: var(--ink); }
+.setToolIcon svg { width: 21px; height: 21px; }
+.setToolRow.isOff .setToolIcon { color: var(--ink-soft); }
+.setToolNote {
+  display: block;
+  margin-top: 1px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 400;
+}
+.sheet .setToolSwitch {
+  /* The track is a span, so the switch has to be a box for it to have a size. */
+  display: flex;
+  flex: none;
+  margin-left: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+.setToolSwitch[aria-checked="true"] .mTrack { background: var(--orange); }
+html[data-theme-resolved="dark"] .setToolSwitch[aria-checked="true"] .mTrack { background: #4b9bff; }
+
+/* A control taken off the bar waits at the top of the menu, above the two rows
+   that are always there. */
+.barMenuOverflow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+/* Nothing off the bar means no divider and no gap: an ordinary two-row menu. */
+.barMenuOverflow:empty { display: none; }
+.barMenu button:disabled { opacity: 0.4; cursor: default; }
+
+/* Styles: where a finish lands. A piece can depart from the board, or the board
+   can follow the piece; the switch is the sentence that says which. */
+
+/* ---------- Appearance, in the panel over the board ----------
+   There is no preview here. The board is behind the panel at full size, drawn
+   by the renderer rather than by a second copy of it, so a control is watched
+   on the thing it acts on. */
+
+/* A pushed screen is a nav bar and a list. The bar is the only fixed part, so
+   the list keeps the height the dock gives it. */
+.panelHead {
+  flex: none;
+  background: var(--panel);
+  padding-bottom: 8px;
+}
+.panelNav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px 6px;
+}
+.quickSet .panelBack {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; min-height: 30px; padding: 0; border: 0; background: none; color: var(--ink-soft);
+}
+.quickSet .panelBack .ic { width: 20px; height: 20px; }
+.panelNav strong { flex: 1 1 auto; min-width: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+.quickSet .panelAct {
+  flex: none; min-height: 30px; padding: 4px 8px; border: 0; background: none;
+  color: var(--ink-soft); font: inherit; font-size: 13px;
+}
+.quickSet .panelAct[disabled] { opacity: 0.4; }
+
+/* Players, Arrows, Zones, Labels, Markers, Type. A strip that scrolls, not a
+   track that divides: six already clipped the last of them, and the pieces a
+   board has are still being added to. */
+.panelChips {
+  display: flex;
+  gap: 5px;
+  margin: 0;
+  padding: 0 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+}
+.panelChips::-webkit-scrollbar { display: none; }
+.quickSet .panelChips button {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 30px; padding: 0 11px;
+  border: 0; border-radius: 999px;
+  background: var(--bar); color: var(--ink-soft);
+  font: inherit; font-size: 13px; white-space: nowrap;
+}
+.quickSet .panelChips button[aria-selected="true"] { background: var(--ink); color: var(--panel); font-weight: 600; }
+/* The search field sits with the nav rather than at the top of the list, so
+   what has been typed stays visible while the results are scrolled. */
+.fontSearch { padding: 0 2px; }
+.quickSet .fontSearch input {
+  width: 100%; min-height: 34px; box-sizing: border-box;
+  padding: 0 11px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--panel); color: var(--ink);
+  font: inherit; font-size: 14px;
+  -webkit-appearance: none; appearance: none;
+}
+/* An edge, not a tint. The field sits on the same grey the chips do, where a
+   fill alone left nothing to say it was a place to type. */
+.quickSet .fontSearch input:focus {
+  outline: none; border-color: var(--ink-soft);
+}
+.quickSet .fontSearch input::-webkit-search-cancel-button { -webkit-appearance: none; }
+/* A row is set in the face it offers. The name is the sample. */
+.quickSet .fontItem .setItemLabel { font-size: 17px; line-height: 1.35; }
+.quickSet .fontItem .lookEg { font-size: 15px; }
+
+.panelChips button i { font-style: normal; font-size: 11px; opacity: 0.6; font-variant-numeric: tabular-nums; }
+
+/* A property is a label, its value, and the row's whole width to set it in.
+   Two lines rather than four controls on one: a stepper and a type-in box side
+   by side were both under the tap size and next to each other. */
+.quickSet .setItem.lookRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 1px;
+  padding: 5px 14px 7px;
+  min-height: 0;
+}
+.lookRowHead { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.quickSet .lookValue {
+  flex: none; min-height: 0; padding: 2px 7px;
+  border: 0; border-radius: 6px;
+  background: var(--bar); color: var(--ink);
+  font: inherit; font-size: 12.5px; font-variant-numeric: tabular-nums;
+}
+.lookRow .lookNum {
+  flex: none; width: 74px; padding: 2px 7px; text-align: right;
+  font-variant-numeric: tabular-nums; font-size: 12.5px;
+}
+.lookEg { color: var(--ink-faint); font-size: 13px; }
+.lookRange {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 26px; margin: 0; padding: 0;
+  background: none; touch-action: pan-y;
+}
+.lookRange::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: var(--line); }
+.lookRange::-moz-range-track { height: 3px; border-radius: 2px; background: var(--line); }
+.lookRange::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 22px; height: 22px; margin-top: -9.5px;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+}
+.lookRange::-moz-range-thumb {
+  width: 20px; height: 20px;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+}
+.lookRange:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 6px; }
+
+/* Six colours under the row, because six is the answer nearly every time. The
+   wheel is one tap further, in the dock it already lives in. */
+.quickSet .setItem.isOpen { background: var(--bar); }
+.lookSwatches {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 14px 10px;
+  background: var(--bar);
+  border-top: 1px solid var(--line);
+}
+.quickSet .lookSwatch {
+  flex: none; width: 26px; height: 26px; min-height: 0; padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.18); border-radius: 8px;
+}
+.quickSet .lookSwatch.on { outline: 2px solid var(--ink); outline-offset: 2px; }
+.quickSet .lookSwatchAuto {
+  flex: none; min-height: 26px; padding: 0 9px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); color: var(--ink-soft); font: inherit; font-size: 12px;
+}
+.quickSet .lookSwatchAuto.on { border-color: var(--ink); color: var(--ink); font-weight: 600; }
+.quickSet .lookMore {
+  margin-left: auto; flex: none;
+  display: inline-flex; align-items: center; gap: 2px;
+  min-height: 26px; padding: 0 2px 0 8px;
+  border: 0; background: none; color: var(--ink-soft); font: inherit; font-size: 12.5px;
+}
+.quickSet .lookMore .ic { width: 15px; height: 15px; }
 
 /* ---------- stage + floating controls ---------- */
 .stageWrap { flex: 1; min-height: 0; position: relative; }
@@ -916,10 +1313,10 @@ html[data-theme-resolved="dark"] .seg button.active { box-shadow: 0 1px 2px rgba
   width: 24px; height: 24px; min-height: 24px;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.16);
+  /* the stroke the board draws round a token, so a white one reads as white */
+  border: 1.6px solid #0b0b0e;
   flex: none;
 }
-html[data-theme-resolved="dark"] .sw { border-color: rgba(255, 255, 255, 0.22); }
 .sw.active { box-shadow: 0 0 0 2px var(--bar), 0 0 0 4px var(--orange); }
 
 .teamChip {
@@ -982,6 +1379,302 @@ html[data-theme-resolved="dark"] .sw { border-color: rgba(255, 255, 255, 0.22); 
 }
 
 
+/* ---------- the styles shelf ---------- */
+/* Styles is pictures, not words: the same 40px cell the shapes shelf uses, two
+   rows deep, with a hairline between one setting and the next. The only words
+   are in the name row, because a name drawn at cell size cannot be read. */
+.stylesShelf { flex: none; background: var(--panel); }
+.stylesShelf.hidden { display: none; }
+.styleScroll {
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none; overscroll-behavior: contain; touch-action: pan-x;
+  border-top: 1px solid var(--line);
+}
+.styleScroll::-webkit-scrollbar { display: none; }
+.styleTrack { display: flex; align-items: stretch; width: max-content; min-width: 100%; padding: 6px 12px; }
+.styleGroup {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, 40px);
+  grid-auto-columns: 40px;
+  gap: 6px;
+}
+/* An arrow is drawn along its length, so its cells take a wider column. */
+.styleGroup.wide { grid-auto-columns: 52px; }
+.styleGroup .cell { width: 100%; }
+.styleGroup .cell.cellWideSlot img { max-width: 46px; }
+.styleRule { width: 1px; background: var(--line); margin: 4px 7px; flex: none; }
+/* The board strokes every token in near-black, which is what lets a white kit
+   read as white. The swatch carries the same stroke, so a chosen white is a
+   token and not a hole, and the lit cell alone marks what is chosen. */
+.styleGroup .cell .dot {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 1.6px solid #0b0b0e;
+}
+.cellLetter { font-weight: 700; line-height: 1; color: var(--ink); }
+.styleEmpty { margin: 0; padding: 14px 12px; font-size: 12px; color: var(--ink-soft); }
+
+/* ---------- Styles as tabs ----------
+   One tab per property, one control under it, and the same column down the
+   right of every tab. The body is a fixed height so switching tabs never moves
+   the panel under your thumb. */
+.styleTabs { display: flex; align-items: stretch; border-top: 1px solid var(--line); background: var(--panel); }
+.styleTabList { display: flex; flex: 1; min-width: 0; }
+.styleTab {
+  flex: 1; min-width: 0; padding: 9px 4px 8px; margin-bottom: -1px;
+  /* the app's buttons are round-cornered; a tab is not, and the rule under it
+     bent with the corner when it inherited one */
+  border: 0; border-radius: 0; border-bottom: 2px solid transparent;
+  background: none; font: inherit; font-size: 13px; color: var(--ink-soft);
+}
+.styleTab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--action); }
+.styleBody {
+  display: flex; align-items: center; gap: 10px;
+  /* One line: what the tab offers, the rail that sets it, and the actions.
+     Fixed rather than a floor, so every tab is the same and switching one never
+     moves the panel under your thumb. */
+  height: 66px; padding: 0 12px 4px;
+  border-top: 1px solid var(--line); background: var(--panel);
+}
+.styleMain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.styleRings { display: flex; flex: none; gap: 4px; }
+.styleRing {
+  min-width: 36px; height: 38px; flex: none; padding: 0 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 10px; background: none; color: var(--ink);
+}
+.styleRing.on { background: var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16); }
+.styleRing svg { display: block; width: 26px; height: 26px; }
+/* An arrow is drawn along its length, so its ring keeps the drawing's shape. */
+.styleRing img { display: block; width: auto; max-width: 42px; max-height: 26px; }
+.styleEnds { display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem; color: var(--ink-soft); }
+/* Where the exact number matters, the high end is the number, and a tap on it
+   is a box to type one into. */
+.styleNum {
+  min-height: 0; padding: 1px 6px; border: 0; border-radius: 5px;
+  background: var(--bar); color: var(--ink);
+  font: inherit; font-size: 0.72rem; font-variant-numeric: tabular-nums;
+}
+.styleNum.styleNumEdit {
+  width: 56px; text-align: center; background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.styleNum.styleNumEdit:focus-visible { outline: 2px solid var(--action); outline-offset: 1px; }
+/* The same slider Appearance uses, with the part behind the handle filled in so
+   a rail reads at a glance rather than only under the handle. */
+.styleRail {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 26px; margin: 0; padding: 0;
+  background: none; touch-action: pan-y;
+}
+.styleRail::-webkit-slider-runnable-track {
+  height: 3px; border-radius: 2px;
+  background: linear-gradient(to right, var(--action) var(--pct, 0%), var(--line) var(--pct, 0%));
+}
+.styleRail::-moz-range-track {
+  height: 3px; border-radius: 2px;
+  background: linear-gradient(to right, var(--action) var(--pct, 0%), var(--line) var(--pct, 0%));
+}
+.styleRail::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 22px; height: 22px; margin-top: -9.5px;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+}
+.styleRail::-moz-range-thumb {
+  width: 20px; height: 20px;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+}
+.styleRail:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 6px; }
+/* The actions sit at the end of the rail they act on: use on another board,
+   and on an arrow the way back to the one the board draws. */
+.styleActs { flex: none; display: flex; gap: 2px; }
+.styleAct {
+  width: 32px; height: 34px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; color: var(--ink-soft); border-radius: 8px;
+}
+.styleAct svg { width: 22px; height: 22px; }
+.styleAct:disabled { opacity: 0.32; }
+/* The colour sits at the end of the tab row, so it is in the same place
+   whichever tab is open and takes no width from the rail. */
+.styleKit {
+  flex: none; width: 52px; padding: 0 10px 0 0;
+  display: flex; align-items: center; justify-content: flex-end; gap: 5px;
+  background: none; color: var(--ink-soft); border-radius: 0;
+}
+.styleKit span { width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 2px #111; }
+.styleKit svg { width: 12px; height: 8px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+
+/* The name and everything about it, together. */
+.nameBox { border-top: 1px solid var(--line); background: var(--panel); }
+.nameFields { display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
+.nameFields .in {
+  font: inherit; font-size: 0.86rem;
+  background: var(--card); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 10px; padding: 7px 9px;
+  min-width: 0;
+}
+.nameFields .nameIn { flex: 1; }
+.nameClear { flex: none; padding: 4px 2px; font-size: 0.8rem; color: var(--orange); background: none; }
+.numToggle {
+  flex: none; min-height: 34px; padding: 0 10px;
+  background: var(--card); color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: 10px;
+  font: inherit; font-size: 0.8rem; font-weight: 600;
+}
+.numToggle.on { background: var(--orange); border-color: var(--orange); color: #ffffff; }
+/* the three mark pills carry an icon rather than a word, so they are square */
+.numToggle {
+  width: 40px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+/* a pill carrying a number reads as the number, not as a label for one */
+.numToggle.hasNo { font-size: 0.95rem; font-weight: 700; }
+/* held, it is the same pill with a caret in it */
+.numToggle.numEdit { text-align: center; font-size: 0.95rem; font-weight: 700; color: var(--ink); }
+.numToggle.numEdit:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+.markIc { width: 21px; height: 21px; display: block; }
+.markSpin { display: inline-flex; transition: transform 120ms ease; }
+@media (prefers-reduced-motion: reduce) { .markSpin { transition: none; } }
+/* the facing pill draws the head it is turning on, pointing where it points */
+
+
+
+.rosterBtn {
+  flex: none; width: 40px; height: 34px; min-height: 34px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--card); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.rosterBtn svg { width: 21px; height: 21px; }
+.rosterBtn.on { background: var(--orange); border-color: var(--orange); color: #ffffff; }
+.nameOpts { display: flex; align-items: center; gap: 8px; padding: 0 12px 10px; overflow-x: auto; scrollbar-width: none; }
+.nameOpts::-webkit-scrollbar { display: none; }
+.nameOpts .seg { height: 30px; }
+.nameOptsGap { flex: 1 1 auto; min-width: 4px; }
+/* Carry acts on the board, so it is quiet line art rather than a setting. */
+.rowAct {
+  flex: none; width: 32px; height: 30px; min-height: 30px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; color: var(--ink-soft); border-radius: 8px;
+}
+.rowAct svg { width: 22px; height: 22px; }
+.rowAct:disabled { opacity: 0.32; }
+/* The kit, opened by the same dot-and-chevron the shelf rail uses. */
+.rowKit { flex: 0 0 44px; width: 44px; }
+.nameOpts .seg button { height: 24px; padding: 0 9px; font-size: 0.76rem; }
+/* A size is a number on a scale the scene already accepts, not three stops. */
+.stepper {
+  display: inline-flex; align-items: center; flex: none; height: 30px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+}
+.stepper button { width: 28px; height: 100%; min-height: 0; padding: 0; font-size: 1rem; color: var(--orange); }
+.stepper .stepVal {
+  width: 32px; padding: 0; text-align: center;
+  font: inherit; font-size: 0.8rem; font-weight: 600; font-variant-numeric: tabular-nums;
+  background: none; border: 0; color: var(--ink);
+}
+
+/* The squad, opened without a keyboard so the list gets the screen. */
+.rosterList { max-height: 232px; overflow-y: auto; overscroll-behavior: contain; background: var(--card); border-top: 1px solid var(--line); }
+.rosterHead {
+  padding: 8px 12px 4px; background: var(--panel);
+  font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft);
+}
+.rosterRow {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 8px 12px; min-height: 40px; border-radius: 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.88rem; color: var(--ink); text-align: left;
+}
+.rosterRow .rNum { width: 22px; flex: none; text-align: right; font-size: 0.8rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.rosterRow .rDot { width: 12px; height: 12px; flex: none; border-radius: 50%; border: 1.6px solid #0b0b0e; }
+.rosterRow .rName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rosterRow .rPos { flex: none; font-size: 0.66rem; letter-spacing: 0.05em; color: var(--ink-soft); }
+.rosterRow.on { background: var(--row-press); font-weight: 600; }
+.rosterEmpty { padding: 14px 12px; font-size: 12px; color: var(--ink-soft); background: var(--card); border-top: 1px solid var(--line); }
+
+/* Same reason the shapes shelf gives its arrow cells a pale ground: a dark
+   arrow drawn for grass disappears on a dark panel. Colour and letter cells
+   carry themselves, so only the drawn line takes the ground. */
+html[data-theme-resolved="dark"] .styleGroup.wide .cell {
+  background: #dcdce0;
+  color: #111214;
+}
+html[data-theme-resolved="dark"] .styleGroup.wide .cell.active {
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+/* ---------- the settings room ---------- */
+/* The few settings worth reaching mid-board, in the band itself. The rows are
+   the sheet's rows at panel size; More opens the sheet for everything else. */
+.quickSet {
+  flex: none;
+  padding: 8px 12px 10px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  /* Published by syncPanelHeight from the space the board and the panel share.
+     The fallback is dvh, not vh, so a browser with its own chrome is still
+     measuring what a person can see. */
+  max-height: var(--quickMax, 52dvh);
+  /* The panel is a fixed nav over a box that scrolls, so nothing in the list
+     can paint over the nav on its way past. */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.panelScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* The group strip scrolls sideways inside itself. Without this the panel
+     takes that overflow as its own and paints a scrollbar across the board. */
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+.quickSet.hidden { display: none; }
+.quickSet .setItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 14px;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14.5px;
+  letter-spacing: -0.01em;
+  text-align: left;
+}
+.quickSet .setItem:first-child { border-top: 0; }
+.quickSet .setItemStatic { justify-content: space-between; }
+/* what the number is doing, shown at the size it is set to */
+.quickSet .sizeEg {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: flex-end;
+  gap: 6px; padding-right: 10px; overflow: hidden;
+  color: var(--ink-soft); line-height: 1.05; white-space: nowrap;
+}
+.quickSet .sizeEg .egDot { border-radius: 50%; border: 1.6px solid #0b0b0e; border-style: solid; flex: none; }
+/* the row grows with the example rather than clipping it */
+.quickSet .setItem.setItemStatic { min-height: 44px; padding-top: 5px; padding-bottom: 5px; }
+.quickSet .sizeEg.egText { font-weight: 600; color: var(--ink); }
+.quickSet .stepper { margin: -3px 0; }
+/* the sheet is a screen away, so its row sits apart from the board's own */
+.quickSet .setItem[data-quick="more"] { border-top-width: 6px; border-top-color: var(--panel); }
+.quickSet .setItem:active { background-color: var(--row-press); }
+/* An action reads as one; undoing a saved default is the quiet twin of it. */
+.quickSet .setItem.quickDo .setItemLabel { color: var(--orange); font-weight: 600; }
+.quickSet .setItem.quickQuiet .setItemLabel { color: var(--ink-soft); }
+
 /* ---------- bottom room band ---------- */
 /* The active room is the light surface the panel above it sits on, so the tab
    reads as an open drawer. The old treatment - #fffdf8 on --pill - was 1.9:1. */
@@ -999,6 +1692,12 @@ html[data-theme-resolved="dark"] .sw { border-color: rgba(255, 255, 255, 0.22); 
   font-weight: 500;
   line-height: 1;
   letter-spacing: 0;
+}
+/* Nothing picked means Styles has nothing to change, so its tab reads as
+   unavailable rather than opening on an empty room. */
+.toolbar button:disabled {
+  opacity: 0.38;
+  pointer-events: none;
 }
 .toolbar button.active {
   background: var(--panel);
@@ -1210,7 +1909,7 @@ html[data-theme-resolved="dark"] .shelfGrid[data-cat="equipment"] .cell.active {
 .shelfRailList::-webkit-scrollbar { display: none; }
 .shelfRail button { padding: 0; min-height: 28px; border-radius: 0; font-size: 0.78rem; color: var(--ink-soft); white-space: nowrap; }
 .shelfRail button.active { color: var(--orange); font-weight: 600; }
-.shelfRailRight { flex: 0 0 48px; width: 48px; height: 32px; min-height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px; border-left: 1px solid var(--line); color: var(--ink-soft); }
+.shelfRailRight { flex: 0 0 48px; width: 48px; height: 32px; min-height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--ink-soft); }
 .shelfRailRight span { width: 16px; height: 16px; border-radius: 50%; background: #e02020; box-shadow: inset 0 0 0 2px #111; }
 .shelfRailRight svg { width: 12px; height: 8px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .pickerHidden { display: none !important; }
@@ -1219,7 +1918,11 @@ html[data-theme-resolved="dark"] .shelfGrid[data-cat="equipment"] .cell.active {
 .colorPicker { display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 264px; overflow: hidden; background: #333; color: #fff; z-index: 2; }
 .colorPicker.open { display: block; }
 .panelDock.pickerOpen { bottom: env(safe-area-inset-bottom); height: 300px; }
-.panelDock.pickerOpen ~ .toolbar { display: none; }
+/* The picker covers the band rather than removing it: taking its 30px out of
+   the layout would grow the stage and slide the pitch down under the sheet. */
+.panelDock.pickerOpen ~ .toolbar { visibility: hidden; }
+/* The wheel takes the dock, so the panel waits rather than being squeezed. */
+.panelDock.pickerOpen .quickSet { display: none; }
 .pickerHeader { position: relative; z-index: 3; height: 38px; }
 .pickerTabs { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 24px; }
 .pickerTabs button { height: 38px; min-height: 38px; padding: 0 2px; color: #9e9e9e; font-size: 16px; }
@@ -1302,6 +2005,9 @@ textarea {
   z-index: 130; /* above the site header and its menu (110-125) */
 }
 .modal.hidden { display: none; }
+/* Board settings opens from Settings as well as from the panel, so it stacks
+   above the sheet that opened it. */
+.matchModal { z-index: 140; }
 /* The sheet rises from the edge it is attached to, so it reads as coming from
    somewhere rather than appearing. `allow-discrete` is what lets it animate out
    of `display: none` without JS holding the element open. */
@@ -1727,6 +2433,22 @@ textarea {
   --tabs-pill-inset: 2px;
   --tabs-pill-radius: 6px;
 }
+/* The segmented row is a sheet control that the panel borrows; without this it
+   falls back to the app's own button paint, which is a blue link. */
+.quickSet .setSeg button {
+  position: relative;
+  z-index: 1;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  padding: 4px 10px;
+  min-height: 30px;
+}
+.quickSet .setSeg button.active { background: var(--card); color: var(--ink); font-weight: 700; }
 .sheet .setSeg button {
   position: relative;
   z-index: 1;
@@ -2440,6 +3162,29 @@ html[data-theme-resolved="dark"] .mThumb { background: #0a0a0a; }
   font: inherit;
 }
 .exportMenu button:hover, .exportMenu button:focus-visible { background: var(--row-press); outline: none; }
+.exportMenu button:disabled { color: var(--ink-soft); opacity: 0.45; cursor: default; }
+/* Carry forward and its disclosure read as one control: two chips sharing a
+   seam, with the outer corners the strip's other chips already use. */
+.carrySplit { display: inline-flex; flex: none; align-items: center; }
+.carrySplit .addChip { border-radius: 999px; }
+.carrySplit .carryNow { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.carrySplit .carryMore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 9px;
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.carryMore svg { width: 15px; height: 15px; display: block; }
+.carrySplit .addChip:disabled { color: var(--ink-soft); opacity: 0.5; }
+.carrySplit .addChip:focus-visible { position: relative; z-index: 1; }
+.carryHint { flex: none; }
+
+.carryMenu { width: min(208px, calc(100vw - 16px)); }
+.carryMenu.t-dropdown { visibility: hidden; }
+.carryMenu.t-dropdown.is-open, .carryMenu.t-dropdown.is-closing { visibility: visible; }
 
 .shareDialog {
   width: min(420px, calc(100vw - 28px));
@@ -2490,6 +3235,61 @@ html[data-theme-resolved="dark"] .mThumb { background: #0a0a0a; }
 .shareActions button:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
 .shareStatus { min-height: 1.25em; margin: -4px 0 0; font-size: 13px; color: var(--ink-soft); }
 .shareStatus:empty { display: none; }
+/* The caption borrows the share field's look, with room for more than a line. */
+.shareBody textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 88px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.shareBody textarea:focus { border-color: var(--action); outline: 2px solid rgba(0, 113, 227, 0.24); }
+/* The board the post will carry, shown before anything is sent. */
+.communityPreview {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+}
+
+/* The one-time line under a copy link or an export. It sits at the bottom of
+   the step it is offered in, never over it, and carries its own dismissal. */
+.communityHint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--track);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.communityHint button { min-height: 32px; padding: 0; background: none; color: var(--action); font: inherit; }
+.communityHint button:hover { text-decoration: underline; }
+.communityHint__close { margin-left: auto; color: var(--ink-soft); font-size: 17px; line-height: 1; }
+.communityHint__close:hover { text-decoration: none; }
+
+.communityPostLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--action);
+  font-size: 14px;
+  text-decoration: none;
+}
+.communityPostLink:hover { text-decoration: underline; }
+.communityPostLink:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; border-radius: 6px; }
 .shareList { margin: 0; padding: 0; list-style: none; border-bottom: 1px solid var(--line); }
 .shareList li { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 48px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; }
 .shareList .shareEmpty { color: var(--ink-soft); }
@@ -2679,6 +3479,15 @@ html[data-theme-resolved="dark"] .mThumb { background: #0a0a0a; }
 .agentImportRowPrimary .agentImportRowText span { color: var(--bg); opacity: 0.66; }
 .agentImportRowPrimary:hover, .agentImportRowPrimary:active { background: var(--ink); opacity: 0.92; }
 .agentImportChev { flex: none; color: var(--ink-soft); }
+.agentImportRowDanger { border-color: #c2554b; color: #c2554b; }
+.agentImportRowDanger .agentImportRowText span { color: #c2554b; opacity: 0.8; }
+.agentImportRowDanger.agentImportRowPrimary { border-color: #c2554b; background: #c2554b; color: #fff; }
+.agentImportRowDanger.agentImportRowPrimary .agentImportRowText span { color: #fff; opacity: 0.78; }
+.agentImportRowDanger.agentImportRowPrimary:hover, .agentImportRowDanger.agentImportRowPrimary:active { background: #c2554b; opacity: 0.92; }
+html[data-theme-resolved="dark"] .agentImportRowDanger { border-color: #e0765c; color: #e0765c; }
+html[data-theme-resolved="dark"] .agentImportRowDanger .agentImportRowText span { color: #e0765c; }
+html[data-theme-resolved="dark"] .agentImportRowDanger.agentImportRowPrimary { border-color: #e0765c; background: #e0765c; color: #1b1b1b; }
+html[data-theme-resolved="dark"] .agentImportRowDanger.agentImportRowPrimary .agentImportRowText span { color: #1b1b1b; opacity: 0.72; }
 .agentImportBoard .agentImportProjects {
   flex: 1 1 auto;
   min-height: 0;
@@ -2984,7 +3793,7 @@ body.kb-open .tmPane { padding-bottom: calc(var(--vvH, 100dvh) * 0.75); }
   .seg button:hover:not(.active),
   .sheet .setItem:hover:not(.setItemStatic) { background: rgba(0, 0, 0, 0.04); }
   .teamChip:hover:not(.active),
-  .addChip:hover,
+  .addChip:hover:not(:disabled),
   .sheet .tmTeam:hover { background: var(--bar); }
   .tmPlayer:hover { border-color: var(--pill); }
   .saveItem .savePrev:hover,
@@ -3098,6 +3907,41 @@ button.libTitle:focus-visible { outline: 2px solid var(--grip); outline-offset: 
 .libCard.is-live { border-color: var(--grip); background: var(--bar); }
 
 .boardCard { display: grid; grid-template-columns: 24px 118px 1fr auto; gap: 9px; align-items: center; }
+.carryRow { grid-template-columns: 24px 24px 118px minmax(0, 1fr) auto; }
+.carryBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 0 12px;
+}
+.carryBarText { flex: 1 1 160px; min-width: 0; color: var(--ink-soft); font-size: 12px; }
+.carryLink { min-height: 30px; padding: 0 3px; color: var(--ink-soft); font-size: 12px; }
+.carryLink:disabled { opacity: 0.45; }
+/* the source and everything before it stay in the list for their place in the
+   sequence, but a carry only ever goes forward, so they cannot be picked */
+.carryRow--locked { opacity: 0.5; cursor: default; }
+.carryRow--locked:active { transform: none; }
+.carryCount { margin-left: auto; color: var(--ink-soft); font-size: 12px; white-space: nowrap; }
+.carryPick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--bg);
+  color: transparent;
+}
+.carryPick svg { width: 15px; height: 15px; }
+.carryPick[aria-checked="true"] { background: var(--grip); border-color: var(--grip); color: var(--on-grip); }
+.carryPick--source { border-color: transparent; background: transparent; }
+.carryRow.is-picked { border-color: var(--grip); }
+.carryGo { background: var(--action) !important; color: #fff !important; border-color: var(--action) !important; }
+.carryGo:disabled { opacity: 0.45; }
 .boardNum {
   display: grid;
   place-items: center;
@@ -3240,6 +4084,18 @@ button.libTitle:focus-visible { outline: 2px solid var(--grip); outline-offset: 
 .libFoot button svg { width: 15px; height: 15px; display: block; }
 .libFoot button.is-capped { opacity: 0.55; }
 .libCount { flex: none; color: var(--ink-soft); font-size: 11px; }
+.carryImportPreviews { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 4px; scrollbar-width: none; }
+.carryImportPreviews::-webkit-scrollbar { display: none; }
+.carryImportPreviews span { flex: 0 0 78px; height: 52px; overflow: hidden; border: 1px solid var(--line); border-radius: 7px; background: var(--card); }
+.carryImportPreviews img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.broadcastImportSheet .setItem { flex: none; }
+/* the one import decision: a switch, so its state reads without a legend */
+.carryImportSwitch { text-align: left; }
+.carryImportSwitch .setItemLabel { overflow: visible; white-space: normal; }
+.carryImportSwitch[aria-checked="true"] .mTrack { background: var(--orange); }
+html[data-theme-resolved="dark"] .carryImportSwitch[aria-checked="true"] .mTrack { background: #4b9bff; }
+.carryImportSwitch[disabled] .mTrack { opacity: 0.5; }
+.setItemNote { display: block; margin-top: 3px; color: var(--ink-soft); font-size: 12px; line-height: 1.35; font-weight: 400; }
 
 .libCap {
   position: absolute;
@@ -3399,19 +4255,23 @@ button.libTitle:focus-visible { outline: 2px solid var(--grip); outline-offset: 
   background: var(--bg);
 }
 .seqPlayer__wrap {
-  /* the board takes everything above the bar and the bar sits on the bottom
-     edge of the screen: a pitch is wider than a phone, so width spent on
-     margins is board the reader does not get */
-  display: grid;
-  grid-template-rows: 1fr auto;
+  /* the board and its controls are one block in the middle of the screen: a
+     pitch is wider than a phone, so width spent on margins is board the
+     reader does not get, and a board shorter than the screen — a broadcast
+     frame on a tall phone — keeps its controls under the picture instead of
+     leaving a band of empty page between the two */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
   width: 100%;
   height: 100%;
 }
 .seqPlayer__board {
   position: relative;
-  /* Portrait screens have height left after the board reaches full width. Keep
-     the board at the top and give that room to its note below. */
-  place-self: start center;
+  /* Portrait screens have height left after the board reaches full width: the
+     board keeps its own shape and that room is shared above and below it. */
+  flex: none;
   max-width: 100%;
   overflow: hidden;
   background: var(--card);
@@ -3424,6 +4284,8 @@ button.libTitle:focus-visible { outline: 2px solid var(--grip); outline-offset: 
   transform-origin: center 42%;
   will-change: transform;
 }
+/* the stage is exactly the board's shape, so this only ever shows for the
+   moment a picture is still decoding */
 .seqPlayer__stage { max-width: 100%; overflow: hidden; background: #fff; cursor: grab; touch-action: pan-y; }
 .seqPlayer__stage.is-dragging { cursor: grabbing; }
 .seqPlayer__svg { display: block; width: 100%; height: 100%; }
@@ -4041,6 +4903,19 @@ body.composer-open { overflow: hidden; }
   padding: 0 16px;
   pointer-events: none;
 }
+/* On a phone the panel owns the bottom of the screen, so a toast there lands
+   on the controls it is talking about. It comes down from the top instead,
+   under the header, where nothing is being touched. A wide window keeps it
+   low: the board's own bottom edge is clear there. */
+body:not(.deskMode) .toastBand {
+  top: calc(env(safe-area-inset-top) + 12px);
+  bottom: auto;
+}
+body:not(.deskMode) .t-toast {
+  transform: translateY(calc(var(--toast-distance) * -1)) scale(var(--toast-scale));
+}
+body:not(.deskMode) .t-toast.is-open { transform: translateY(0) scale(1); }
+
 .toast {
   max-width: min(420px, 100%);
   padding: 10px 16px;
@@ -4051,6 +4926,27 @@ body.composer-open { overflow: hidden; }
   line-height: 1.4;
   text-align: center;
 }
+/* only a toast with something to do takes the pointer back from the band */
+.toast--action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  pointer-events: auto;
+}
+.toastAction {
+  flex: none;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--bg);
+  font: inherit;
+  font-weight: 600;
+}
+.toastAction:focus-visible { outline: 2px solid var(--bg); outline-offset: 2px; }
+html[data-theme-resolved="dark"] .toastAction { background: rgba(0, 0, 0, 0.18); }
 
 /* transitions.dev toast: rises from below with a fade, a cross-blur and a
    slight scale. Arriving runs on the slower clock, leaving on the faster one,

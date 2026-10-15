@@ -1,6 +1,6 @@
 import { accountOrigin, boardDraftOrigin, boardOrigin } from '../../lib/board-origin.js';
 
-const ALLOWED = new Set(['sync', 'skills', 'assets', 'libraries', 'shares', 'user-search', 'invitations', 'invitation', 'presence', 'transfer', 'agent-links', 'agent', 'live', 'collaboration', 'history', 'proposals', 'import-drafts', 'events']);
+const ALLOWED = new Set(['sync', 'skills', 'assets', 'libraries', 'shares', 'user-search', 'invitations', 'invitation', 'presence', 'transfer', 'agent-links', 'agent', 'live', 'collaboration', 'history', 'proposals', 'import-drafts', 'community-posts', 'events']);
 const IMPORT_PAYLOAD = /^[A-Za-z0-9_-]+$/;
 const IMPORT_PREVIEW = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/;
 const MAX_IMPORT_BODY_BYTES = 512 * 1024;
@@ -41,7 +41,7 @@ export function upstreamRequest(request, params = {}) {
   const upstreamPath = path === 'user-search' ? '/api/community/user-search' : `/api/board/${path}`;
   // The billing sandbox does not own shared-link storage. Preview builds use
   // the production draft store, whose entries are bounded and expire in 24 hours.
-  const upstreamOrigin = path === 'import-drafts' ? boardDraftOrigin() : accountOrigin(request);
+  const upstreamOrigin = path === 'import-drafts' || path === 'community-posts' ? boardDraftOrigin() : accountOrigin(request);
   const target = new URL(upstreamPath, upstreamOrigin);
   target.search = incoming.search;
   const headers = new Headers(request.headers);
@@ -138,19 +138,52 @@ async function authorizeBrowserImport(request) {
   return true;
 }
 
+async function authorizeCommunityPost(request) {
+  if (request.headers.get('Origin') !== boardOrigin(request)) {
+    return importError('Request not allowed.', 403);
+  }
+  if ((request.headers.get('Content-Type') || '').split(';', 1)[0].trim().toLowerCase() !== 'application/json') {
+    return importError('Send one board and an optional caption.', 400);
+  }
+  const length = Number(request.headers.get('Content-Length'));
+  if (Number.isFinite(length) && length > MAX_IMPORT_BODY_BYTES) {
+    return importError('Send one board and an optional caption.', 400);
+  }
+  const text = await boundedText(request, MAX_IMPORT_BODY_BYTES);
+  if (text === null) return importError('Send one board and an optional caption.', 400);
+  let body;
+  try { body = JSON.parse(text); } catch { return importError('Send one board and an optional caption.', 400); }
+  const shape = body && typeof body === 'object' && !Array.isArray(body) ? Object.keys(body).sort().join(',') : '';
+  // Two exact shapes and no others: a new post, and the same board sent again
+  // for the post it already has, which carries that post's board copy id.
+  if (shape !== 'caption,payload,preview' && shape !== 'caption,id,payload,preview') {
+    return importError('Send one board and an optional caption.', 400);
+  }
+  if (shape.includes('id') && (typeof body.id !== 'string' || !/^[A-Za-z0-9_-]{22}$/.test(body.id))) {
+    return importError('Send one board and an optional caption.', 400);
+  }
+  if (typeof body.caption !== 'string' || body.caption.length > 5000
+    || typeof body.payload !== 'string' || body.payload.length > MAX_IMPORT_PAYLOAD_CHARS || !IMPORT_PAYLOAD.test(body.payload)
+    || typeof body.preview !== 'string' || body.preview.length > MAX_IMPORT_PREVIEW_CHARS || !IMPORT_PREVIEW.test(body.preview)) {
+    return importError('Send one board and an optional caption.', 400);
+  }
+  return true;
+}
+
 export async function onRequest(context) {
   const path = boardPath(context.params);
   if (!ALLOWED.has(path)) return new Response('Not found.', { status: 404, headers: { 'Cache-Control': 'no-store' } });
   if (!hasAllowedWriteOrigin(context.request, path)) {
     return new Response('Request not allowed.', { status: 403, headers: { 'Cache-Control': 'no-store' } });
   }
-  const authorization = path === 'import-drafts' && context.request.method === 'POST'
-    ? await authorizeBrowserImport(context.request)
+  const authorization = context.request.method !== 'POST' ? null
+    : path === 'import-drafts' ? await authorizeBrowserImport(context.request)
+    : path === 'community-posts' ? await authorizeCommunityPost(context.request)
     : null;
   if (authorization instanceof Response) return authorization;
   const upstream = upstreamRequest(context.request, context.params);
   if (!upstream) return new Response('Not found.', { status: 404, headers: { 'Cache-Control': 'no-store' } });
-  if (authorization) upstream.headers.set('User-Agent', 'TacticsBoardAgent/1.0');
+  if (authorization && path === 'import-drafts') upstream.headers.set('User-Agent', 'TacticsBoardAgent/1.0');
   let response;
   try {
     // Fetch preserves Upgrade and a 101 WebSocket response in the Pages runtime.

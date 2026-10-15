@@ -4,7 +4,7 @@ import { ToolDefaults } from './board'
 import { GifWriter } from './gif'
 import { OffscreenBoard } from './offscreen-board'
 import { BOARD_W } from './types'
-import { Project, boardName, frameAt, projectDuration } from './projects'
+import { Project, boardName, coverView, exportAspect, frameAt, projectDuration } from './projects'
 
 /**
  * Exporting a project as an animation. Frames come from a second, off-screen
@@ -83,8 +83,10 @@ async function renderFrames(
     const total = projectDuration(project)
     const step = 1000 / fps
     const count = Math.max(2, Math.ceil(total / step))
-    const first = frameAt(project, 0)
-    const aspect = first.view.h / first.view.w
+    /* A film is one size of picture from first frame to last, so the shape is
+       chosen once — from the photographs when the project has any — and each
+       frame is cropped to it rather than squashed into it. */
+    const aspect = exportAspect(project)
     const boardH = Math.round(width * aspect)
     const captionH = withNotes ? Math.round(width * 0.13) : 0
 
@@ -107,10 +109,20 @@ async function renderFrames(
       frame.fading.forEach(id => alpha.set(id, frame.exitAlpha))
       frame.arriving.forEach(id => alpha.set(id, frame.enterAlpha))
       frame.riding.forEach(id => alpha.set(id, frame.rideAlpha))
-      const shot = offscreen.board.toFrameCanvas(width, frame.view, alpha)
+      const shot = offscreen.board.toFrameCanvas(width, coverView(frame.view, aspect), alpha)
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, out.width, out.height)
-      ctx.drawImage(shot, 0, 0, width, boardH)
+      /* one scale for both directions, so a frame is never stretched: the
+         crop above already made the shot this shape, and this only takes up
+         the pixel the rounding of either side can leave */
+      const k = Math.max(width / shot.width, boardH / shot.height)
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, 0, width, boardH)
+      ctx.clip()
+      ctx.drawImage(shot, (width - shot.width * k) / 2, (boardH - shot.height * k) / 2,
+        shot.width * k, shot.height * k)
+      ctx.restore()
       if (captionH) {
         ctx.fillStyle = '#f7f3ec'
         ctx.fillRect(0, boardH, width, captionH)

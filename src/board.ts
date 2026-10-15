@@ -1,7 +1,7 @@
 import Konva from 'konva'
 import {
   ArrowObj, BallObj, BoxObj, ConeObj, GoalObj, ImageObj, MarkerObj, PlayerObj, Scene, SceneObj, TextObj, Pt,
-  BOARD_W, BOARD_H, uid, cornersFromRect, nodesForShape, insertByTier, objectsInDrawOrder, boxHasCorners, isLight, playerDisplayName, trianglePoints,
+  BOARD_W, BOARD_H, uid, cornersFromRect, nodesForShape, insertByTier, objectsInDrawOrder, boxHasCorners, isLight, isWhiteish, armPoints, headPoints, playerDisplayName, resolveNamePos, trianglePoints, trackPlayersAtBall,
 } from './types'
 export { trianglePoints }
 import {
@@ -9,35 +9,23 @@ import {
   nearestOnPath, insertNodeAt, freezeHandles, setNodeCurve, nodesBBox, MIN_NODES,
 } from './path-nodes'
 import { Store } from './store'
-import { pitchById, LIVE_BG_KEY } from './pitches'
+import { pitchById, pitchIconScale, pitchLines, teamCodeStyle, LIVE_BG_KEY } from './pitches'
 import { backgrounds } from './background-library.ts'
 import { getAsset } from './assets'
 import { canPlaceCone } from './entitlements'
-import { arrowHeadSize, ballSrc, coneSrc, goalFullSrc, goalSmallSrc, CONE_ASPECT, GOAL_ASPECT } from './board-art'
+import { arrowHeadSize, arrowRenderedHeadSize, arrowShaftWidth, ARROW_DOT_GAP, ballSrc, coneSrc, goalFullSrc, goalSmallSrc, livePlayerSrc, CONE_ASPECT, GOAL_ASPECT, LIVE_PLAYER_CROP, LIVE_MARKER_ELLIPSE, MARKER_ASPECT } from './board-art'
 import { boardNoteText } from './board-note'
+import { ensureFont } from './fonts.ts'
+import { fontStack, haloAgainst, inkOn, objectAppearance, orOwn, resolveAppearance, type ResolvedAppearance } from './appearance.ts'
 import { applyHomography, homographyFromBox, invertHomography, type Homography, type Quad } from './perspective'
+import { movedObjects, objectCentre, PREVIOUS_BOARD_MOVEMENT_OPACITY, PREVIOUS_BOARD_OPACITY } from './previous-board'
 
-export { ballSrc, coneSrc, goalFullSrc, goalSmallSrc, CONE_ASPECT, GOAL_ASPECT } from './board-art'
+export { ballSrc, coneSrc, goalFullSrc, goalSmallSrc, livePlayerSrc, CONE_ASPECT, GOAL_ASPECT, LIVE_ART_SHEET, LIVE_PLAYER_CROP, LIVE_MARKER_ELLIPSE, MARKER_ASPECT } from './board-art'
 export { arrowHeadSize, arrowMediumWidth, ARROW_WIDTH_MEDIUM, ARROW_WIDTH_MEDIUM_LIVE } from './board-art'
 
-export const livePlayerSrc = new URL('../assets/icons/live/live_player.png', import.meta.url).href
 const liveScoreboardSrc = new URL('../assets/icons/live/live_scoreboard.png', import.meta.url).href
 const tjLogoSrc = new URL('../assets/brand/tj-logo.png', import.meta.url).href
-export const LIVE_PLAYER_CROP = { x: 752, y: 1486, width: 2844, height: 1563 }
 const LIVE_SCOREBOARD_CROP = { x: 460, y: 1659, width: 3176, height: 778 }
-/**
- * The ground ellipse inside the live-player crop, as fractions of that crop.
- * The art carries a soft drop shadow well past the ellipse and off to one
- * side, so the crop's own centre is neither where the ellipse looks like it
- * sits nor how big it looks. Everything that has to line up with the ellipse
- * — the anchor, the tap target, the selection box, the name — measures here.
- */
-export const LIVE_MARKER_ELLIPSE = {
-  cx: 1300 / 2844,
-  cy: 561 / 1563,
-  rx: 1013 / 2844,
-  ry: 314.5 / 1563,
-}
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 6
 
@@ -107,6 +95,15 @@ function normalizeDeg(deg: number) {
 
 export type ToolDefaults = {
   playerColor: string
+  /** Sizes are project settings, so everything of a kind matches. */
+  nameSize: number
+  playerSize: number
+  /** Numbers on or off, board-wide. */
+  showNumbers: boolean
+  /** Whether players carry a head showing which way they face. */
+  showFacing: boolean
+  /** Whether players carry arms showing how they are turned. */
+  showArms: boolean
   arrow: { dash: ArrowObj['dash']; color: string; width: number; head: boolean }
   measure: { color: string; width: number }
   box: { shape: BoxObj['shape']; fill: string; opacity: number }
@@ -118,16 +115,32 @@ export type ToolDefaults = {
 
 export type InteractionState = 'none' | 'selected' | 'node-edit'
 
+/** A box in board units, the shape everything the magnet reasons about takes. */
+type Box = { x: number; y: number; width: number; height: number }
+type SnapKind = 'object' | 'gap' | 'pitch'
+/** A line offered by the thing being dragged, or wanted by the thing it passes:
+    the middle of a shape, or one of its sides. */
+type SnapRole = 'mid' | 'edge'
+type SnapLine = { at: number; role: SnapRole }
+type SnapTarget = { at: number; kind: SnapKind; role?: SnapRole; rect?: Box; rect2?: Box }
+type SnapMatch = { at: number; offer: number; d: number; kind: SnapKind; rect?: Box; rect2?: Box }
+type SnapGuide = { axis: 'x' | 'y'; at: number; kind: SnapKind; rect?: Box; rect2?: Box; box: Box }
+
 type AnchorKind = 'start' | 'mid' | 'end'
 
-/** Dotted shafts read better with fat dots; the head never changes size. */
-function arrowShaftWidth(o: ArrowObj): number {
-  return o.dash === 'dotted' ? Math.max(o.width * 1.8, 7) : o.width
+/** Dotted shafts read better with fatter dots, and the head follows the dots.
+    How much of each is the pitch's business, so board-art.ts holds the rules. */
+function shaftWidth(o: ArrowObj, live: boolean): number {
+  return arrowShaftWidth(o.width, o.dash, live)
 }
 
-function arrowDash(o: ArrowObj): number[] | undefined {
+function headSize(o: ArrowObj, live: boolean): number {
+  return arrowRenderedHeadSize(o.width, o.dash, live)
+}
+
+function arrowDash(o: ArrowObj, live: boolean): number[] | undefined {
   if (o.dash === 'dashed') return [o.width * 2.4, o.width * 2]
-  if (o.dash === 'dotted') return [0.001, arrowShaftWidth(o) * 2.1]
+  if (o.dash === 'dotted') return [0.001, shaftWidth(o, live) * ARROW_DOT_GAP]
   return undefined
 }
 
@@ -141,6 +154,7 @@ function arrowControl(o: ArrowObj): Pt | null {
  * The arrow as a node path. Every arrow keeps a middle node so it can bend
  * from the centre immediately. Measurement lines are the one exception.
  */
+
 export function arrowNodes(o: ArrowObj): PathNode[] {
   if (o.points && o.points.length >= (o.measure ? 2 : 3)) return o.points
   if (o.points?.length === 2 && !o.measure) {
@@ -231,11 +245,11 @@ function arrowIsPath(o: ArrowObj): boolean {
   return !o.measure && !!o.points && o.points.length >= 2
 }
 
-function arrowGeometry(o: ArrowObj, visualScale = 1, live = false) {
+function arrowGeometry(o: ArrowObj, visualScale = 1, live = false, headScale = 1) {
   if (arrowIsPath(o)) {
     const segs = nodeSegments(o.points!, false)
     const t = segs.length ? segmentEndTangent(segs[segs.length - 1]) : { x: 1, y: 0 }
-    const head = o.head ? arrowHeadSize(o.width, live) * visualScale : 0
+    const head = o.head ? headSize(o, live) * visualScale * headScale : 0
     return { C: null as Pt | null, tx: t.x, ty: t.y, head }
   }
   const C = arrowControl(o)
@@ -243,7 +257,7 @@ function arrowGeometry(o: ArrowObj, visualScale = 1, live = false) {
   let ty = C ? o.y2 - C.y : o.y2 - o.y1
   const len = Math.hypot(tx, ty) || 1
   tx /= len; ty /= len
-  const head = o.head ? arrowHeadSize(o.width, live) * visualScale : 0
+  const head = o.head ? headSize(o, live) * visualScale * headScale : 0
   return { C, tx, ty, head }
 }
 
@@ -261,17 +275,23 @@ function tracePath(ctx: { beginPath(): void; moveTo(x: number, y: number): void;
   else ctx.lineTo(ex, ey)
 }
 
-export function makeArrowShape(o: ArrowObj, visualScale = 1, live = false): Konva.Shape {
+export function makeArrowShape(o: ArrowObj, visualScale = 1, live = false, shadow = 0, headScale = 1): Konva.Shape {
   const shape = new Konva.Shape({
     id: o.id,
     stroke: o.color,
     fill: o.color,
-    strokeWidth: arrowShaftWidth(o) * visualScale,
+    strokeWidth: shaftWidth(o, live) * visualScale,
     perfectDrawEnabled: false,
-    dash: o.measure ? undefined : arrowDash(o),
+    ...(shadow > 0 ? {
+      shadowColor: 'rgba(0,0,0,0.45)',
+      shadowBlur: shadow * 3 * visualScale,
+      shadowOffset: { x: 0, y: shadow * 1.2 * visualScale },
+      shadowForStrokeEnabled: true,
+    } : {}),
+    dash: o.measure ? undefined : arrowDash(o, live),
     lineCap: o.measure || o.dash === 'dotted' ? 'round' : 'butt',
     sceneFunc(ctx, sh) {
-      const { tx, ty, head } = arrowGeometry(o, visualScale, live)
+      const { tx, ty, head } = arrowGeometry(o, visualScale, live, headScale)
       if (o.measure) {
         const px = -ty, py = tx
         const tick = 22 * visualScale
@@ -333,32 +353,12 @@ export function materializeBoxNodes(o: BoxObj): PathNode[] {
   return o.corners
 }
 
-/** Centroid of a box's corners (or fallback to x/y). */
-function boxCentroid(o: BoxObj): Pt {
-  if (o.corners?.length) {
-    return {
-      x: o.corners.reduce((s, c) => s + c.x, 0) / o.corners.length,
-      y: o.corners.reduce((s, c) => s + c.y, 0) / o.corners.length,
-    }
-  }
-  return { x: o.x, y: o.y }
-}
-
-/** Center of an arrow (midpoint of all 3 control points). */
-function arrowCenter(o: ArrowObj): Pt {
-  return { x: (o.x1 + o.mx + o.x2) / 3, y: (o.y1 + o.my + o.y2) / 3 }
-}
-
-/** Center point of any object. */
-function objCenter(o: SceneObj): Pt {
-  if (o.type === 'arrow') return arrowCenter(o)
-  if (o.type === 'box') return boxCentroid(o)
-  return { x: o.x, y: o.y }
-}
-
 export class Board {
   stage: Konva.Stage
   bgLayer = new Konva.Layer({ listening: false })
+  /** Previous-board aids are local paint only and never receive pointer events. */
+  previousMovementLayer = new Konva.Layer({ listening: false, opacity: PREVIOUS_BOARD_MOVEMENT_OPACITY, visible: false })
+  previousBoardLayer = new Konva.Layer({ listening: false, opacity: PREVIOUS_BOARD_OPACITY, visible: false })
   objLayer = new Konva.Layer()
   /** Full-scene remote layers are visual only; they never become Store state. */
   private remoteBackgroundLayer = new Konva.Layer({ listening: false })
@@ -386,6 +386,7 @@ export class Board {
   /** Node-edit: the + button is armed, so the next tap on the outline adds. */
   addNodeArmed = false
   onRequestTextEdit: (id: string | null, boardPos: Pt) => void = () => {}
+  onPointPlayerAtBall: (id: string) => void = () => {}
   onInteractionStateChange: () => void = () => {}
   onBallPlaced: () => void = () => {}
   onViewChange: () => void = () => {}
@@ -424,6 +425,8 @@ export class Board {
   private noteText = ''
   private noteGroup = new Konva.Group()
   private pitchId = ''
+  /** Pending coalesced fit, so a burst of size changes costs one fit. */
+  private refitFrame = 0
   private container: HTMLDivElement
   private ballImg: HTMLImageElement
   private coneImg!: HTMLImageElement
@@ -435,8 +438,11 @@ export class Board {
   /** Remote pitch art is shared by frames; never create an Image per preview. */
   private remotePitchImages = new Map<string, HTMLImageElement>()
   private remoteScene: Scene | null = null
+  private previousScene: Scene | null = null
+  private previousSource: Scene | null = null
   private remoteBoardH = BOARD_H
-  private remoteLocalOpacity: { bg: number; obj: number; overlay: number; ui: number } | null = null
+  private remoteLocalOpacity: { bg: number; obj: number; overlay: number; ui: number; previous: number; movement: number } | null = null
+  private remoteLocalPreviousVisibility: { board: boolean; movement: boolean } | null = null
   private remoteLocalView: { zoom: number; scale: Konva.Vector2d; position: Konva.Vector2d } | null = null
   /** bumped by setLiveBackground so syncPitch reloads the screenshot */
   private liveVersion = 0
@@ -462,7 +468,7 @@ export class Board {
   private selectingKind: 'objects' | 'nodes' | null = null
   private selectRect: Konva.Rect | null = null
   private selectStart: Pt | null = null
-  private moveArm: { ids: string[]; start: Pt; orig: Record<string, any>; objs: Record<string, SceneObj>; nodes: Record<string, Konva.Node | null>; began: boolean } | null = null
+  private moveArm: { ids: string[]; start: Pt; orig: Record<string, any>; objs: Record<string, SceneObj>; nodes: Record<string, Konva.Node | null>; began: boolean; box: Box | null } | null = null
   private panArm: { start: Pt; origin: Pt; began: boolean } | null = null
   private lastTap: { id: string | null; time: number } | null = null
   /** Ignore synthetic mouse events that some mobile browsers emit after touch. */
@@ -494,7 +500,7 @@ export class Board {
     this.container = container
     this.defaults = defaults
     this.stage = new Konva.Stage({ container, width: 100, height: 100 })
-    this.stage.add(this.bgLayer, this.remoteBackgroundLayer, this.objLayer, this.remoteLayer, this.overlayLayer, this.remoteOverlayLayer, this.noteLayer, this.uiLayer)
+    this.stage.add(this.bgLayer, this.previousMovementLayer, this.previousBoardLayer, this.remoteBackgroundLayer, this.objLayer, this.remoteLayer, this.overlayLayer, this.remoteOverlayLayer, this.noteLayer, this.uiLayer)
 
     this.transformer = new Konva.Transformer({
       rotateAnchorOffset: 14,
@@ -559,8 +565,13 @@ export class Board {
       this.attachSelectionUi()
       this.stage.batchDraw()
     })
-    new ResizeObserver(() => this.fit()).observe(container)
+    new ResizeObserver(() => this.refit()).observe(container)
     this.fit()
+    // A height-driven pitch is fitted to whatever box exists at construction.
+    // iOS Safari settles 100dvh and the visual viewport after that first layout
+    // pass, so bounded follow-ups pick up the final height.
+    requestAnimationFrame(() => this.refit())
+    window.setTimeout(() => this.refit(), 300)
     this.rebuild()
   }
 
@@ -629,6 +640,68 @@ export class Board {
     this.snapEnabled = v
   }
 
+  /** Set the adjacent scene used by the local, visual-only onion skin. */
+  setPreviousBoard(scene: Scene | null) {
+    if (scene === this.previousSource && !!scene === !!this.previousScene) return
+    this.previousSource = scene
+    this.previousScene = scene ? JSON.parse(JSON.stringify(scene)) as Scene : null
+    // The toolbar stays live while a collaborator's frame is on screen. If
+    // the preference changes then, clearRemotePreview must restore the new
+    // state rather than the state that existed when the frame arrived.
+    if (this.remotePreviewActive && this.remoteLocalPreviousVisibility) {
+      const visible = !!this.previousScene
+      this.remoteLocalPreviousVisibility = { board: visible, movement: visible }
+    }
+    this.rebuildPreviousBoard()
+  }
+
+  private rebuildPreviousBoard() {
+    this.previousBoardLayer.destroyChildren()
+    const previous = this.previousScene
+    if (!previous) {
+      this.previousBoardLayer.visible(false)
+      this.rebuildPreviousMovement()
+      this.stage.batchDraw()
+      return
+    }
+
+    this.renderingScene = previous
+    for (const object of objectsInDrawOrder(previous.objects)) {
+      const node = this.buildNode(object)
+      if (node) this.previousBoardLayer.add(node as any)
+    }
+    this.renderingScene = null
+
+    this.previousBoardLayer.opacity(PREVIOUS_BOARD_OPACITY)
+    this.previousBoardLayer.visible(!this.remotePreviewActive)
+    this.previousBoardLayer.batchDraw()
+    this.rebuildPreviousMovement()
+  }
+
+  /** Redraw only the cheap connector layer while current objects are moving. */
+  private rebuildPreviousMovement() {
+    this.previousMovementLayer.destroyChildren()
+    const previous = this.previousScene
+    if (!previous) {
+      this.previousMovementLayer.visible(false)
+      this.previousMovementLayer.batchDraw()
+      return
+    }
+    for (const movement of movedObjects(previous, this.store.scene)) {
+      this.previousMovementLayer.add(new Konva.Line({
+        points: [movement.from.x, movement.from.y, movement.to.x, movement.to.y],
+        stroke: '#6b7280',
+        strokeWidth: 2,
+        dash: [7, 6],
+        lineCap: 'round',
+        listening: false,
+      }))
+    }
+    this.previousMovementLayer.opacity(PREVIOUS_BOARD_MOVEMENT_OPACITY)
+    this.previousMovementLayer.visible(!this.remotePreviewActive)
+    this.previousMovementLayer.batchDraw()
+  }
+
   /** Draw a received full scene above the local scene without changing durable state. */
   renderRemotePreview(scene: Scene) {
     // collaboration.ts has already migrated this untrusted wire scene. Do not
@@ -639,6 +712,10 @@ export class Board {
     if (!this.remotePreviewActive) {
       this.remoteLocalOpacity = {
         bg: this.bgLayer.opacity(), obj: this.objLayer.opacity(), overlay: this.overlayLayer.opacity(), ui: this.uiLayer.opacity(),
+        previous: this.previousBoardLayer.opacity(), movement: this.previousMovementLayer.opacity(),
+      }
+      this.remoteLocalPreviousVisibility = {
+        board: this.previousBoardLayer.visible(), movement: this.previousMovementLayer.visible(),
       }
       // The view only changes when the remote pitch has a different height.
       // An ordinary player move must not pull someone out of their zoom.
@@ -647,6 +724,8 @@ export class Board {
         : null
     }
     this.remotePreviewActive = true
+    this.previousBoardLayer.visible(false)
+    this.previousMovementLayer.visible(false)
     this.remoteBoardH = remoteHeight
     this.noteGroup.y(remoteHeight)
     this.remoteScene = scene
@@ -698,6 +777,14 @@ export class Board {
       this.objLayer.opacity(opacity.obj)
       this.overlayLayer.opacity(opacity.overlay)
       this.uiLayer.opacity(opacity.ui)
+      this.previousBoardLayer.opacity(opacity.previous)
+      this.previousMovementLayer.opacity(opacity.movement)
+    }
+    const previousVisibility = this.remoteLocalPreviousVisibility
+    this.remoteLocalPreviousVisibility = null
+    if (previousVisibility) {
+      this.previousBoardLayer.visible(previousVisibility.board)
+      this.previousMovementLayer.visible(previousVisibility.movement)
     }
     this.noteGroup.y(this.boardH)
     const view = this.remoteLocalView
@@ -815,11 +902,9 @@ export class Board {
   set bottomInset(v: number) {
     const next = Number.isFinite(v) ? Math.max(0, v) : 0
     if (next === this.inset) return
+    // The panel is an overlay. Remember its height for the next requested fit,
+    // but do not refit now or opening the menu moves the board underneath it.
     this.inset = next
-    // The board area just changed shape. In 3D that has to refit the camera or
-    // the pitch can end up behind the panel, which is the whole failure this
-    // camera exists to prevent.
-    if (this.container.clientWidth) this.fit()
   }
 
   fit() {
@@ -841,6 +926,15 @@ export class Board {
     if (this.tilted) { this.recomputeCamera(); return }
     this.stage.batchDraw()
     this.onViewChange()
+  }
+
+  /** Fit on the next frame; repeated calls in one frame do a single fit. */
+  refit() {
+    if (this.refitFrame) return
+    this.refitFrame = requestAnimationFrame(() => {
+      this.refitFrame = 0
+      this.fit()
+    })
   }
 
   /* ---------- the 3D view ---------- */
@@ -1261,9 +1355,11 @@ export class Board {
     return !!(style.custom || style.live)
   }
 
-  /** Our mark belongs on our pitch art only. A user-supplied background — a
-      saved photograph or an imported broadcast screenshot — replaces our
-      graphics entirely, so it carries none of our branding either. */
+  /** Our mark belongs on our own graphics. A user-supplied background — a
+      saved photograph or an imported broadcast screenshot — replaces our pitch
+      art, so nothing is written onto the frame itself. The live scoreboard is
+      the exception: it is our graphic laid over the frame, and it is branded
+      wherever it is drawn. */
   private brandsExport() { return !this.userBackground() }
 
   private drawBackground() {
@@ -1347,12 +1443,18 @@ export class Board {
     const score = `${m.home || 'Home'} ${m.homeScore || '0'}-${m.awayScore || '0'} ${m.away || 'Away'}`
 
     if (m.showTeams) {
-      const attrs = { fontSize: 24, fontStyle: 'bold', fontFamily: FONT, fill: '#b0b4ba', listening: false }
+      // Each code sits at the end its side defends: both at the bottom on a
+      // board whose goals are left and right, one at each end on a full pitch.
+      const { fontSize, awayAtTop } = teamCodeStyle(scene.pitch, bh)
+      const attrs = { fontSize, fontStyle: 'bold', fontFamily: FONT, fill: '#b0b4ba', listening: false }
       const awayLift = style.awayCodeLift ?? 0
+      const pad = Math.round(18 * (fontSize / 24))
       const mk = (text: string, right: boolean) => {
         const t = new Konva.Text({ ...attrs, text: text.toUpperCase() })
-        t.y(bh - 18 - t.height() - (right ? awayLift : 0))
-        t.x(right ? BOARD_W - 18 - t.width() : 18)
+        const top = right && awayAtTop
+        const alignRight = right || awayAtTop
+        t.y(top ? pad : bh - pad - t.height() - (right ? awayLift : 0))
+        t.x(alignRight ? BOARD_W - pad - t.width() : pad)
         layer.add(t)
       }
       if (m.home) mk(m.home, false)
@@ -1389,20 +1491,20 @@ export class Board {
         right(dateText, h * 0.654)
       }
 
-      // The local-only form is: if (this.brandsExport()) {
-      if (this.brandsExport() || remote) {
-        if (this.logoImg.complete && this.logoImg.naturalWidth) {
-          const logoW = w * 0.1225
-          const logoH = logoW * (this.logoImg.naturalHeight / this.logoImg.naturalWidth)
-          g.add(new Konva.Image({ image: this.logoImg, x: colCenter - logoW / 2, y: h * 0.154, width: logoW, height: logoH, listening: false }))
-        }
-        const domain = new Konva.Text({
-          text: 'tacticsjournal.com', fontSize: 6.5, fontStyle: 'bold',
-          fontFamily: SB_FONT, fill: '#000000', listening: false,
-        })
-        domain.position({ x: colCenter - domain.width() / 2, y: h * 0.687 })
-        g.add(domain)
+      // The scoreboard is our own graphic, drawn over whatever the frame is,
+      // so it carries the mark wherever it appears. The logo when it has
+      // loaded, the domain always: the column is never left blank.
+      if (this.logoImg.complete && this.logoImg.naturalWidth) {
+        const logoW = w * 0.1225
+        const logoH = logoW * (this.logoImg.naturalHeight / this.logoImg.naturalWidth)
+        g.add(new Konva.Image({ image: this.logoImg, x: colCenter - logoW / 2, y: h * 0.154, width: logoW, height: logoH, listening: false }))
       }
+      const domain = new Konva.Text({
+        text: 'tacticsjournal.com', fontSize: 6.5, fontStyle: 'bold',
+        fontFamily: SB_FONT, fill: '#000000', listening: false,
+      })
+      domain.position({ x: colCenter - domain.width() / 2, y: h * 0.687 })
+      g.add(domain)
 
       layer.add(g)
     } else if (m.showScoreboard) {
@@ -1451,6 +1553,7 @@ export class Board {
       const node = this.buildNode(o)
       if (node) this.objLayer.add(node as any)
     }
+    this.rebuildPreviousBoard()
     this.drawOverlay()
     this.attachSelectionUi()
     this.stage.batchDraw()
@@ -1467,10 +1570,46 @@ export class Board {
     old.destroy()
     this.objLayer.add(newNode as any)
     try { (newNode as any).zIndex(idx) } catch { /* ignore if out of range */ }
+    this.rebuildPreviousBoard()
     this.objLayer.batchDraw()
   }
 
-  private iconScale() { return (pitchById((this.renderingScene ?? this.store.scene).pitch).sides ?? 1) > 1 ? 0.5 : 1 }
+  private iconScale() { return pitchIconScale((this.renderingScene ?? this.store.scene).pitch) }
+
+  /**
+   * How this board is drawn. It comes off the scene, not off the device, so a
+   * shared board and its export look the same to everyone. Nothing here asks
+   * whether the reader has paid: what an author set is what is drawn.
+   */
+  private look(): ResolvedAppearance { return resolveAppearance((this.renderingScene ?? this.store.scene).appearance) }
+  /**
+   * The stack this board's text is set in. A family whose file has not arrived
+   * is fetched here rather than at load: the board asks for what it is drawing,
+   * so a board opened in a searched family fetches one file and redraws once,
+   * and a board in a family already kept redraws not at all.
+   */
+  private boardFont() {
+    const id = this.look()['font'] as string
+    if (id && id !== this.fontAsked) {
+      this.fontAsked = id
+      ensureFont(id).then(ok => { if (ok && (this.look()['font'] as string) === id) this.rebuild() })
+    }
+    return fontStack(id)
+  }
+  private fontAsked = ''
+  private tracking() { return this.look()['tracking'] as number }
+
+  /** A zone's border: its own where it has one, the board's otherwise. */
+  private zoneEdge(o: BoxObj) {
+    const look = this.look()
+    return {
+      width: objectAppearance(o.border, look['zone.border'] as number),
+      dashed: objectAppearance(o.borderStyle, look['zone.borderStyle'] as string) === 'dashed',
+      // A border with no colour of its own is the zone's own colour, which is
+      // what a zone edge has always been.
+      color: orOwn(look['zone.borderColor'], o.fill),
+    }
+  }
   /** Broadcast stills keep the finer arrow scale; drawn pitches keep the heavier one. */
   private arrowsAreLive() { return !!pitchById((this.renderingScene ?? this.store.scene).pitch).live }
 
@@ -1499,16 +1638,52 @@ export class Board {
     const hitR = Math.max(r + 14, 28)
     const sx = o.flipX ? -1 : 1
     const sy = o.flipY ? -1 : 1
+    // Arms: two bars opening away from the angle, in the ring's own ink and
+    // weight, so a token reads as a body turned rather than a dot.
+    if (typeof o.arms === 'number') {
+      for (const side of [-1, 1] as const) {
+        g.add(new Konva.Line({
+          points: armPoints(o.arms, side, r),
+          closed: true,
+          fill: '#0b0b0e',
+          listening: false,
+          perfectDrawEnabled: false,
+        }))
+      }
+    }
+    // Which way he is facing: a head on the edge of the token, in his own kit,
+    // outside the ring so it reads as a direction rather than part of the dot.
+    if (typeof o.facing === 'number') {
+      // The kit carries the head, so it needs no outline of its own. A white
+      // one would be nothing at all on a white pitch, so that one gets a line;
+      // a lilac or a keeper's grey is a colour and carries itself.
+      const pale = isWhiteish(o.color)
+      g.add(new Konva.Line({
+        points: headPoints(o.facing, r),
+        closed: true,
+        fill: o.color,
+        ...(pale ? { stroke: '#0b0b0e', strokeWidth: Math.max(0.75, r * 0.12) } : {}),
+        lineJoin: 'round',
+        listening: false,
+        perfectDrawEnabled: false,
+      }))
+    }
+    const look = this.look()
+    // A ring set to nothing is no ring: the token is its kit colour alone.
+    const outline = look['player.outline'] as number
+    const ring = outline > 0 ? Math.max(1.25, r * outline) : 0
+    const shade = look['player.shadow'] as number
+    const shadowAngle = (look['player.shadowAngle'] as number) * Math.PI / 180
     g.add(new Konva.Circle({
       radius: r,
       fill: o.color,
-      stroke: '#0b0b0e',
-      strokeWidth: Math.max(1.25, r * 0.38),
+      ...(ring ? { stroke: look['player.outlineColor'] as string, strokeWidth: ring } : {}),
       perfectDrawEnabled: false,
       shadowForStrokeEnabled: false,
-      shadowColor: 'rgba(0,0,0,0.3)',
-      shadowBlur: r * 0.35,
-      shadowOffset: { x: r * 0.12, y: r * 0.18 },
+      shadowColor: look['player.shadowColor'] as string,
+      shadowBlur: r * 0.35 * shade,
+      shadowOpacity: shade > 0 ? 0.3 : 0,
+      shadowOffset: { x: Math.cos(shadowAngle) * r * 0.22 * shade, y: Math.sin(shadowAngle) * r * 0.22 * shade },
       scaleX: sx,
       scaleY: sy,
       hitFunc(ctx, sh) {
@@ -1518,13 +1693,14 @@ export class Board {
         ctx.fillStrokeShape(sh)
       },
     }))
-    if (o.label) {
+    if (o.label && o.showLabel !== false) {
       g.add(new Konva.Text({
         text: o.label,
         fontSize: r * 1.05,
         fontStyle: 'bold',
-        fontFamily: 'Inter, system-ui, sans-serif',
-        fill: isLight(o.color) ? '#111827' : '#ffffff',
+        fontFamily: this.boardFont(),
+        letterSpacing: look['tracking'] as number,
+        fill: inkOn(look['player.numberColor'], o.color),
         align: 'center', verticalAlign: 'middle',
         width: r * 2, height: r * 2,
         offset: { x: r, y: r - 0.5 },
@@ -1535,16 +1711,25 @@ export class Board {
     if (o.name) {
       const fontSize = (o.nameSize ?? 18) * k
       const gap = 5 * k
+      const nameColor = look['player.nameColor'] as string
+      const nameHalo = (look['player.nameHalo'] as number) * k
       g.add(new Konva.Text({
         text: playerDisplayName(o.name, o.nameDisplay ?? 'last'),
         fontSize,
-        fontStyle: 'bold',
-        fontFamily: 'Inter, system-ui, sans-serif',
-        fill: '#111827',
+        fontStyle: look['player.nameWeight'] === 'normal' ? 'normal' : 'bold',
+        fontFamily: this.boardFont(),
+        letterSpacing: look['tracking'] as number,
+        fill: nameColor,
+        ...(nameHalo > 0 ? {
+          stroke: haloAgainst(look['player.nameHaloColor'], nameColor),
+          strokeWidth: nameHalo,
+          fillAfterStrokeEnabled: true,
+          lineJoin: 'round' as const,
+        } : {}),
         align: 'center',
         width: 160,
         offset: { x: 80, y: 0 },
-        y: o.namePos === 'top' ? -(r + gap + fontSize) : r + gap,
+        y: resolveNamePos(o) === 'top' ? -(r + gap + fontSize) : r + gap,
         listening: false,
         perfectDrawEnabled: false,
       }))
@@ -1675,7 +1860,7 @@ export class Board {
     const k = this.iconScale()
     const g = new Konva.Group({ x: o.x, y: o.y, rotation: o.rotation ?? 0 })
     const w = o.w * k
-    const h = w * (LIVE_PLAYER_CROP.height / LIVE_PLAYER_CROP.width)
+    const h = w * MARKER_ASPECT
     const ex = w * LIVE_MARKER_ELLIPSE.cx
     const ey = h * LIVE_MARKER_ELLIPSE.cy
     const rx = w * LIVE_MARKER_ELLIPSE.rx
@@ -1705,10 +1890,15 @@ export class Board {
         text: playerDisplayName(o.name, 'last'),
         fontSize,
         fontStyle: 'bold',
-        fontFamily: 'Inter, system-ui, sans-serif',
-        fill: '#ffffff',
-        shadowColor: 'rgba(0,0,0,0.55)',
-        shadowBlur: 4,
+        fontFamily: this.boardFont(),
+        letterSpacing: this.tracking(),
+        fill: this.look()['marker.nameColor'] as string,
+        ...((this.look()['marker.nameHalo'] as number) > 0 ? {
+          stroke: this.look()['marker.nameHaloColor'] as string,
+          strokeWidth: (this.look()['marker.nameHalo'] as number) * k * 0.6,
+          fillAfterStrokeEnabled: true,
+          lineJoin: 'round' as const,
+        } : {}),
         align: 'center',
         width: 160,
         offset: { x: 80, y: 0 },
@@ -1723,7 +1913,14 @@ export class Board {
 
   private buildArrow(o: ArrowObj): Konva.Node {
     const g = new Konva.Group({ x: 0, y: 0 })
-    g.add(makeArrowShape(o, this.iconScale(), this.arrowsAreLive()))
+    const look = this.look()
+    const node = makeArrowShape(
+      o, this.iconScale(), this.arrowsAreLive(),
+      objectAppearance(o.shadow, look['arrow.shadow'] as number),
+      look['arrow.head'] as number,
+    )
+    node.opacity(look['arrow.opacity'] as number)
+    g.add(node)
     this.common(g, o)
     return g
   }
@@ -1735,16 +1932,23 @@ export class Board {
       const g = new Konva.Group({ x: 0, y: 0 })
       const nodes = o.corners
       const outline = o.shape === 'outline'
+      const edge = this.zoneEdge(o)
       g.add(new Konva.Shape({
         fill: outline ? undefined : o.fill,
-        stroke: outline ? o.fill : undefined,
-        strokeWidth: outline ? 4 * k : 0,
+        stroke: outline ? o.fill : edge.width ? edge.color : undefined,
+        strokeWidth: outline ? 4 * k : edge.width * k,
+        dash: !outline && edge.width && edge.dashed ? [9 * k, 7 * k] : undefined,
         opacity: outline ? 1 : o.opacity,
         perfectDrawEnabled: false,
         sceneFunc(ctx, sh) {
           traceNodes(ctx as any, nodes, true)
           if (outline) ctx.strokeShape(sh)
-          else ctx.fillShape(sh)
+          else {
+            ctx.fillShape(sh)
+            // The border is drawn at full strength over the wash, so a zone can
+            // be faint inside and still have an edge you can follow.
+            if (edge.width) { ctx.save(); (ctx as any)._context.globalAlpha = 1; ctx.strokeShape(sh); ctx.restore() }
+          }
         },
         hitFunc(ctx, sh) {
           traceNodes(ctx as any, nodes, true)
@@ -1761,8 +1965,9 @@ export class Board {
           text: o.label,
           fontSize: 18 * k,
           fontStyle: 'bold',
-          fontFamily: 'Inter, system-ui, sans-serif',
-          fill: o.fill,
+          fontFamily: this.boardFont(),
+          letterSpacing: this.tracking(),
+          fill: orOwn(this.look()['zone.labelColor'], o.fill),
           listening: false,
         })
         const tw = text.width(), th = text.height()
@@ -1786,10 +1991,12 @@ export class Board {
       scaleX: o.flipX ? -1 : 1,
       scaleY: o.flipY ? -1 : 1,
     })
+    const edge = this.zoneEdge(o)
     const shapeAttrs = {
       fill: o.shape === 'outline' ? undefined : o.fill,
-      stroke: o.shape === 'outline' ? o.fill : undefined,
-      strokeWidth: o.shape === 'outline' ? 4 * k : 0,
+      stroke: o.shape === 'outline' ? o.fill : edge.width ? edge.color : undefined,
+      strokeWidth: o.shape === 'outline' ? 4 * k : edge.width * k,
+      ...(o.shape !== 'outline' && edge.width && edge.dashed ? { dash: [9 * k, 7 * k] } : {}),
       opacity: o.shape === 'outline' ? 1 : o.opacity,
       perfectDrawEnabled: false,
     }
@@ -1816,6 +2023,7 @@ export class Board {
       obj.h = Math.max(8, initial.h * Math.abs(sy))
       obj.rotation = g.rotation()
       obj.x = g.x(); obj.y = g.y()
+      this.rebuildPreviousMovement()
       this.publishPreview('update')
     })
     g.on('transformend', () => {
@@ -1831,13 +2039,25 @@ export class Board {
 
   private buildText(o: TextObj): Konva.Node {
     const k = this.iconScale()
+    const look = this.look()
+    const halo = objectAppearance(o.halo, look['text.halo'] as number)
     const node = new Konva.Text({
       x: o.x, y: o.y,
       text: o.text,
       fontSize: o.size * k,
       fontStyle: o.bold ? 'bold' : 'normal',
-      fontFamily: 'Inter, system-ui, sans-serif',
+      fontFamily: this.boardFont(),
+      letterSpacing: look['tracking'] as number,
       fill: o.color,
+      // A halo is drawn under the letters. Left to itself it takes whichever of
+      // black and white the label is not, so it reads over grass or over a
+      // photograph either way.
+      ...(halo > 0 ? {
+        stroke: haloAgainst(look['text.haloColor'], o.color),
+        strokeWidth: halo * k,
+        fillAfterStrokeEnabled: true,
+        lineJoin: 'round' as const,
+      } : {}),
       rotation: o.rotation,
       perfectDrawEnabled: false,
       scaleX: o.flipX ? -1 : 1,
@@ -1866,6 +2086,7 @@ export class Board {
       obj.size = Math.max(8, initial.size * Math.abs(sy))
       obj.rotation = node.rotation()
       obj.x = node.x(); obj.y = node.y()
+      this.rebuildPreviousMovement()
       this.publishPreview('update')
     })
     node.on('transformend', () => {
@@ -1899,13 +2120,11 @@ export class Board {
       return
     }
 
-    // multi-select: outlines only
+    // multi-select: one outline around the whole group
     if (ids.length > 1) {
       this.transformer.nodes([])
-      for (const id of ids) {
-        const sel = this.store.obj(id)
-        if (sel) this.addSelectionOutline(sel)
-      }
+      const sels = ids.map(id => this.store.obj(id)).filter(Boolean) as SceneObj[]
+      if (sels.length) this.addSelectionOutline(sels)
       return
     }
 
@@ -1923,63 +2142,82 @@ export class Board {
       return
     }
 
-    // Dashed outline, resize node, and edit icon where supported. Every zone
+    // Dashed outline, rotation node, and edit icon where supported. Every zone
     // uses these controls. Ovals and triangles keep their exact native shape
     // until the pencil materializes their edit nodes.
     this.transformer.nodes([])
     this.addSelectionOutline(sel)
-    this.addResizeNode(sel)
+    this.addRotationNode(sel)
     if (hasNodeEdit(sel)) this.addEditIcon(sel)
   }
 
-  /** Dashed halo so a selected object is visibly selected. */
-  private addSelectionOutline(sel: SceneObj) {
-    const r = this.objectRect(sel)
+  /** Union of the board-space boxes the given objects occupy. */
+  private outlineRect(sels: SceneObj[]) {
+    const rects = sels.map(sel => this.objectRect(sel))
+    const minX = Math.min(...rects.map(r => r.x))
+    const minY = Math.min(...rects.map(r => r.y))
+    const maxX = Math.max(...rects.map(r => r.x + r.width))
+    const maxY = Math.max(...rects.map(r => r.y + r.height))
     const pad = 5
+    return { x: minX - pad, y: minY - pad, width: maxX - minX + pad * 2, height: maxY - minY + pad * 2 }
+  }
+
+  /**
+   * Dashed halo so a selection is visibly selected. A group of objects gets a
+   * single box around all of them rather than one box each.
+   */
+  private addSelectionOutline(sel: SceneObj | SceneObj[]) {
+    const sels = Array.isArray(sel) ? sel : [sel]
+    const r = this.outlineRect(sels)
     const outline = new Konva.Rect({
       name: 'selbox',
-      x: r.x - pad, y: r.y - pad,
-      width: r.width + pad * 2, height: r.height + pad * 2,
+      x: r.x, y: r.y,
+      width: r.width, height: r.height,
       stroke: '#4a90d9',
       strokeWidth: 1.5 / this.screenScale(),
       dash: [6 / this.screenScale(), 4 / this.screenScale()],
       cornerRadius: 6,
       listening: false,
     })
-    outline.setAttr('selectionId', sel.id)
+    outline.setAttr('selectionIds', sels.map(s => s.id))
     this.uiLayer.add(outline)
   }
 
-  /** Keep every selected object's halo attached while gesture data changes. */
+  /** Keep the selection halo attached while gesture data changes. */
   private syncSelectionUiDuringMove() {
-    const pad = 5
     this.uiLayer.find('.selbox').forEach(node => {
-      const id = node.getAttr('selectionId')
-      if (typeof id !== 'string') return
-      const obj = this.store.obj(id)
-      if (!obj) return
-      const rect = this.objectRect(obj)
-      node.setAttrs({
-        x: rect.x - pad,
-        y: rect.y - pad,
-        width: rect.width + pad * 2,
-        height: rect.height + pad * 2,
-      })
+      const ids = node.getAttr('selectionIds')
+      if (!Array.isArray(ids)) return
+      const objs = ids.map((id: string) => this.store.obj(id)).filter(Boolean) as SceneObj[]
+      if (!objs.length) return
+      node.setAttrs(this.outlineRect(objs))
     })
     if (this.transformer.nodes().length) this.transformer.forceUpdate()
   }
 
-  /** Draggable circle at top-right of selection box for scaling. */
-  private addResizeNode(sel: SceneObj) {
+  /**
+   * Draggable circle at top-right of the selection box. It turns every object
+   * that displays it. A player wearing neither a head nor arms has nothing to
+   * turn, so he gets no node rather than one that does nothing.
+   */
+  private addRotationNode(sel: SceneObj) {
+    const spins = sel.type === 'player'
+    if (spins && typeof sel.facing !== 'number' && typeof sel.arms !== 'number') return
     const rect = this.objectRect(sel)
     const pad = 5
     const r = Math.min(12, Math.max(5, 8 / this.screenScale()))
-    const hitR = Math.max(r * 1.5, 18 / this.screenScale())
+    const center = objectCentre(sel)
     const cx = rect.x + rect.width + pad
     const cy = rect.y - pad
-    const center = objCenter(sel)
-    const startDist = Math.hypot(cx - center.x, cy - center.y) || 1
-    // snapshot the original state so we always scale from the original, not compounding
+    // A spin is a drag, so the node wants a finger-sized target. It cannot grow
+    // where it sits: on a phone a token is a dozen pixels across, the handles
+    // are drawn above the board, and a 44pt circle centred here would win every
+    // touch on the player and leave no way to drag him. So the target is offset
+    // outwards instead - the same small node to look at, with the room it needs
+    // in the empty corner rather than over the man.
+    const hitR = Math.max(r * 1.5, (spins ? 22 : 18) / this.screenScale())
+    const hitOff = spins ? hitR * 0.62 : 0
+    // Snapshot the original state so each move turns from the gesture's start.
     const origSnapshot = JSON.parse(JSON.stringify(sel))
 
     const a = new Konva.Circle({
@@ -1992,77 +2230,47 @@ export class Board {
       dragDistance: 8,
       hitFunc(ctx, sh) {
         ctx.beginPath()
-        ctx.arc(0, 0, hitR, 0, Math.PI * 2)
+        ctx.arc(hitOff * Math.SQRT1_2, -hitOff * Math.SQRT1_2, hitR, 0, Math.PI * 2)
         ctx.closePath()
         ctx.fillStrokeShape(sh)
       },
     })
-    // Press and hold the node, then drag, to rotate instead of resize.
     const startAngle = Math.atan2(cy - center.y, cx - center.x)
-    let mode: 'scale' | 'rotate' = 'scale'
-    let holdTimer: number | null = null
-    const clearHold = () => {
-      if (holdTimer !== null) { clearTimeout(holdTimer); holdTimer = null }
-    }
-    {
-      a.on('pointerdown', () => {
-        clearHold()
-        holdTimer = window.setTimeout(() => {
-          holdTimer = null
-          mode = 'rotate'
-          a.fill('#4a90d9')
-          this.uiLayer.batchDraw()
-        }, 350)
-      })
-      a.on('pointerup pointercancel', () => {
-        clearHold()
-        // a hold that never became a drag leaves the node highlighted
-        if (mode === 'rotate') { mode = 'scale'; this.rebuild() }
-      })
-    }
-    a.on('dragstart', () => { clearHold(); this.store.beginGesture() })
+    a.on('dragstart', () => { this.store.beginGesture() })
     a.on('dragmove', () => {
       const p = a.position()
-      if (mode === 'rotate') {
-        const angle = Math.atan2(p.y - center.y, p.x - center.x)
-        let deg = ((angle - startAngle) * 180) / Math.PI
-        // ease onto the straight angles coaches actually want
-        const near = Math.round(deg / 15) * 15
-        if (Math.abs(deg - near) < 5) deg = near
-        this.restoreObject(sel, origSnapshot)
-        this.rotateObject(sel, deg, center)
+      const angle = Math.atan2(p.y - center.y, p.x - center.x)
+      let deg = ((angle - startAngle) * 180) / Math.PI
+      // The magnet eases onto the straight angles coaches actually want.
+      const near = Math.round(deg / 15) * 15
+      if (this.snapEnabled && Math.abs(deg - near) < 5) deg = near
+      // A token is a circle: turning it does nothing you can see. What the
+      // spin is for is the head on its edge, so that is what it turns.
+      if (sel.type === 'player' && (typeof sel.facing === 'number' || typeof sel.arms === 'number')) {
+        const turn = (from: number) => ((((from ?? 0) + deg) % 360) + 360) % 360
+        delete sel.trackBall
+        if (typeof sel.facing === 'number') sel.facing = turn(origSnapshot.facing)
+        if (typeof sel.arms === 'number') sel.arms = turn(origSnapshot.arms)
         this.rebuildObjectNode(sel)
-        const rotRect = this.objectRect(sel)
-        const rotBox = this.uiLayer.findOne('.selbox') as Konva.Rect | null
-        if (rotBox) {
-          const sp = 5
-          rotBox.setAttrs({ x: rotRect.x - sp, y: rotRect.y - sp, width: rotRect.width + sp * 2, height: rotRect.height + sp * 2 })
-        }
         this.uiLayer.batchDraw()
-        this.onRotation(this.angleOf(sel, deg))
+        this.onRotation(Math.round(sel.facing ?? sel.arms ?? 0))
         this.publishPreview('update')
         return
       }
-      const dist = Math.hypot(p.x - center.x, p.y - center.y) || 1
-      const scale = dist / startDist
-      // restore from snapshot first, then apply scale (no compounding)
       this.restoreObject(sel, origSnapshot)
-      this.scaleObject(sel, scale, center)
-      // rebuild the object's visual node so it renders at the new size
+      this.rotateObject(sel, deg, center)
       this.rebuildObjectNode(sel)
-      // update the dashed selection box to follow
-      const newRect = this.objectRect(sel)
-      const selbox = this.uiLayer.findOne('.selbox') as Konva.Rect | null
-      if (selbox) {
+      const rotRect = this.objectRect(sel)
+      const rotBox = this.uiLayer.findOne('.selbox') as Konva.Rect | null
+      if (rotBox) {
         const sp = 5
-        selbox.setAttrs({ x: newRect.x - sp, y: newRect.y - sp, width: newRect.width + sp * 2, height: newRect.height + sp * 2 })
+        rotBox.setAttrs({ x: rotRect.x - sp, y: rotRect.y - sp, width: rotRect.width + sp * 2, height: rotRect.height + sp * 2 })
       }
       this.uiLayer.batchDraw()
+      this.onRotation(this.angleOf(sel, deg))
       this.publishPreview('update')
     })
     a.on('dragend', () => {
-      clearHold()
-      mode = 'scale'
       this.onRotation(null)
       this.publishPreview('end')
       this.store.endGesture()
@@ -2071,12 +2279,14 @@ export class Board {
     this.uiLayer.add(a)
   }
 
-  /** Restore an object's geometry from a snapshot (for non-compounding resize). */
+  /** Restore an object's geometry from the gesture-start snapshot. */
   private restoreObject(sel: SceneObj, snap: any) {
     if (sel.type === 'arrow') {
       sel.x1 = snap.x1; sel.y1 = snap.y1
       sel.mx = snap.mx; sel.my = snap.my
       sel.x2 = snap.x2; sel.y2 = snap.y2
+      if (snap.points) sel.points = JSON.parse(JSON.stringify(snap.points))
+      else delete sel.points
     } else if (sel.type === 'box') {
       sel.x = snap.x; sel.y = snap.y; sel.w = snap.w; sel.h = snap.h
       if (snap.corners) {
@@ -2145,47 +2355,6 @@ export class Board {
     // pieces off the centre of rotation also travel around it
     const p = turn(o.x, o.y)
     o.x = p.x; o.y = p.y
-  }
-
-  /** Scale an object uniformly around a center point by a factor. */
-  private scaleObject(sel: SceneObj, scale: number, center: Pt) {
-    const s = (x: number, y: number) => ({
-      x: center.x + (x - center.x) * scale,
-      y: center.y + (y - center.y) * scale,
-    })
-    const grow = (h: Pt) => ({ x: h.x * scale, y: h.y * scale })
-    if (sel.type === 'arrow') {
-      const p1 = s(sel.x1, sel.y1), pm = s(sel.mx, sel.my), p2 = s(sel.x2, sel.y2)
-      sel.x1 = p1.x; sel.y1 = p1.y
-      sel.mx = pm.x; sel.my = pm.y
-      sel.x2 = p2.x; sel.y2 = p2.y
-      if (sel.points) {
-        for (const n of sel.points) {
-          const p = s(n.x, n.y)
-          n.x = p.x; n.y = p.y
-          if (n.h1) n.h1 = grow(n.h1)
-          if (n.h2) n.h2 = grow(n.h2)
-        }
-        syncArrowLegacy(sel)
-      }
-    } else if (sel.type === 'box' && sel.corners) {
-      for (const c of sel.corners) {
-        const p = s(c.x, c.y)
-        c.x = p.x; c.y = p.y
-        if (c.h1) c.h1 = grow(c.h1)
-        if (c.h2) c.h2 = grow(c.h2)
-      }
-      sel.x = sel.corners.reduce((a, c) => a + c.x, 0) / sel.corners.length
-      sel.y = sel.corners.reduce((a, c) => a + c.y, 0) / sel.corners.length
-      sel.w = Math.max(8, sel.w * scale)
-      sel.h = Math.max(8, sel.h * scale)
-    } else if (sel.type === 'player') {
-      sel.r = Math.max(5, sel.r * scale)
-    } else if (sel.type === 'ball' || sel.type === 'cone' || sel.type === 'goal' || sel.type === 'image') {
-      (sel as any).size = Math.max(8, (sel as any).size * scale)
-    } else if (sel.type === 'marker') {
-      sel.w = Math.max(16, sel.w * scale)
-    }
   }
 
   /** Pencil icon at bottom-right of selection box; tap enters node editing. */
@@ -2500,6 +2669,7 @@ export class Board {
     const { obj, nodes, closed } = path
 
     const names = this.grabbedHandle ? [this.grabbedHandle] : Array.from(this.selectedNodes)
+    let snapped = false
     for (const name of names) {
       const orig = origPositions[name]
       if (!orig) continue
@@ -2508,7 +2678,11 @@ export class Board {
       const node = nodes[parsed.i]
 
       if (parsed.kind === 'node') {
-        const target = this.snapPoint({ x: orig.x + dx, y: orig.y + dy })
+        // Shaping is about the shape: a corner wants to line up with the other
+        // corners of its own outline, not with a player somewhere else on the
+        // pitch. Its own nodes are the only targets while it is being edited.
+        const target = this.snapToOwnNodes({ x: orig.x + dx, y: orig.y + dy }, nodes, parsed.i)
+        snapped = true
         node.x = target.x
         node.y = target.y
         continue
@@ -2536,15 +2710,317 @@ export class Board {
     this.afterNodeChange(obj)
     this.rebuildObjectNode(obj)
     this.attachSelectionUi()
+    // Once per move, after the anchors are back: drawing a guide per node in
+    // the pick tore the same lines down and put them up several times a frame.
+    if (snapped) this.drawSnapGuides()
     this.uiLayer.batchDraw()
     this.publishPreview('update')
   }
 
-  /** Apply snap grid if enabled. */
-  private snapPoint(p: Pt): Pt {
+  /* ---------- the magnet ---------- */
+
+  /**
+   * The magnet aligns to what is on the board rather than to a grid nobody can
+   * see. Every other object offers three lines an axis - its two edges and its
+   * centre - the pitch offers its own markings, and a pair already sharing a
+   * line offers the gap that would make a third match them. The closest offer
+   * within the threshold wins, and the line it matched is drawn while the drag
+   * lasts so the alignment is something you watch happen rather than discover.
+   */
+  private snapGuides: SnapGuide[] = []
+  private snapGuideNodes: Konva.Line[] = []
+  /** What each axis is currently held to, so it does not chatter at the edge. */
+  private snapHold: { x: SnapMatch | null; y: SnapMatch | null } = { x: null, y: null }
+  /** The token a loose point is currently caught on, held until it is let go. */
+  private snapHoldPoint: string | null = null
+
+  /** Eight screen pixels, so the pull feels the same at any zoom. */
+  private snapTolerance() { return 8 / this.screenScale() }
+  // Break-out is the size of the jump when a snap lets go, so it is only just
+  // wider than the catch: enough to stop it re-catching, small enough not to
+  // feel like the object was thrown.
+  private snapRelease() { return 10 / this.screenScale() }
+
+  /**
+   * A token is a dot: only its middle is worth lining up, and offering its box
+   * as well would let a defender sit a radius below the man he is meant to be
+   * level with. A zone is a shape with sides, so its edges count too.
+   */
+  private static EDGED = new Set<SceneObj['type']>(['box', 'image'])
+
+  private rectEdges(r: Box, axis: 'x' | 'y', edged = true): SnapLine[] {
+    const mid = axis === 'x' ? r.x + r.width / 2 : r.y + r.height / 2
+    const middle: SnapLine = { at: mid, role: 'mid' }
+    if (!edged) return [middle]
+    const [lo, hi] = axis === 'x' ? [r.x, r.x + r.width] : [r.y, r.y + r.height]
+    return [{ at: lo, role: 'edge' }, middle, { at: hi, role: 'edge' }]
+  }
+
+  /** Lines to land on: what is drawn, then what is painted on the grass. */
+  private snapTargets(moving: Set<string>, axis: 'x' | 'y'): SnapTarget[] {
+    const out: SnapTarget[] = []
+    for (const obj of this.store.scene.objects) {
+      if (moving.has(obj.id)) continue
+      const r = this.objectRect(obj)
+      for (const line of this.rectEdges(r, axis, Board.EDGED.has(obj.type))) {
+        out.push({ at: line.at, kind: 'object', role: line.role, rect: r })
+      }
+    }
+    const lines = pitchLines(this.store.scene.pitch)
+    if (lines) for (const at of lines[axis]) out.push({ at, kind: 'pitch' })
+    return out
+  }
+
+  /**
+   * Two objects already level with each other make a run, and a third dropped
+   * near it wants the gap that matches: either the middle of the pair, or one
+   * step on past the end of the run.
+   */
+  private spacingTargets(moving: Set<string>, axis: 'x' | 'y', box: Box): SnapTarget[] {
+    const along = axis === 'x' ? 'cx' : 'cy'
+    const across = axis === 'x' ? 'cy' : 'cx'
+    const centre = { cx: box.x + box.width / 2, cy: box.y + box.height / 2 }
+    const row: { at: number; rect: Box }[] = []
+    for (const obj of this.store.scene.objects) {
+      if (moving.has(obj.id)) continue
+      const r = this.objectRect(obj)
+      const c = { cx: r.x + r.width / 2, cy: r.y + r.height / 2 }
+      // near enough to the held object's line to be part of the same run
+      if (Math.abs(c[across] - centre[across]) > 26) continue
+      row.push({ at: c[along], rect: r })
+    }
+    if (row.length < 2) return []
+    row.sort((a, b) => a.at - b.at)
+    const out: SnapTarget[] = []
+    for (let i = 0; i < row.length - 1; i++) {
+      out.push({ at: (row[i].at + row[i + 1].at) / 2, kind: 'gap', rect: row[i].rect, rect2: row[i + 1].rect })
+    }
+    const [first, second] = row
+    const last = row[row.length - 1], prev = row[row.length - 2]
+    out.push({ at: last.at + (last.at - prev.at), kind: 'gap', rect: prev.rect, rect2: last.rect })
+    out.push({ at: first.at - (second.at - first.at), kind: 'gap', rect: first.rect, rect2: second.rect })
+    return out
+  }
+
+  /** An object you drew beats a gap, and a gap beats a line that was painted. */
+  private static SNAP_RANK: Record<SnapKind, number> = { object: 0, gap: 1, pitch: 2 }
+
+  /**
+   * Like meets like. A player offers only his middle, so a zone dragged over
+   * him used to catch by whichever side happened to be nearest and sit with an
+   * edge through the man. A middle lands on a middle and a side on a side; a
+   * painted pitch line and an equal gap take either.
+   */
+  private bestSnap(offers: SnapLine[], targets: SnapTarget[], tol: number): SnapMatch | null {
+    let best: SnapMatch | null = null
+    for (const { at: offer, role } of offers) {
+      for (const t of targets) {
+        if (t.role && t.role !== role) continue
+        const d = Math.abs(t.at - offer)
+        if (d > tol) continue
+        /* Rank first, then distance. Everything here is already inside the
+           pull, so "which is nearest" was the wrong question: a painted line
+           three units away was beating the man you were dragging onto. What
+           you drew wins, and among equals the nearest one does. */
+        const rank = Board.SNAP_RANK[t.kind]
+        const better = !best
+          || rank < Board.SNAP_RANK[best.kind]
+          || (rank === Board.SNAP_RANK[best.kind] && d < best.d)
+        if (better) best = { at: t.at, offer, d, kind: t.kind, rect: t.rect, rect2: t.rect2 }
+      }
+    }
+    return best
+  }
+
+  /**
+   * The delta a drag should actually take. The whole pick is snapped by its
+   * bounding box, so four players carried together stay in the shape they were
+   * in rather than following whichever one the store listed first.
+   */
+  private snapMove(ids: string[], box: Box, dx: number, dy: number): { dx: number; dy: number } {
+    this.snapGuides = []
+    if (!this.snapEnabled) { this.snapHold = { x: null, y: null }; return { dx, dy } }
+    const moving = new Set(ids)
+    const tol = this.snapTolerance(), release = this.snapRelease()
+    const moved: Box = { x: box.x + dx, y: box.y + dy, width: box.width, height: box.height }
+    const out = { dx, dy }
+
+    const soleType = ids.length === 1 ? this.store.obj(ids[0])?.type : null
+    const edged = ids.length > 1 || (!!soleType && Board.EDGED.has(soleType))
+    for (const axis of ['x', 'y'] as const) {
+      const offers = this.rectEdges(moved, axis, edged)
+      const targets = [...this.snapTargets(moving, axis), ...this.spacingTargets(moving, axis, moved)]
+      // A snap that has taken keeps its hold until the pointer is clear of it,
+      // so an object does not flicker in and out at the edge of the threshold.
+      const held = this.snapHold[axis]
+      const keep = held && offers.some(o => Math.abs(held.at - o.at) <= release)
+        ? this.bestSnap(offers, targets.filter(t => t.at === held.at), release)
+        : null
+      const match = keep ?? this.bestSnap(offers, targets, tol)
+      this.snapHold[axis] = match
+      if (!match) continue
+      const shift = match.at - match.offer
+      if (axis === 'x') out.dx += shift
+      else out.dy += shift
+      this.snapGuides.push({ axis, at: match.at, kind: match.kind, rect: match.rect, rect2: match.rect2, box: moved })
+    }
+    return out
+  }
+
+  /** Draw the lines the magnet is holding, and the gaps it made equal. */
+  private snapGuideKey = ''
+  private drawSnapGuides() {
+    const key = this.snapGuides.map(g => `${g.axis}:${Math.round(g.at * 10)}:${g.kind}`).join('|')
+    if (key === this.snapGuideKey) return
+    this.snapGuideKey = key
+    for (const node of this.snapGuideNodes) node.destroy()
+    this.snapGuideNodes = []
+    const k = 1 / this.screenScale()
+    for (const g of this.snapGuides) {
+      const boxes = [g.box, g.rect, g.rect2].filter(Boolean) as Box[]
+      // A pitch marking is not a relationship between two objects, so it draws
+      // as what it is: the line itself, the length of the board.
+      const full = g.kind === 'pitch'
+      const line = new Konva.Line({
+        listening: false,
+        name: 'snap-guide',
+        stroke: '#d81b7a',
+        strokeWidth: 1.5 * k,
+        dash: g.kind === 'pitch' ? [4 * k, 5 * k] : [8 * k, 5 * k],
+        points: g.axis === 'x'
+          ? [g.at, full ? 0 : Math.min(...boxes.map(b => b.y)) - 30 * k, g.at, full ? this.boardH : Math.max(...boxes.map(b => b.y + b.height)) + 30 * k]
+          : [full ? 0 : Math.min(...boxes.map(b => b.x)) - 30 * k, g.at, full ? BOARD_W : Math.max(...boxes.map(b => b.x + b.width)) + 30 * k, g.at],
+      })
+      this.uiLayer.add(line)
+      this.snapGuideNodes.push(line)
+      if (g.kind === 'gap' && g.rect && g.rect2) {
+        // the two spans it just made equal, drawn over the gaps themselves
+        const centres = [g.box, g.rect, g.rect2]
+          .map(b => ({ x: b!.x + b!.width / 2, y: b!.y + b!.height / 2 }))
+          .sort((a, b) => (g.axis === 'x' ? a.x - b.x : a.y - b.y))
+        const off = g.axis === 'x'
+          ? Math.min(...boxes.map(b => b.y)) - 22 * k
+          : Math.min(...boxes.map(b => b.x)) - 22 * k
+        // Each span is drawn short of its neighbour and capped at both ends, so
+        // two equal gaps read as two measurements rather than one long line.
+        const inset = 7 * k, tick = 5 * k
+        for (let i = 0; i < centres.length - 1; i++) {
+          const from = g.axis === 'x' ? centres[i].x + inset : centres[i].y + inset
+          const to = g.axis === 'x' ? centres[i + 1].x - inset : centres[i + 1].y - inset
+          if (to - from < inset) continue
+          const span = new Konva.Line({
+            listening: false, name: 'snap-guide', stroke: '#d81b7a', strokeWidth: 1.4 * k,
+            points: g.axis === 'x' ? [from, off, to, off] : [off, from, off, to],
+          })
+          this.uiLayer.add(span)
+          this.snapGuideNodes.push(span)
+          for (const at of [from, to]) {
+            const cap = new Konva.Line({
+              listening: false, name: 'snap-guide', stroke: '#d81b7a', strokeWidth: 1.4 * k,
+              points: g.axis === 'x' ? [at, off - tick, at, off + tick] : [off - tick, at, off + tick, at],
+            })
+            this.uiLayer.add(cap)
+            this.snapGuideNodes.push(cap)
+          }
+        }
+      }
+    }
+    this.uiLayer.batchDraw()
+  }
+
+  /** Guides are feedback, so they leave with the gesture that asked for them. */
+  private clearSnapGuides() {
+    if (!this.snapGuideNodes.length && !this.snapGuides.length) return
+    for (const node of this.snapGuideNodes) node.destroy()
+    this.snapGuideNodes = []
+    this.snapGuides = []
+    this.snapHold = { x: null, y: null }
+    this.snapHoldPoint = null
+    this.snapGuideKey = ''
+    this.uiLayer.batchDraw()
+  }
+
+  /**
+   * A loose point - an arrow's end as it is drawn or dragged. It lands on a
+   * token's centre when it is near one, because an arrow between two players is
+   * drawn between two players, and otherwise on the same lines everything else
+   * uses.
+   */
+  /**
+   * A node against the rest of its own shape. The other nodes give the lines to
+   * land on, so a corner squares up with the corner across from it and a bend
+   * lands level with the end it belongs to.
+   */
+  private snapToOwnNodes(p: Pt, nodes: readonly PathNode[], index: number): Pt {
+    this.snapGuides = []
     if (!this.snapEnabled) return p
-    const grid = 10
-    return { x: Math.round(p.x / grid) * grid, y: Math.round(p.y / grid) * grid }
+    const tol = this.snapTolerance(), release = this.snapRelease()
+    const dot: Box = { x: p.x, y: p.y, width: 0, height: 0 }
+    const out = { ...p }
+    for (const axis of ['x', 'y'] as const) {
+      const targets: SnapTarget[] = nodes
+        .map((n, i) => ({ n, i }))
+        .filter(({ i }) => i !== index)
+        .map(({ n }) => ({ at: n[axis], kind: 'object' as const, rect: { x: n.x, y: n.y, width: 0, height: 0 } }))
+      const held = this.snapHold[axis]
+      const keep = held && Math.abs(held.at - p[axis]) <= release
+        ? this.bestSnap([{ at: p[axis], role: 'mid' }], targets.filter(t => t.at === held.at), release)
+        : null
+      const match = keep ?? this.bestSnap([{ at: p[axis], role: 'mid' }], targets, tol)
+      this.snapHold[axis] = match
+      if (!match) continue
+      out[axis] = match.at
+      this.snapGuides.push({ axis, at: match.at, kind: match.kind, rect: match.rect, box: dot })
+    }
+    return out
+  }
+
+  private snapPoint(p: Pt, moving = new Set<string>()): Pt {
+    if (!this.snapEnabled) return p
+    this.snapGuides = []
+    const tol = this.snapTolerance(), release = this.snapRelease()
+    const dot: Box = { x: p.x, y: p.y, width: 0, height: 0 }
+    const nearest = (limit: number) => {
+      let found: { d: number; at: Pt; rect: Box; id: string } | null = null
+      for (const obj of this.store.scene.objects) {
+        if (moving.has(obj.id) || (obj.type !== 'player' && obj.type !== 'marker' && obj.type !== 'ball')) continue
+        const r = this.objectRect(obj)
+        const c = { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+        const d = Math.hypot(c.x - p.x, c.y - p.y)
+        if (d <= limit && (!found || d < found.d)) found = { d, at: c, rect: r, id: obj.id }
+      }
+      return found
+    }
+    // A token already caught keeps the point until it is clearly let go of,
+    // the way a held alignment does; without it the node shakes between the
+    // snapped place and the pointer's own at the edge of the threshold.
+    const heldId = this.snapHoldPoint
+    const best = (heldId ? nearest(release * 2) : null)?.id === heldId && heldId
+      ? nearest(release * 2)
+      : nearest(tol * 2)
+    this.snapHoldPoint = best ? best.id : null
+    if (best) {
+      // landing on a player is one decision, so it draws as a cross on them
+      for (const axis of ['x', 'y'] as const) {
+        this.snapGuides.push({ axis, at: best.at[axis], kind: 'object', rect: best.rect, box: dot })
+      }
+      this.snapHold = { x: null, y: null }
+      return { ...best.at }
+    }
+    const out = { ...p }
+    for (const axis of ['x', 'y'] as const) {
+      const targets = this.snapTargets(moving, axis)
+      const held = this.snapHold[axis]
+      const keep = held && Math.abs(held.at - p[axis]) <= release
+        ? this.bestSnap([{ at: p[axis], role: 'mid' }], targets.filter(t => t.at === held.at), release)
+        : null
+      const match = keep ?? this.bestSnap([{ at: p[axis], role: 'mid' }], targets, tol)
+      this.snapHold[axis] = match
+      if (!match) continue
+      out[axis] = match.at
+      this.snapGuides.push({ axis, at: match.at, kind: match.kind, rect: match.rect, box: dot })
+    }
+    return out
   }
 
   /* ---------- bounding rects ---------- */
@@ -2594,7 +3070,7 @@ export class Board {
     if (obj.type === 'marker') {
       const pad = 6
       const rx = obj.w * LIVE_MARKER_ELLIPSE.rx
-      const ry = obj.w * (LIVE_PLAYER_CROP.height / LIVE_PLAYER_CROP.width) * LIVE_MARKER_ELLIPSE.ry
+      const ry = obj.w * MARKER_ASPECT * LIVE_MARKER_ELLIPSE.ry
       return { x: obj.x - rx - pad, y: obj.y - ry - pad, width: rx * 2 + pad * 2, height: ry * 2 + pad * 2 }
     }
     if (obj.type === 'box') {
@@ -2826,7 +3302,16 @@ export class Board {
       nodes[id] = this.objLayer.findOne(`#${id}`)
     }
     if (!Object.keys(orig).length) return
-    this.moveArm = { ids: uniq, start: p, orig, objs, nodes, began: false }
+    // The box the pick starts in, measured once: the magnet snaps this rather
+    // than one object's anchor, and it must not drift as the drag goes on.
+    const rects = uniq.map(id => objs[id]).filter(Boolean).map(o => this.objectRect(o))
+    const box = rects.length ? {
+      x: Math.min(...rects.map(r => r.x)),
+      y: Math.min(...rects.map(r => r.y)),
+      width: Math.max(...rects.map(r => r.x + r.width)) - Math.min(...rects.map(r => r.x)),
+      height: Math.max(...rects.map(r => r.y + r.height)) - Math.min(...rects.map(r => r.y)),
+    } : null
+    this.moveArm = { ids: uniq, start: p, orig, objs, nodes, began: false, box }
   }
 
   private isUiHandle(t: any): boolean {
@@ -3206,16 +3691,12 @@ export class Board {
           this.pauseHit(true)
           this.syncCursor()
         }
-        // snap: compute delta from the primary object's anchor
-        if (this.snapEnabled) {
-          const primarySrc = a.orig[a.ids[0]]
-          if (primarySrc) {
-            const px = primarySrc.type === 'arrow' ? primarySrc.x1 : primarySrc.x
-            const py = primarySrc.type === 'arrow' ? primarySrc.y1 : primarySrc.y
-            const snapped = this.snapPoint({ x: px + dx, y: py + dy })
-            dx = snapped.x - px
-            dy = snapped.y - py
-          }
+        // The whole pick snaps by its own box, so a group keeps its shape.
+        if (this.snapEnabled && a.box) {
+          const snapped = this.snapMove(a.ids, a.box, dx, dy)
+          dx = snapped.dx
+          dy = snapped.dy
+          this.drawSnapGuides()
         }
         for (const id of a.ids) {
           const src = a.orig[id]
@@ -3249,7 +3730,13 @@ export class Board {
             node?.position({ x: (obj as any).x, y: (obj as any).y })
           }
         }
+        const trackingChanges = trackPlayersAtBall(this.store.scene.objects, a.ids)
+        for (const id of trackingChanges) {
+          const tracked = this.store.obj(id)
+          if (tracked) this.rebuildObjectNode(tracked)
+        }
         this.syncSelectionUiDuringMove()
+        this.rebuildPreviousMovement()
         this.objLayer.batchDraw()
         this.uiLayer.batchDraw()
         this.publishPreview('update')
@@ -3304,7 +3791,8 @@ export class Board {
       // creating (drawing arrow or box)
       if (!this.creating) return
       const c = this.creating
-      const ep = this.snapPoint(p)
+      const ep = this.snapPoint(p, new Set([c.obj.id]))
+      this.drawSnapGuides()
       if (c.kind === 'arrow') {
         c.obj.x2 = ep.x; c.obj.y2 = ep.y
         c.obj.mx = (c.obj.x1 + ep.x) / 2; c.obj.my = (c.obj.y1 + ep.y) / 2
@@ -3312,7 +3800,15 @@ export class Board {
         if (!boxHasCorners(c.obj.shape)) {
           // an oval and a triangle both grow from the middle of the drag
           const dx = ep.x - c.start.x, dy = ep.y - c.start.y
-          c.obj.w = Math.abs(dx); c.obj.h = Math.abs(dy)
+          if (c.obj.shape === 'ellipse') {
+            // A circle, not an oval squashed to the drag: the drag is its
+            // diameter, and it stays round through every resize. Pulling it
+            // into an oval is what the edit nodes are for.
+            const d = Math.hypot(dx, dy)
+            c.obj.w = d; c.obj.h = d
+          } else {
+            c.obj.w = Math.abs(dx); c.obj.h = Math.abs(dy)
+          }
           c.obj.x = c.start.x + dx / 2
           c.obj.y = c.start.y + dy / 2
           c.node.position({ x: c.obj.x, y: c.obj.y })
@@ -3396,22 +3892,19 @@ export class Board {
           return
         }
       }
+      this.clearSnapGuides()
       if (nodeArmSnap?.began) { this.publishPreview('end'); this.store.endGesture(); this.rebuild(); return }
 
       if (move?.began) {
         // Final snap correction for arrows/corner-boxes, which have already
         // updated their gesture scene while their group moved.
         let dx = (p?.x ?? 0) - move.start.x, dy = (p?.y ?? 0) - move.start.y
-        if (this.snapEnabled) {
-          const primarySrc = move.orig[move.ids[0]]
-          if (primarySrc) {
-            const px = primarySrc.type === 'arrow' ? primarySrc.x1 : primarySrc.x
-            const py = primarySrc.type === 'arrow' ? primarySrc.y1 : primarySrc.y
-            const snapped = this.snapPoint({ x: px + dx, y: py + dy })
-            dx = snapped.x - px
-            dy = snapped.y - py
-          }
+        if (this.snapEnabled && move.box) {
+          const snapped = this.snapMove(move.ids, move.box, dx, dy)
+          dx = snapped.dx
+          dy = snapped.dy
         }
+        this.clearSnapGuides()
         for (const id of move.ids) {
           const src = move.orig[id]
           const obj = move.objs[id]
@@ -3520,9 +4013,32 @@ export class Board {
           return
         }
 
+        // A player already picked on the first tap follows the ball on the
+        // second. Requiring the single pick keeps this out of multi-select taps.
+        if (dbl && hitObj?.type === 'player' && this.store.selectedId === hitId) {
+          this.onPointPlayerAtBall(hitId)
+          this.lastTap = { id: hitId, time: now }
+          return
+        }
+
         // double-tap text: open editor
         if (dbl && hitObj?.type === 'text') {
           this.onRequestTextEdit(hitId, { x: hitObj.x, y: hitObj.y })
+          this.lastTap = { id: hitId, time: now }
+          return
+        }
+
+        // While several are picked, a tap adjusts the pick rather than starting
+        // a new one: on one of them it takes that one out, on anything else it
+        // brings that one in. A drag is already ruled out above, so this is a
+        // deliberate tap. With a single object picked a tap still moves the
+        // pick to whatever was touched.
+        const picked = this.store.selectedIds
+        if (picked.length > 1) {
+          const next = picked.includes(hitId)
+            ? picked.filter(id => id !== hitId)
+            : [...picked, hitId]
+          this.pick(() => this.store.selectMany(next))
           this.lastTap = { id: hitId, time: now }
           return
         }
@@ -3553,7 +4069,10 @@ export class Board {
           : this.defaults.place === 'marker'
             ? { id: uid(), type: 'marker' as const, x: sp.x, y: sp.y, w: 86, name: '', namePos: 'bottom' as const }
             : { id: uid(), type: 'ball' as const, x: sp.x, y: sp.y, size: 20 }
-        this.store.apply(s => insertByTier(s.objects, obj as any))
+        this.store.apply(s => {
+          insertByTier(s.objects, obj as any)
+          trackPlayersAtBall(s.objects)
+        })
         this.onBallPlaced()
       } else if (this.tool === 'text') {
         this.onRequestTextEdit(null, this.snapPoint(p))
@@ -3569,6 +4088,7 @@ export class Board {
       const nodeArm = this.nodeArm
       this.nodeArm = null
       this.grabbedHandle = null
+      this.clearSnapGuides()
       if (nodeArm?.began) { this.store.endGesture(); this.rebuild() }
       this.panArm = null
       this.orbitArm = null
@@ -3686,7 +4206,8 @@ export class Board {
         x1: sp.x, y1: sp.y, x2: sp.x, y2: sp.y, mx: sp.x, my: sp.y,
         curved: false, dash: d.dash, color: d.color, width: d.width, head: d.head, measure: measuring, headSize: arrowHeadSize(d.width, live),
       }
-      const node = makeArrowShape(obj, 1, live)
+      // The one being drawn is finished like the ones already on the board.
+      const node = makeArrowShape(obj, 1, live, this.look()['arrow.shadow'] as number, this.look()['arrow.head'] as number)
       this.uiLayer.add(node)
       this.creating = { kind: 'arrow', start: sp, node, obj }
     } else if (this.tool === 'box') {
@@ -3762,23 +4283,39 @@ export class Board {
     const prevScale = this.stage.scale()
     const prevPos = this.stage.position()
     const prevSize = this.stage.size()
+    const previousVisibility = {
+      board: this.previousBoardLayer.visible(), movement: this.previousMovementLayer.visible(),
+    }
+    const previousOpacity = {
+      board: this.previousBoardLayer.opacity(), movement: this.previousMovementLayer.opacity(),
+    }
+    const uiVisible = this.uiLayer.visible()
+    const noteVisible = this.noteLayer.visible()
     const box = view ?? { x: 0, y: 0, w: BOARD_W, h: this.boardH }
     this.transformer.nodes([])
     this.uiLayer.visible(false)
     this.noteLayer.visible(false)
+    this.previousBoardLayer.visible(false)
+    this.previousMovementLayer.visible(false)
     this.stage.scale({ x: 1, y: 1 })
     this.stage.position({ x: 0, y: 0 })
     this.stage.size({ width: BOARD_W, height: this.boardH })
-    const canvas = this.stage.toCanvas({
-      x: box.x, y: box.y, width: box.w, height: box.h, pixelRatio: width / box.w,
-    })
-    this.stage.size(prevSize)
-    this.stage.scale(prevScale)
-    this.stage.position(prevPos)
-    this.uiLayer.visible(true)
-    this.noteLayer.visible(true)
-    for (const { node, was } of dimmed) node.opacity(was)
-    return canvas
+    try {
+      return this.stage.toCanvas({
+        x: box.x, y: box.y, width: box.w, height: box.h, pixelRatio: width / box.w,
+      })
+    } finally {
+      this.stage.size(prevSize)
+      this.stage.scale(prevScale)
+      this.stage.position(prevPos)
+      this.uiLayer.visible(uiVisible)
+      this.noteLayer.visible(noteVisible)
+      this.previousBoardLayer.opacity(previousOpacity.board)
+      this.previousMovementLayer.opacity(previousOpacity.movement)
+      this.previousBoardLayer.visible(previousVisibility.board)
+      this.previousMovementLayer.visible(previousVisibility.movement)
+      for (const { node, was } of dimmed) node.opacity(was)
+    }
   }
 
   exportPng(): string {
@@ -3788,18 +4325,36 @@ export class Board {
     const prevScale = this.stage.scale()
     const prevPos = this.stage.position()
     const prevSize = this.stage.size()
+    const previousVisibility = {
+      board: this.previousBoardLayer.visible(), movement: this.previousMovementLayer.visible(),
+    }
+    const previousOpacity = {
+      board: this.previousBoardLayer.opacity(), movement: this.previousMovementLayer.opacity(),
+    }
+    const uiVisible = this.uiLayer.visible()
+    const noteVisible = this.noteLayer.visible()
     this.transformer.nodes([])
     this.uiLayer.visible(false)
     this.noteLayer.visible(false)
+    this.previousBoardLayer.visible(false)
+    this.previousMovementLayer.visible(false)
     this.stage.scale({ x: 1, y: 1 })
     this.stage.position({ x: 0, y: 0 })
     this.stage.size({ width: BOARD_W, height: this.boardH })
-    const url = this.stage.toDataURL({ x: 0, y: 0, width: BOARD_W, height: this.boardH, pixelRatio: 2048 / BOARD_W })
-    this.stage.size(prevSize)
-    this.stage.scale(prevScale)
-    this.stage.position(prevPos)
-    this.uiLayer.visible(true)
-    this.noteLayer.visible(true)
+    let url: string
+    try {
+      url = this.stage.toDataURL({ x: 0, y: 0, width: BOARD_W, height: this.boardH, pixelRatio: 2048 / BOARD_W })
+    } finally {
+      this.stage.size(prevSize)
+      this.stage.scale(prevScale)
+      this.stage.position(prevPos)
+      this.uiLayer.visible(uiVisible)
+      this.noteLayer.visible(noteVisible)
+      this.previousBoardLayer.opacity(previousOpacity.board)
+      this.previousMovementLayer.opacity(previousOpacity.movement)
+      this.previousBoardLayer.visible(previousVisibility.board)
+      this.previousMovementLayer.visible(previousVisibility.movement)
+    }
     this.rebuild()
     return url
   }

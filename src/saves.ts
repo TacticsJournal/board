@@ -1,6 +1,6 @@
 import { Store } from './store'
-import { BOARD_W, Scene, objectsInDrawOrder, isLight, playerDisplayName } from './types'
-import { pitchById } from './pitches'
+import { BOARD_W, Scene, objectsInDrawOrder, isLight, isWhiteish, armPoints, headPoints, playerDisplayName, resolveNamePos } from './types'
+import { pitchById, pitchIconScale } from './pitches'
 import { nodeSegments, nodesToSvgPath, segmentEndTangent } from './path-nodes'
 import { canCreateAgentLink, hasPaidBoardAccess, isPro } from './entitlements'
 import { boardInvitationsUrl, boardSharesUrl, boardUserSearchUrl } from './board-api'
@@ -9,10 +9,12 @@ import { canOpenBoardHistory, type BoardHistoryContext } from './board-history'
 import { canReviewBoardProposals } from './board-proposals'
 import type { AgentAccessMode } from './board-api'
 import { icon } from './icons'
+import { fontFaceCss } from './fonts.ts'
+import { fontStack, haloAgainst, inkOn, resolveAppearance } from './appearance.ts'
 import { mountSlidingPills } from './sliding-pill'
 import { getAsset } from './assets'
-import { ballSrc, coneSrc, goalFullSrc, goalSmallSrc, CONE_ASPECT, GOAL_ASPECT } from './board-art'
-import { arrowMediumWidth } from './board-art'
+import { ballSrc, coneSrc, goalFullSrc, goalSmallSrc, livePlayerSrc, CONE_ASPECT, GOAL_ASPECT, LIVE_ART_SHEET, LIVE_MARKER_ELLIPSE, LIVE_PLAYER_CROP, MARKER_ASPECT } from './board-art'
+import { arrowRenderedHeadSize, arrowShaftWidth, ARROW_DOT_GAP } from './board-art'
 import { conflictName, newId, recordTombstones } from './sync'
 import { remoteCurrentDecision, type RemoteCurrentDecision } from './remote-current'
 import {
@@ -79,8 +81,38 @@ function art(o: any, ref: string, src: string, w: number, h: number, refs: boole
 /** Where each piece of art is kept when a renderer points at it rather than
     writing it out. An asset's id is its own, so two of a user's shapes on one
     board are two symbols. */
-const ART = { ball: 'tbmArtBall', cone: 'tbmArtCone', small: 'tbmArtGoalSmall', normal: 'tbmArtGoalNormal' }
+const ART = { ball: 'tbmArtBall', cone: 'tbmArtCone', small: 'tbmArtGoalSmall', normal: 'tbmArtGoalNormal', marker: 'tbmArtMarker' }
 const assetRef = (id: string) => `tbmArtAsset-${id}`
+
+/** A window into an art sheet, in the sheet's own pixels. */
+type ArtCrop = { x: number; y: number; width: number; height: number; sheet: number }
+const MARKER_CROP: ArtCrop = { ...LIVE_PLAYER_CROP, sheet: LIVE_ART_SHEET }
+
+/** A cropped sheet, drawn through a viewport that shows only the window. */
+function cropped(src: string, crop: ArtCrop): string {
+  return `<image href="${escXml(src)}" x="${svgNumber(-crop.x)}" y="${svgNumber(-crop.y)}"`
+    + ` width="${svgNumber(crop.sheet, 1)}" height="${svgNumber(crop.sheet, 1)}"/>`
+}
+
+/**
+ * A piece of art in a box of its own rather than centred on the object: the
+ * marker hangs off its ground ellipse, so its box is nowhere near its anchor
+ * (board.ts buildMarker, LIVE_MARKER_ELLIPSE).
+ *
+ * A crop is a window on a larger sheet. Pointing at it costs nothing — the
+ * symbol is already a viewport — and drawing it needs one of its own, which a
+ * nested <svg> is; both show the same window at the same size, and neither
+ * fetches the sheet more than once.
+ */
+function artBox(o: any, ref: string, src: string, box: { x: number; y: number; w: number; h: number }, refs: boolean, crop?: ArtCrop): string {
+  const at = ` x="${svgNumber(box.x)}" y="${svgNumber(box.y)}" width="${svgNumber(box.w, 1)}" height="${svgNumber(box.h, 1)}"`
+  if (refs) return `<use${turn(o)} href="#${ref}"${at}/>`
+  if (crop) {
+    return `<svg${turn(o)}${at} viewBox="0 0 ${svgNumber(crop.width, 1)} ${svgNumber(crop.height, 1)}"`
+      + ` preserveAspectRatio="xMidYMid meet" overflow="hidden">${cropped(src, crop)}</svg>`
+  }
+  return `<image${turn(o)} href="${escXml(src)}"${at} preserveAspectRatio="xMidYMid meet"/>`
+}
 
 /**
  * Every picture the given scenes draw: what it is called, where it comes from
@@ -88,13 +120,14 @@ const assetRef = (id: string) => `tbmArtAsset-${id}`
  * front, because a picture only starts loading once something points at it —
  * a piece first drawn mid-move would otherwise arrive a download late.
  */
-export function boardArt(scenes: (Scene | undefined)[]): { id: string, src: string, aspect: number }[] {
+export function boardArt(scenes: (Scene | undefined)[]): { id: string, src: string, aspect: number, crop?: ArtCrop }[] {
   const objs = scenes.flatMap(s => s?.objects ?? [])
-  const art: { id: string, src: string, aspect: number }[] = []
+  const art: { id: string, src: string, aspect: number, crop?: ArtCrop }[] = []
   if (objs.some(o => o.type === 'ball')) art.push({ id: ART.ball, src: ballSrc, aspect: 1 })
   if (objs.some(o => o.type === 'cone')) art.push({ id: ART.cone, src: coneSrc, aspect: CONE_ASPECT })
   if (objs.some(o => o.type === 'goal' && o.variant === 'small')) art.push({ id: ART.small, src: goalSmallSrc, aspect: GOAL_ASPECT.small })
   if (objs.some(o => o.type === 'goal' && o.variant !== 'small')) art.push({ id: ART.normal, src: goalFullSrc, aspect: GOAL_ASPECT.normal })
+  if (objs.some(o => o.type === 'marker')) art.push({ id: ART.marker, src: livePlayerSrc, aspect: MARKER_ASPECT, crop: MARKER_CROP })
   const seen = new Set<string>()
   for (const o of objs) {
     if (o.type !== 'image' || seen.has(String(o.assetId))) continue
@@ -110,9 +143,13 @@ export function boardArt(scenes: (Scene | undefined)[]): { id: string, src: stri
  * the player and left alone, so the pieces paint the frame they are asked for.
  */
 export function boardArtDefs(scenes: (Scene | undefined)[]): string {
-  const parts = boardArt(scenes).map(({ id, src, aspect }) =>
-    `<symbol id="${id}" viewBox="0 0 100 ${svgNumber(100 * aspect, 100)}" preserveAspectRatio="xMidYMid meet">`
-    + `<image href="${escXml(src)}" width="100" height="${svgNumber(100 * aspect, 100)}"/></symbol>`)
+  const parts = boardArt(scenes).map(({ id, src, aspect, crop }) =>
+    crop
+      // a symbol is a viewport, so the window is all of the sheet that shows
+      ? `<symbol id="${id}" viewBox="0 0 ${svgNumber(crop.width, 1)} ${svgNumber(crop.height, 1)}" preserveAspectRatio="xMidYMid meet">`
+        + `${cropped(src, crop)}</symbol>`
+      : `<symbol id="${id}" viewBox="0 0 100 ${svgNumber(100 * aspect, 100)}" preserveAspectRatio="xMidYMid meet">`
+        + `<image href="${escXml(src)}" width="100" height="${svgNumber(100 * aspect, 100)}"/></symbol>`)
   return parts.length ? `<defs>${parts.join('')}</defs>` : ''
 }
 
@@ -121,12 +158,17 @@ export function boardArtDefs(scenes: (Scene | undefined)[]): string {
  * wrapper. The saved-board thumbnail and the sequence row share it so a board
  * looks the same wherever it is drawn.
  */
-/** How a board's own text is set, so the SVG reads like the board. */
-const LABEL_FONT = 'font-family="Inter, system-ui, sans-serif" font-weight="700" text-anchor="middle"'
+/** How a board's own text is set, so the SVG reads like the board. The family
+    and its tracking come off the scene, as they do on the board itself. */
+function labelFont(scene: Scene | undefined): string {
+  const look = resolveAppearance(scene?.appearance)
+  const tracking = look['tracking'] ? ` letter-spacing="${svgNumber(look['tracking'] as number)}"` : ''
+  return `font-family="${escXml(fontStack(look['font'] as string))}" font-weight="700" text-anchor="middle"${tracking}`
+}
 
 /** Two pitches on one board draw every piece at half size, as the board does. */
 function iconScale(scene: Scene | undefined): number {
-  return (pitchById(scene?.pitch).sides ?? 1) > 1 ? 0.5 : 1
+  return pitchIconScale(scene?.pitch)
 }
 
 /** Arrow heads follow the scene's own pitch, as they do on the board. */
@@ -137,9 +179,16 @@ function sceneIsLive(scene: Scene | undefined): boolean {
 export function sceneShapesSvg(scene: Scene | undefined, opts: { fading?: Set<string>; fade?: number; arriving?: Set<string>; arrive?: number; riding?: Set<string>; ride?: number; art?: 'draw' | 'point' } = {}): string {
   const objs = objectsInDrawOrder(scene?.objects ?? [])
   const k = iconScale(scene)
-  const mediumWidth = arrowMediumWidth(sceneIsLive(scene))
+  /* The board's family, as bytes. An SVG painted into an `<img>` is its own
+     document and cannot see a font the page has loaded, so a thumbnail in a
+     searched family would silently come back in the fallback. Carrying the
+     file makes what is exported what was drawn. */
+  const look = resolveAppearance(scene?.appearance)
+  const face = fontFaceCss(look['font'] as string)
+  const LABEL_FONT = labelFont(scene)
   const refs = opts.art === 'point'
   const parts: string[] = []
+  if (face) parts.push(`<style>${face}</style>`)
   for (const o of objs) {
     const start = parts.length
     if (o.type === 'box') {
@@ -160,8 +209,8 @@ export function sceneShapesSvg(scene: Scene | undefined, opts: { fading?: Set<st
          finger, so it cannot be a near-enough version of itself */
       const x1 = Number(o.x1), y1 = Number(o.y1), x2 = Number(o.x2), y2 = Number(o.y2)
       const width = Number(o.width)
-      const shaft = (o.dash === 'dotted' ? Math.max(width * 1.8, 7) : width) * k
-      const dash = o.dash === 'dotted' ? ` stroke-dasharray="0.001 ${svgNumber(shaft * 2.1)}" stroke-linecap="round"`
+      const shaft = arrowShaftWidth(width, o.dash, sceneIsLive(scene)) * k
+      const dash = o.dash === 'dotted' ? ` stroke-dasharray="0.001 ${svgNumber(shaft * ARROW_DOT_GAP)}" stroke-linecap="round"`
         : o.dash === 'dashed' ? ` stroke-dasharray="${svgNumber(width * 2.4)} ${svgNumber(width * 2)}"` : ''
       const arrowNodes = Array.isArray(o.points) && o.points.length >= 2 ? o.points : null
       const control = o.curved ? { x: 2 * Number(o.mx) - (x1 + x2) / 2, y: 2 * Number(o.my) - (y1 + y2) / 2 } : null
@@ -173,7 +222,7 @@ export function sceneShapesSvg(scene: Scene | undefined, opts: { fading?: Set<st
           const len = Math.hypot(dx, dy) || 1
           return { x: dx / len, y: dy / len }
         })()
-      const head = o.head && !o.measure ? (width / mediumWidth) * 14 * k : 0
+      const head = o.head && !o.measure ? arrowRenderedHeadSize(width, o.dash, sceneIsLive(scene)) * k * (look['arrow.head'] as number) : 0
       // the shaft stops short of the head rather than running underneath it
       const back = head * 0.8
       const d = arrowNodes
@@ -199,17 +248,42 @@ export function sceneShapesSvg(scene: Scene | undefined, opts: { fading?: Set<st
       // the dot says what it says on the board: its number inside, its name under
       const x = Number(o.x), y = Number(o.y)
       const r = Math.max(Number(o.r) * k, 14 * k)
-      parts.push(`<circle cx="${svgNumber(x)}" cy="${svgNumber(y)}" r="${svgNumber(r, 14)}" fill="${escXml(o.color)}" stroke="#0b0b0e" stroke-width="${svgNumber(Math.max(1.25, r * 0.38), 3.5)}"/>`)
-      if (o.label) {
+      if (Number.isFinite(o.arms)) {
+        for (const side of [-1, 1] as const) {
+          const pts = armPoints(Number(o.arms), side, r)
+          const d = pts.reduce((acc, _v, i) => i % 2 === 0
+            ? `${acc}${i ? ' L' : 'M'} ${svgNumber(x + pts[i])} ${svgNumber(y + pts[i + 1])}`
+            : acc, '')
+          parts.push(`<path d="${d} Z" fill="#0b0b0e"/>`)
+        }
+      }
+      if (Number.isFinite(o.facing)) {
+        const pts = headPoints(Number(o.facing), r)
+        const pale = isWhiteish(String(o.color))
+        const d = `M ${svgNumber(x + pts[0])} ${svgNumber(y + pts[1])}`
+          + ` L ${svgNumber(x + pts[2])} ${svgNumber(y + pts[3])}`
+          + ` L ${svgNumber(x + pts[4])} ${svgNumber(y + pts[5])} Z`
+        parts.push(`<path d="${d}" fill="${escXml(o.color)}"`
+          + (pale ? ` stroke="#0b0b0e" stroke-width="${svgNumber(Math.max(0.75, r * 0.12), 1.5)}" stroke-linejoin="round"` : '')
+          + `/>`)
+      }
+      const outline = look['player.outline'] as number
+      const ring = outline > 0 ? Math.max(1.25, r * outline) : 0
+      parts.push(`<circle cx="${svgNumber(x)}" cy="${svgNumber(y)}" r="${svgNumber(r, 14)}" fill="${escXml(o.color)}"${ring ? ` stroke="${escXml(look['player.outlineColor'] as string)}" stroke-width="${svgNumber(ring, 3.5)}"` : ''}/>`)
+      if (o.label && o.showLabel !== false) {
         const size = r * 1.05
-        parts.push(`<text x="${svgNumber(x)}" y="${svgNumber(y + size * 0.35)}" ${LABEL_FONT} font-size="${svgNumber(size, 14)}" fill="${isLight(String(o.color)) ? '#111827' : '#ffffff'}">${escXml(o.label)}</text>`)
+        parts.push(`<text x="${svgNumber(x)}" y="${svgNumber(y + size * 0.35)}" ${LABEL_FONT} font-size="${svgNumber(size, 14)}" fill="${escXml(inkOn(look['player.numberColor'], String(o.color)))}">${escXml(o.label)}</text>`)
       }
       const name = playerDisplayName(String(o.name ?? ''), o.nameDisplay)
       if (name) {
         const size = Math.max(Number(o.nameSize) || 18, 8) * k
         const gap = 5 * k
-        const baseline = o.namePos === 'top' ? y - (r + gap + size * 0.2) : y + r + gap + size * 0.8
-        parts.push(`<text x="${svgNumber(x)}" y="${svgNumber(baseline)}" ${LABEL_FONT} font-size="${svgNumber(size, 18)}" fill="#111827">${escXml(name)}</text>`)
+        const baseline = resolveNamePos(o) === 'top' ? y - (r + gap + size * 0.2) : y + r + gap + size * 0.8
+        const nameColor = look['player.nameColor'] as string
+        const nameHalo = (look['player.nameHalo'] as number) * k
+        parts.push(`<text x="${svgNumber(x)}" y="${svgNumber(baseline)}" ${LABEL_FONT} font-size="${svgNumber(size, 18)}" fill="${escXml(nameColor)}"`
+          + (nameHalo > 0 ? ` stroke="${escXml(haloAgainst(look['player.nameHaloColor'], nameColor))}" stroke-width="${svgNumber(nameHalo, 2)}" paint-order="stroke" stroke-linejoin="round"` : '')
+          + `>${escXml(name)}</text>`)
       }
     } else if (o.type === 'ball') {
       const size = Number(o.size) * k
@@ -230,23 +304,36 @@ export function sceneShapesSvg(scene: Scene | undefined, opts: { fading?: Set<st
         // the shape is on another device: the frame it occupies is all there is
         : `<rect${spin(o)} x="${svgNumber(Number(o.x) - w / 2)}" y="${svgNumber(Number(o.y) - h / 2)}" width="${svgNumber(w, 20)}" height="${svgNumber(h, 20)}" rx="${svgNumber(Math.min(w, h) * 0.12, 2)}" fill="#cbc3b6" opacity="0.55"/>`)
     } else if (o.type === 'marker') {
-      // the board's ground ellipse is a fraction of the marker's crop width,
-      // and the marker sits on the ellipse's centre (see LIVE_MARKER_ELLIPSE)
-      const rx = Math.max(Number(o.w) * 0.356, 12)
-      const ry = rx * 0.31
-      parts.push(`<ellipse${spin(o)} cx="${svgNumber(o.x)}" cy="${svgNumber(o.y)}" rx="${svgNumber(rx, 12)}" ry="${svgNumber(ry, 3.72)}" fill="#ffffff" opacity="0.9"/>`)
-      const name = playerDisplayName(String(o.name ?? ''))
+      /* the board's own live-player photograph, cropped, sized and hung the
+         way board.ts buildMarker hangs it: the object's x/y is the centre of
+         the ground ellipse inside the art, not the centre of the art, so the
+         picture's box is offset by the ellipse's place in the crop. Rotation
+         and flip turn about that same anchor, as the board's group does. */
+      const x = Number(o.x), y = Number(o.y)
+      const w = Number(o.w) * k
+      const h = w * MARKER_ASPECT
+      const ry = h * LIVE_MARKER_ELLIPSE.ry
+      const box = { x: x - w * LIVE_MARKER_ELLIPSE.cx, y: y - h * LIVE_MARKER_ELLIPSE.cy, w, h }
+      parts.push(artBox(o, ART.marker, livePlayerSrc, box, refs, MARKER_CROP))
+      const name = playerDisplayName(String(o.name ?? ''), 'last')
       if (name) {
-        const y = Number(o.y)
-        const size = 15, gap = 7
+        // the name turns with the marker but is never mirrored with it, the
+        // way the board's text rides the group the flipped picture sits in
+        const size = 15 * k, gap = 7 * k
         const baseline = o.namePos === 'top' ? y - (ry + gap + size * 0.2) : y + ry + gap + size * 0.8
-        parts.push(`<text x="${svgNumber(o.x)}" y="${svgNumber(baseline)}" ${LABEL_FONT} font-size="15" fill="#ffffff" stroke="rgba(0,0,0,0.55)" stroke-width="2.5" paint-order="stroke">${escXml(name)}</text>`)
+        parts.push(`<text${spin(o)} x="${svgNumber(x)}" y="${svgNumber(baseline)}" ${LABEL_FONT} font-size="${svgNumber(size, 15)}" fill="#ffffff" stroke="rgba(0,0,0,0.55)" stroke-width="${svgNumber(2.5 * k, 2.5)}" paint-order="stroke">${escXml(name)}</text>`)
       }
     } else if (o.type === 'text') {
       const size = Math.max(Number(o.size), 20)
       const rotation = Number(o.rotation)
       const tr = Number.isFinite(rotation) && rotation !== 0 ? ` transform="rotate(${svgNumber(rotation)} ${svgNumber(o.x)} ${svgNumber(o.y)})"` : ''
       parts.push(`<text x="${svgNumber(o.x)}" y="${svgNumber(Number(o.y) + size * 0.85)}" font-size="${svgNumber(size, 20)}" font-weight="${o.bold ? 700 : 400}" fill="${escXml(o.color)}"${tr}>${escXml(o.text)}</text>`)
+    }
+    // The canvas puts the whole player in its rotated group. Keep the SVG's
+    // mark and automatically placed name on the same rendered sides.
+    if (o.type === 'player' && Number.isFinite(o.rotation) && o.rotation !== 0) {
+      const inner = parts.splice(start).join('')
+      parts.push(`<g${spin(o)}>${inner}</g>`)
     }
     // an object on its way out of a sequence fades where it stands, and one
     // on its way in fades up where it will be
@@ -304,6 +391,12 @@ export type SavedProjectDocument = {
   ownerUsername?: string | null
   readOnly?: boolean
   syncAccount?: string
+}
+
+type ProjectDocumentActions = {
+  target: { id: string; name: string; savedAt: string; accountBinding: string } | null
+  history: boolean
+  proposals: boolean
 }
 
 export type BoardDocumentAdapter = {
@@ -1888,32 +1981,43 @@ export class SavesPanel {
   }
 
   /**
-   * What the projects library may offer for one card, found by the library's
-   * own project id. The policy stays here, beside the two screens it governs,
-   * so the library never has to know what makes a project eligible.
+   * What the projects library may offer for its visible cards. Read storage
+   * once and migrate each saved document once, rather than repeating that work
+   * for every card.
    */
-  projectActions(projectId: string): {
-    target: { id: string; name: string; savedAt: string; accountBinding: string } | null
-    history: boolean
-    proposals: boolean
-  } {
-    const none = { target: null, history: false, proposals: false }
+  projectActionsFor(projectIds: readonly string[]): Map<string, ProjectDocumentActions> {
+    const none: ProjectDocumentActions = { target: null, history: false, proposals: false }
+    const wanted = new Set(projectIds)
+    const actions = new Map<string, ProjectDocumentActions>(projectIds.map(id => [id, none]))
+    if (!wanted.size) return actions
+
     const all = readAll(this.storageKey)
-    const found = Object.entries(all).find(([, saved]) => migrateProject(saved.scene)?.id === projectId)
-    if (!found) return none
-    const [name, saved] = found
-    if (!saved.id) return none
-    const locked = !editableBoardNames(all, hasPaidBoardAccess()).has(name)
+    const editable = editableBoardNames(all, hasPaidBoardAccess())
     const context = this.historyContext()
-    const row = { ...saved, locked }
-    const history = canOpenBoardHistory(row, context)
-    const proposals = canReviewBoardProposals(row, context)
-    if (!history && !proposals) return none
-    return {
-      target: { id: saved.id, name, savedAt: saved.savedAt, accountBinding: saved.syncAccount! },
-      history,
-      proposals,
+    const found = new Set<string>()
+    for (const [name, saved] of Object.entries(all)) {
+      const project = migrateProject(saved.scene)
+      if (!project || !wanted.has(project.id) || found.has(project.id)) continue
+      found.add(project.id)
+      if (!saved.id) continue
+      const locked = !editable.has(name)
+      const row = { ...saved, locked }
+      const history = canOpenBoardHistory(row, context)
+      const proposals = canReviewBoardProposals(row, context)
+      if (history || proposals) {
+        actions.set(project.id, {
+          target: { id: saved.id, name, savedAt: saved.savedAt, accountBinding: saved.syncAccount! },
+          history,
+          proposals,
+        })
+      }
     }
+    return actions
+  }
+
+  /** The one-card form used by menus and the Settings screens. */
+  projectActions(projectId: string) {
+    return this.projectActionsFor([projectId]).get(projectId) ?? { target: null, history: false, proposals: false }
   }
 
   private openProposals(name: string): void {

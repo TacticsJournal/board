@@ -39,20 +39,21 @@ test('the counts read is one request, with the session cookie', async () => {
   assert.equal(calls[0][1]?.credentials, 'include')
 })
 
-test('eligibility stays in saves, where the two screens are governed', () => {
-  const actions = saves.slice(saves.indexOf('projectActions(projectId: string)'), saves.indexOf('private openProposals('))
-  assert.match(actions, /migrateProject\(saved\.scene\)\?\.id === projectId/)
+test('bulk eligibility stays in saves, where the two screens are governed', () => {
+  const actions = saves.slice(saves.indexOf('projectActionsFor(projectIds: readonly string[])'), saves.indexOf('private openProposals('))
+  assert.match(actions, /const all = readAll\(this\.storageKey\)/)
+  assert.equal((actions.match(/migrateProject\(saved\.scene\)/g) ?? []).length, 1, 'each saved row is migrated once per batch')
+  assert.match(actions, /const editable = editableBoardNames\(all, hasPaidBoardAccess\(\)\)/)
   assert.match(actions, /const history = canOpenBoardHistory\(row, context\)/)
   assert.match(actions, /const proposals = canReviewBoardProposals\(row, context\)/)
-  assert.match(actions, /if \(!history && !proposals\) return none/)
-  assert.match(actions, /editableBoardNames\(all, hasPaidBoardAccess\(\)\)/)
+  assert.match(actions, /if \(history \|\| proposals\)/)
 })
 
 test('the card carries one menu button and, only when it is news, a chip', () => {
   assert.match(view, /data-act="proj-menu"[\s\S]*?aria-label="More for \$\{escapeText\(project\.name\)\}"/)
   assert.doesNotMatch(view, /data-act="rename" data-id/, 'rename moved into the menu')
   assert.doesNotMatch(view, /data-act="del-project" data-id/, 'delete moved into the menu')
-  const chip = view.slice(view.indexOf('private waitingChip(projectId: string'), view.indexOf('private projectMenu('))
+  const chip = view.slice(view.indexOf('private waitingChip(waiting: number)'), view.indexOf('private projectMenu('))
   assert.match(chip, /if \(waiting < 1\) return ''/)
   assert.match(chip, /waiting === 1 \? '1 waiting'/)
 })
@@ -70,6 +71,14 @@ test('the menu offers only what the account may use, and never sells Pro', () =>
   assert.match(menu, /role="dialog" aria-modal="true"/)
   assert.match(view, /if \(e\.key === 'Escape'\) \{ e\.stopPropagation\(\); this\.closeProjectSheet\(true\) \}/)
   assert.match(view, /if \(!button\) \{ if \(target === this\.projSheet\) this\.closeProjectSheet\(true\); return \}/)
+})
+
+test('the Projects render asks once for all card actions', () => {
+  const render = view.slice(view.indexOf('private renderProjects()'), view.indexOf('private playEnter('))
+  assert.match(render, /const projectActions = this\.host\.projectActionsFor\(projects\.map\(project => project\.id\)\)/)
+  assert.match(render, /this\.waitingChip\(projectActions\.get\(project\.id\)\?\.waiting \?\? 0\)/)
+  const host = main.slice(main.indexOf('function projectActionsFor(projectIds:'), main.indexOf('const boardsView = new BoardsView'))
+  assert.ok(host.indexOf('if (!Object.keys(proposalCounts).length)') < host.indexOf('saves.projectActionsFor(projectIds)'), 'no waiting counts means no saved-document scan')
 })
 
 test('the library asks the host to open the screens, and never decides itself', () => {
