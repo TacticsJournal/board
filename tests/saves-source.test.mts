@@ -86,6 +86,12 @@ test('new-board flow preserves state unless save succeeds or discard is confirme
   assert.match(blankProject, /scene\.objects = \[\]/)
   assert.match(blankProject, /scene\.match = \{ \.\.\.emptyMatch\(\), \.\.\.scene\.match, home: '', away: '', showTeams: false \}/)
   assert.match(blankProject, /teams\.resetTeams\(\[\]\)/)
+  // Projects "New project" opens a blank board too, so it must clear the
+  // loaded teams as well; blankScene alone leaves them on the new project.
+  assert.match(view, /const project = newProject\(this\.host\.blankProjectScene\(\)\)/)
+  const blankProjectScene = main.match(/blankProjectScene: \(\) => \{[\s\S]*?\n  \},/)?.[0] ?? ''
+  assert.match(blankProjectScene, /teams\.resetTeams\(\[\]\)/)
+  assert.match(blankProjectScene, /return emptyScene\(store\.scene\.pitch\)/)
   const startNew = saves.match(/private startNew[\s\S]*?\n  }/)?.[0] ?? ''
   assert.doesNotMatch(startNew, /nameInput\(\)\.value\s*=\s*''/)
 })
@@ -113,7 +119,7 @@ test('the share button owns copy links, invitations, and export', () => {
   assert.match(main, /createProjectImportUrl\(projectName, projectCopy\)/)
   assert.match(main, /The link expires after 24 hours\./)
   assert.match(main, /The link does not expire\./)
-  assert.match(main, /function addSharedProject\(draft: AgentImportDraft, projectId: string \| null\)/)
+  assert.match(main, /function addSharedProject\(draft: AgentImportDraft, projectId: string \| null, mode: BoardImportMode = 'append'\)/)
   assert.match(main, /newProjectFromProjectCopy\(source, draft\.name\)/)
   assert.match(main, /appendProjectCopy\(project, source\)/)
   assert.match(main, /newProjectFromProjectCopy\(source, draft\.name\)/)
@@ -354,8 +360,8 @@ test('a board draws the pieces the board draws, from the board’s own art', () 
   // the ball is the ball everywhere it is drawn; a circle with a pentagon in it
   // is a drawing of the ball, which is a different thing
   assert.doesNotMatch(saves, /const panel = Array\.from\(\{ length: 5 \}/)
-  assert.match(saves, /import \{ ballSrc, coneSrc, goalFullSrc, goalSmallSrc, CONE_ASPECT, GOAL_ASPECT \} from '\.\/board-art'/)
-  for (const piece of ['ART.ball, ballSrc', 'ART.cone, coneSrc', 'assetRef(String(o.assetId)), asset.src']) {
+  assert.match(saves, /import \{ ballSrc, coneSrc, goalFullSrc, goalSmallSrc, livePlayerSrc, CONE_ASPECT, GOAL_ASPECT, LIVE_ART_SHEET, LIVE_MARKER_ELLIPSE, LIVE_PLAYER_CROP, MARKER_ASPECT \} from '\.\/board-art'/)
+  for (const piece of ['ART.ball, ballSrc', 'ART.cone, coneSrc', 'assetRef(String(o.assetId)), asset.src', 'ART.marker, livePlayerSrc']) {
     assert.ok(saves.includes(piece), `${piece} is drawn from the art the board uses`)
   }
   // the pieces halve on a two-pitch board, the way the board halves them
@@ -377,7 +383,7 @@ test('the player points at one copy of each picture rather than writing it per f
 test('the player fetches every picture it will draw when it opens', () => {
   // a picture inside a <symbol> nothing points at yet is not fetched, so a cone
   // that first appears on board two starts downloading mid-move and lands late
-  assert.match(saves, /export function boardArt\(scenes: \(Scene \| undefined\)\[\]\): \{ id: string, src: string, aspect: number \}\[\]/)
+  assert.match(saves, /export function boardArt\(scenes: \(Scene \| undefined\)\[\]\): \{ id: string, src: string, aspect: number, crop\?: ArtCrop \}\[\]/)
   assert.match(saves, /export function boardArtDefs[\s\S]{0,200}boardArt\(scenes\)\.map/)
   assert.match(view, /boardArt\(scenes\)\.map\(a => a\.src\)/)
   assert.match(view, /for \(const src of pictures\)[\s\S]{0,220}img\.decode\?\.\(\)/)
@@ -394,15 +400,18 @@ test('the player keeps the shapes it has drawn instead of rebuilding them', () =
   assert.match(view, /function syncAttributes\(live: Element, next: Element\): void/)
 })
 
-test('the player runs the board to the edges and starts at the top of the screen', () => {
+test('the player runs the board to the edges and keeps its controls under it', () => {
   // a pitch is wider than a phone is, so width spent on margins is board the
-  // reader does not get; once it reaches full width, unused height belongs
-  // below the board rather than being split above and below it
+  // reader does not get; a board shorter than the screen — a broadcast frame
+  // on a tall phone — sits with the bar under it rather than above a band of
+  // empty page
   assert.match(view, /const width = vv\?\.width \?\? window\.innerWidth/)
   assert.doesNotMatch(view, /COLUMN_W/)
   assert.match(view, /const height = \(vv\?\.height \?\? window\.innerHeight\) - chrome$/m)
   assert.doesNotMatch(css, /\.seqPlayer__wrap \{[\s\S]{0,400}padding:/)
-  assert.match(css, /\.seqPlayer__board \{[\s\S]{0,240}place-self: start center;/)
+  assert.match(css, /\.seqPlayer__wrap \{[\s\S]{0,600}justify-content: center;/)
+  assert.match(css, /\.seqPlayer__board \{[\s\S]{0,400}flex: none;/)
+  assert.doesNotMatch(css, /place-self: start center;/)
 })
 
 test('the note band stays under the board and the board is fitted around it', () => {
@@ -442,7 +451,7 @@ test('the open project and its board survive a refresh', () => {
   // the outgoing project keeps its board and the incoming one gets its own back
   assert.match(open, /rememberBoard\(library, library\.currentId, currentProject\(library\)\.boards\[editingBoard\]\?\.id\)/)
   assert.match(open, /editingBoard = Math\.max\(0, storedBoardIndex\(library, currentProject\(library\)\)\)/)
-  const openBoard = main.match(/openBoard: \(index\) => \{[\s\S]*?\n  \},/)?.[0] ?? ''
+  const openBoard = main.match(/openBoard: \(index, options\) => \{[\s\S]*?\n  \},/)?.[0] ?? ''
   assert.match(openBoard, /rememberBoard\(library, project\.id, board\.id\)/)
   assert.match(openBoard, /saveLibrary\(library\)/)
 })

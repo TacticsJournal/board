@@ -121,7 +121,7 @@ function validPreviewObject(object: Record<string, unknown>): boolean {
   switch (object.type) {
     case 'player': return finiteFields(object, ['x', 'y', 'r', 'nameSize'])
       && stringFields(object, ['color', 'label', 'name', 'namePos', 'nameDisplay'])
-      && (object.namePos === 'top' || object.namePos === 'bottom')
+      && (object.namePos === 'top' || object.namePos === 'bottom' || object.namePos === 'auto')
       && (object.nameDisplay === 'first' || object.nameDisplay === 'last' || object.nameDisplay === 'full')
     case 'ball':
     case 'cone': return finiteFields(object, ['x', 'y', 'size'])

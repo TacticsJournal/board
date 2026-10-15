@@ -7,7 +7,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-import { arrowHeadSize, arrowMediumWidth } from '../src/board-art.ts'
+import { arrowHeadSize, arrowMediumWidth, arrowRenderedHeadSize, arrowShaftWidth } from '../src/board-art.ts'
 import { pitchById, setCustomPitches } from '../src/pitches.ts'
 
 const main = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8')
@@ -26,6 +26,36 @@ test('medium is a 14 head on both ladders, over a different shaft', () => {
   assert.equal(arrowHeadSize(6.5), (6.5 / 4.5) * 14)
   assert.equal(arrowHeadSize(2, true), (2 / 3) * 14)
   assert.equal(arrowHeadSize(4.5, true), 21)
+})
+
+test('a broadcast dot stays near its own line, a drawn one stays fat', () => {
+  // solid and dashed are stroked at the width the arrow was drawn with
+  for (const live of [false, true]) {
+    for (const width of [2, 3, 4.5, 6.5]) {
+      assert.equal(arrowShaftWidth(width, 'solid', live), width)
+      assert.equal(arrowShaftWidth(width, 'dashed', live), width)
+    }
+  }
+  // grass: the heavy dot the board has always drawn, floor included
+  assert.equal(arrowShaftWidth(3, 'dotted'), 7)
+  assert.equal(arrowShaftWidth(6.5, 'dotted'), 6.5 * 1.8)
+  // broadcast: no floor, and a dot only a little fatter than the line
+  assert.equal(arrowShaftWidth(2, 'dotted', true), 2 * 1.3)
+  assert.equal(arrowShaftWidth(3, 'dotted', true), 3 * 1.3)
+  assert.equal(arrowShaftWidth(4.5, 'dotted', true), 4.5 * 1.3)
+  // every broadcast rung is finer than the old 7 the export ballooned to
+  for (const [w] of [[2], [3], [4.5]]) {
+    assert.ok(arrowShaftWidth(w, 'dotted', true) < 7, `${w} must not balloon`)
+  }
+  // the canvas and the exported SVG stroke and space dots from the same rule
+  assert.match(board, /strokeWidth: shaftWidth\(o, live\) \* visualScale/)
+  assert.match(board, /dash: o\.measure \? undefined : arrowDash\(o, live\)/)
+  assert.match(board, /\[0\.001, shaftWidth\(o, live\) \* ARROW_DOT_GAP\]/)
+  assert.match(saves, /arrowShaftWidth\(width, o\.dash, sceneIsLive\(scene\)\) \* k/)
+  assert.match(saves, /shaft \* ARROW_DOT_GAP/)
+  // and no copy of the old inflated rule is left behind
+  assert.doesNotMatch(board, /1\.8, 7/)
+  assert.doesNotMatch(saves, /1\.8, 7/)
 })
 
 test('a stored width draws at that width, with no migration', () => {
@@ -76,11 +106,13 @@ test('the shelf, the canvas and the exported SVG share one head scale', () => {
   assert.match(main, /arrowHeadSize\(width, live\)/)
   assert.match(main, /arrowPreview\(dash, head, shelfArrowColor\(\), defaults\.arrow\.width, false, liveArrows\(\)\)/)
   // canvas: every rendered arrow asks the scene being rendered
-  assert.match(board, /makeArrowShape\(o, this\.iconScale\(\), this\.arrowsAreLive\(\)\)/)
+  // (the fourth argument is the arrow's finish, which the scene also decides)
+  assert.match(board, /makeArrowShape\(\n      o, this\.iconScale\(\), this\.arrowsAreLive\(\),/)
   assert.match(board, /arrowsAreLive\(\) \{ return !!pitchById\(\(this\.renderingScene \?\? this\.store\.scene\)\.pitch\)\.live \}/)
-  // export: the same medium, taken from the scene's own pitch
-  assert.match(saves, /const mediumWidth = arrowMediumWidth\(sceneIsLive\(scene\)\)/)
-  assert.match(saves, /\(width \/ mediumWidth\) \* 14 \* k/)
+  // export: the same rule, taken from the scene's own pitch
+  assert.match(saves, /arrowRenderedHeadSize\(width, o\.dash, sceneIsLive\(scene\)\) \* k/)
+  // no copy of the old dash-blind head is left in the export
+  assert.doesNotMatch(saves, /\(width \/ mediumWidth\) \* 14 \* k/)
 })
 
 test('the broadcast deck shows arrows in shelf ink, but draws them white', () => {
@@ -92,4 +124,38 @@ test('the broadcast deck shows arrows in shelf ink, but draws them white', () =>
   // and the preview still draws on the scene's ladder, head scale included
   assert.match(main, /arrowPreview\(dash, head, shelfArrowColor\(\), defaults\.arrow\.width, false, liveArrows\(\)\)/)
   assert.match(main, /headSize: arrowHeadSize\(width, live\)/)
+})
+
+test('a broadcast dotted head comes down with its dots', () => {
+  // grass is untouched, dotted included: the head the board has always drawn
+  for (const dash of ['solid', 'dashed', 'dotted']) {
+    for (const width of [2, 3, 4.5, 6.5]) {
+      assert.equal(arrowRenderedHeadSize(width, dash), arrowHeadSize(width))
+    }
+  }
+  // broadcast solid and dashed keep the head their width earns
+  for (const dash of ['solid', 'dashed', undefined]) {
+    for (const width of [2, 3, 4.5]) {
+      assert.equal(arrowRenderedHeadSize(width, dash, true), arrowHeadSize(width, true))
+    }
+  }
+  // only the broadcast dotted head shrinks, and by half
+  assert.equal(arrowRenderedHeadSize(3, 'dotted', true), 7)
+  assert.equal(arrowRenderedHeadSize(2, 'dotted', true), arrowHeadSize(2, true) * 0.5)
+  assert.equal(arrowRenderedHeadSize(4.5, 'dotted', true), 10.5)
+  // and it lands back at the head-to-dot proportion a drawn dotted arrow has
+  const grass = arrowRenderedHeadSize(4.5, 'dotted') / arrowShaftWidth(4.5, 'dotted')
+  const live = arrowRenderedHeadSize(3, 'dotted', true) / arrowShaftWidth(3, 'dotted', true)
+  assert.ok(Math.abs(grass - live) < 0.1, `${grass} vs ${live}`)
+})
+
+test('every renderer asks the one dash-aware head rule', () => {
+  // canvas geometry, so the shape, its shortening and the shelf preview agree
+  assert.match(board, /function headSize\(o: ArrowObj, live: boolean\): number \{\n  return arrowRenderedHeadSize\(o\.width, o\.dash, live\)/)
+  // (times the board's own head scale, which every renderer also applies)
+  assert.equal(board.match(/o\.head \? headSize\(o, live\) \* visualScale \* headScale : 0/g)?.length, 2)
+  assert.match(saves, /\* k \* \(look\['arrow\.head'\] as number\)/)
+  assert.doesNotMatch(board, /o\.head \? arrowHeadSize\(o\.width, live\)/)
+  // SVG export, which PNG and animation frames are drawn from
+  assert.match(saves, /arrowRenderedHeadSize\(width, o\.dash, sceneIsLive\(scene\)\)/)
 })

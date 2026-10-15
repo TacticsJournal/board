@@ -568,7 +568,7 @@ export class ImportPanel {
         const x = Math.min(BOARD_W, Math.max(0, p.x))
         const y = Math.min(boardH, Math.max(0, p.y))
         if (d.kind === 'ball') insertByTier(s.objects, { id: uid(), type: 'ball', x, y, size: 20, flipX: false, flipY: false })
-        else insertByTier(s.objects, { id: uid(), type: 'player', x, y, r: 13, color: color || d.color || TEAM_COLORS.grey, label: '', name: '', namePos: 'bottom', nameSize: 18, nameDisplay: 'last', flipX: false, flipY: false })
+        else insertByTier(s.objects, { id: uid(), type: 'player', x, y, r: 13, color: color || d.color || TEAM_COLORS.grey, label: '', name: '', namePos: 'auto', nameSize: 18, nameDisplay: 'last', flipX: false, flipY: false })
         added++
       }
     })

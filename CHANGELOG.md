@@ -1,14 +1,55 @@
-# Changelog
+<!--
+What's new, in the words the reader sees. This file is the only source of
+truth: the board and the /changelog page are both built from it.
 
-## Unreleased
+One entry per `## ` heading, newest first. The heading is the title. The
+lines under it, up to the first blank line, are fields written as
+`Key: value`:
 
-- Added the official 3D View extension with full-circle mouse and touch orbit controls, camera zoom, and the editable live board.
-- Added a bundled official extension registry separate from sandboxed self-hosted extensions.
-- Added a self-host settings page and clarified that Board does not use tracking or analytics.
-- Shortened Board share links and let free users import shared projects.
-- Sorted the player picker by shirt number and remembered the last opened project separately.
-- Fixed animation export fades, duplicated arrow alignment, broadcast arrow previews, shape controls, and shape refreshes after switching project type.
-- Kept the board hidden behind the mobile keyboard toolbar.
+  Date   required, ISO `YYYY-MM-DD`
+  Tag    optional, one short word shown as a pill, for example New or Fixed
+  Major  optional, `true` to announce the entry in a banner on the board
+
+Everything after the blank line is the body: one or two sentences, or
+nothing at all. An entry missing a title or a valid date is skipped, and a
+file that cannot be read leaves the list empty rather than failing a build.
+-->
+
+## Style a zone, an arrow and a label one tab at a time
+Date: 2026-09-06
+Tag: Improved
+
+Styles opens on the part you are working on, so the controls for a zone, an arrow and a label no longer share one crowded shelf.
+
+## 3D View
+Date: 2026-08-26
+Tag: New
+Major: true
+
+Orbit the pitch with a finger and keep editing the live board while you turn it. Pinch to zoom in on a phase and see the shape from the touchline.
+
+## Oval and triangle edit controls now match the box controls
+Date: 2026-08-26
+
+Reshaping an oval or a triangle works the same way as reshaping a box, with the same handles in the same places.
+
+## The board remembers the last project you opened
+Date: 2026-08-26
+
+The last project and the last board are remembered separately, so reopening the board puts you back where you left off.
+
+## The player picker sorts by shirt number
+Date: 2026-08-26
+
+Squads read in number order, so finding a player is a glance instead of a scan.
+
+## New arrows default to the round curve preset
+Date: 2026-08-25
+
+Draw an arrow and it bends the way most passes and runs do, without a trip to the curve settings.
+
+<!-- Self-host release history. These headings have no Date field, so the
+board changelog skips them. -->
 
 ## [0.1.1] - 2026-08-26
 

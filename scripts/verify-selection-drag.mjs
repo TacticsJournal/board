@@ -26,10 +26,15 @@ const snapshot = () => page.evaluate(() => {
   const { board, store } = window.__tbm
   return {
     boxes: board.stage.find('.selbox').map(node => ({
-      id: node.getAttr('selectionId'),
+      ids: node.getAttr('selectionIds'),
       x: node.x(),
       y: node.y(),
+      width: node.width(),
+      height: node.height(),
     })),
+    objRects: Object.fromEntries(
+      store.scene.objects.map(obj => [obj.id, board.rectFor(obj)]),
+    ),
     arrow: structuredClone(store.obj('drag-arrow')),
     arrowNode: board.objLayer.findOne('#drag-arrow')?.position() ?? null,
   }
@@ -59,6 +64,10 @@ const singleDy = 55 / arrowStart.scale
 check(
   Math.abs(singleMid.arrow.x1 - singleBefore.arrow.x1 - singleDx) < 1,
   `single arrow data moved by the wrong amount: ${JSON.stringify({ singleBefore, singleMid, singleDx })}`,
+)
+check(
+  singleBefore.boxes.length === 1 && singleMid.boxes.length === 1,
+  `single selection should render exactly one outline: ${JSON.stringify({ singleBefore, singleMid })}`,
 )
 check(
   Math.abs(singleMid.boxes[0].x - singleBefore.boxes[0].x - singleDx) < 1
@@ -93,15 +102,45 @@ await page.mouse.move(playerStart.x + 75, playerStart.y + 40, { steps: 6 })
 const multiMid = await snapshot()
 const multiDx = 75 / playerStart.scale
 const multiDy = 40 / playerStart.scale
-for (const before of multiBefore.boxes) {
-  const after = multiMid.boxes.find(box => box.id === before.id)
+const matchesUnion = (box, rects) => {
+  const pad = 5
+  const minX = Math.min(...rects.map(r => r.x)) - pad
+  const minY = Math.min(...rects.map(r => r.y)) - pad
+  const maxX = Math.max(...rects.map(r => r.x + r.width)) + pad
+  const maxY = Math.max(...rects.map(r => r.y + r.height)) + pad
+  return Math.abs(box.x - minX) < 0.5
+    && Math.abs(box.y - minY) < 0.5
+    && Math.abs(box.width - (maxX - minX)) < 0.5
+    && Math.abs(box.height - (maxY - minY)) < 0.5
+}
+
+for (const [label, shot] of [['before', multiBefore], ['during', multiMid]]) {
   check(
-    !!after
-      && Math.abs(after.x - before.x - multiDx) < 1
-      && Math.abs(after.y - before.y - multiDy) < 1,
-    `multi-select outline ${before.id} detached: ${JSON.stringify({ before, after, multiDx, multiDy })}`,
+    shot.boxes.length === 1,
+    `multi-select should render exactly one outline ${label} the drag: ${JSON.stringify(shot.boxes)}`,
+  )
+  const box = shot.boxes[0]
+  if (!box) continue
+  check(
+    Array.isArray(box.ids) && box.ids.length === 2
+      && box.ids.includes('drag-player') && box.ids.includes('drag-arrow'),
+    `combined outline is not attached to both objects ${label} the drag: ${JSON.stringify(box)}`,
+  )
+  check(
+    matchesUnion(box, [shot.objRects['drag-player'], shot.objRects['drag-arrow']]),
+    `combined outline does not match the group bounds ${label} the drag: ${JSON.stringify({ box, objRects: shot.objRects })}`,
   )
 }
+const multiBox = multiBefore.boxes[0]
+const multiBoxMid = multiMid.boxes[0]
+check(
+  !!multiBox && !!multiBoxMid
+    && Math.abs(multiBoxMid.x - multiBox.x - multiDx) < 1
+    && Math.abs(multiBoxMid.y - multiBox.y - multiDy) < 1
+    && Math.abs(multiBoxMid.width - multiBox.width) < 1
+    && Math.abs(multiBoxMid.height - multiBox.height) < 1,
+  `combined outline detached during the drag: ${JSON.stringify({ multiBox, multiBoxMid, multiDx, multiDy })}`,
+)
 check(
   Math.abs(multiMid.arrowNode.x) < 0.01 && Math.abs(multiMid.arrowNode.y) < 0.01,
   `multi-select arrow received a second translation: ${JSON.stringify(multiMid.arrowNode)}`,

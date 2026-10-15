@@ -88,10 +88,12 @@ export class Store {
     return changed
   }
 
-  /** Full-scene snapshot for undo, including the optional arrow legend. */
+  /** Full-scene snapshot for undo, including the optional arrow legend and how
+      the board is drawn. Anything left out here is a change that cannot be
+      taken back, because the entry is dropped as a no-op. */
   private snap(): string {
     const s = this.scene
-    return JSON.stringify({ objects: s.objects, match: s.match, pitch: s.pitch, board: s.board, arrowLegend: s.arrowLegend })
+    return JSON.stringify({ objects: s.objects, match: s.match, pitch: s.pitch, board: s.board, arrowLegend: s.arrowLegend, appearance: s.appearance })
   }
 
   /** Snapshot + mutate + persist + emit, for discrete edits. */
@@ -137,6 +139,8 @@ export class Store {
     this.scene.board = parsed.board ?? this.scene.board
     if (parsed.arrowLegend) this.scene.arrowLegend = parsed.arrowLegend
     else delete this.scene.arrowLegend
+    if (parsed.appearance) this.scene.appearance = parsed.appearance
+    else delete this.scene.appearance
     this.afterHistory()
   }
   redo() {
@@ -150,6 +154,8 @@ export class Store {
     this.scene.board = parsed.board ?? this.scene.board
     if (parsed.arrowLegend) this.scene.arrowLegend = parsed.arrowLegend
     else delete this.scene.arrowLegend
+    if (parsed.appearance) this.scene.appearance = parsed.appearance
+    else delete this.scene.appearance
     this.afterHistory()
   }
   private afterHistory() {

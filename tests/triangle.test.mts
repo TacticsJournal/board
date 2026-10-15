@@ -30,9 +30,9 @@ test('a zone is its nodes, or its w/h box, never both', () => {
   // a box and an outline are one shape filled or stroked: switching between
   // those two must not throw away nodes that have been moved
   assert.match(main, /const sameFamily = boxHasCorners\(o\.shape\) && boxHasCorners\(v as BoxObj\['shape'\]\)/)
-  // Every zone opens with the same dashed selection, resize node, and pencil.
+  // Every zone opens with the same dashed selection, rotation node, and pencil.
   // The pencil materializes an oval or triangle's nodes only when it is used.
   assert.doesNotMatch(board, /if \(sel\.type === 'box' && !sel\.corners\)/)
-  assert.match(board, /this\.addSelectionOutline\(sel\)[\s\S]{0,100}this\.addResizeNode\(sel\)[\s\S]{0,100}if \(hasNodeEdit\(sel\)\) this\.addEditIcon\(sel\)/)
+  assert.match(board, /this\.addSelectionOutline\(sel\)[\s\S]{0,100}this\.addRotationNode\(sel\)[\s\S]{0,100}if \(hasNodeEdit\(sel\)\) this\.addEditIcon\(sel\)/)
   assert.match(board, /function hasNodeEdit\(obj: SceneObj\): boolean \{\s*return obj\.type === 'arrow' \|\| obj\.type === 'box'/)
 })

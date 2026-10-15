@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-import { addBoard, frameAt, newProject, projectDuration } from '../src/projects.ts'
+import { HANDOFF, addBoard, frameAt, newProject, projectDuration } from '../src/projects.ts'
 import { emptyScene } from '../src/types.ts'
 
 const animation = await readFile(new URL('../src/animate-export.ts', import.meta.url), 'utf8')
@@ -46,7 +46,7 @@ test('the animation export dims leaving and arriving objects instead of drawing 
   assert.match(animation, /frame\.fading\.forEach\(id => alpha\.set\(id, frame\.exitAlpha\)\)/)
   assert.match(animation, /frame\.arriving\.forEach\(id => alpha\.set\(id, frame\.enterAlpha\)\)/)
   assert.match(animation, /frame\.riding\.forEach\(id => alpha\.set\(id, frame\.rideAlpha\)\)/)
-  assert.match(animation, /toFrameCanvas\(width, frame\.view, alpha\)/)
+  assert.match(animation, /toFrameCanvas\(width, coverView\(frame\.view, aspect\), alpha\)/)
   assert.doesNotMatch(animation, /objects: frame\.scene\.objects\.filter/)
 })
 
@@ -54,4 +54,32 @@ test('a frame capture puts every opacity it borrowed back', () => {
   assert.match(board, /toFrameCanvas\(\s*width: number,\s*view\?: \{[^}]*\},\s*opacity\?: Map<string, number>,\s*\)/)
   assert.match(board, /dimmed\.push\(\{ node, was: node\.opacity\(\) \}\)/)
   assert.match(board, /for \(const \{ node, was \} of dimmed\) node\.opacity\(was\)/)
+})
+
+test('the exported film cuts the photograph where nothing of either board shows', () => {
+  // the export reads frameAt, so it takes the same handover the player draws
+  const project = newProject(emptyScene())
+  project.boards[0].scene.pitch = 'bg:one'
+  project.boards[0].scene.objects.push({ id: 'old', type: 'player', x: 100, y: 100, r: 14, color: '#e02020' } as never)
+  addBoard(project, 0, true)
+  project.boards[1].scene.pitch = 'bg:two'
+  project.boards[1].scene.objects = [{ id: 'new', type: 'player', x: 500, y: 100, r: 14, color: '#e02020' }] as never
+  project.boards[0].link.dur = 1000
+  project.boards[0].link.ease = 'linear'
+
+  const total = projectDuration(project)
+  const grounds: string[] = []
+  for (let ms = 0; ms <= total; ms += 1000 / 30) {
+    const frame = frameAt(project, Math.min(ms, total))
+    const pitch = String(frame.scene.pitch)
+    if (pitch !== grounds[grounds.length - 1]) grounds.push(pitch)
+    if (frame.arriving.size && frame.enterAlpha > 0) assert.equal(pitch, 'bg:two', `arriving over the old photograph at ${ms}ms`)
+    if (frame.fading.size && frame.exitAlpha > 0) assert.equal(pitch, 'bg:one', `leaving over the new photograph at ${ms}ms`)
+  }
+  assert.deepEqual(grounds, ['bg:one', 'bg:two'], 'the photograph is cut once, in one direction')
+
+  // the cut is at the handoff of the move itself, not a hardcoded moment
+  const move = 700
+  assert.equal(frameAt(project, move + 1000 * HANDOFF - 1).scene.pitch, 'bg:one')
+  assert.equal(frameAt(project, move + 1000 * HANDOFF + 1).scene.pitch, 'bg:two')
 })

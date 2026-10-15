@@ -95,7 +95,7 @@ test('every choice inserts at the asked-for index, opens the board and saves', (
   const create = view.slice(view.indexOf('private addBoardHere'), view.indexOf('private closeAddSheet'))
   assert.match(create, /const scene = pitchId \? this\.host\.blankSceneOn\(pitchId\) : this\.host\.blankScene\(\)/)
   assert.match(create, /addBoard\(project, index, copy, scene\)/)
-  assert.match(create, /this\.commit\(\)[\s\S]*this\.host\.openBoard\(index \+ 1\)[\s\S]*this\.open\(null\)/)
+  assert.match(create, /this\.commit\(\)[\s\S]*this\.host\.openBoard\(index \+ 1, \{ stash: false \}\)[\s\S]*this\.open\(null\)/)
 })
 
 test('all local choices stay available without a purchase', () => {

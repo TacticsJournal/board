@@ -116,14 +116,40 @@ test('one image still changes the board in front of you', () => {
 })
 
 test('several images become boards of this project, saved and shown', () => {
-  assert.match(liveShotSection, /addBoard\(project, at, false, broadcastShotScene\(shot\.meta\)\)\.title = shot\.name/)
+  assert.match(liveShotSection, /addBoard\(project, at, false, broadcastShotScene\(shot\.meta, sourceBoard\.scene\.match\)\)\.title = shot\.name/)
   assert.doesNotMatch(liveShotSection, /newProject|openNewProject/)
-  assert.match(liveShotSection, /stashEditedBoard\(\)/)
+  assert.match(liveShotSection, /stashEditedBoard\(false\)/)
+  assert.match(liveShotSection, /if \(run\.include\) carried = carryObjects\(project, sourceBoard\.id, importedIds, scope\)/)
   assert.match(liveShotSection, /saveProjectChanges\(project\)/)
   assert.match(liveShotSection, /loadBoardIntoEditor\(opened\.scene\)/)
-  assert.match(liveShotSection, /showToast\(shotImportMessage\(result\)\)/)
+  assert.match(liveShotSection, /showToast\(`\$\{shotImportMessage\(result\)\}\$\{carryNote\}`, undoCarryAction\(ref\.projectId, carried\.added\)\)/)
   // named from the file, not "Screenshot" over and over
   assert.match(liveShotSection, /name: file => nameFromFile\(file\.name\)/)
+})
+
+test('the batch sheet waits for confirmation and cancel only revokes previews', () => {
+  assert.match(liveShotSection, /openBroadcastImportSheet\(files\)/)
+  assert.match(liveShotSection, /if \(state\.busy\) return/)
+  assert.match(liveShotSection, /revokeBroadcastPreviews\(state\)/)
+  assert.match(liveShotSection, /void importLiveShots\(state\.files, \{/)
+  assert.match(liveShotSection, /\.finally\(\(\) => closeBroadcastImportSheet\(false, true, state\)\)/)
+  assert.match(liveShotSection, /expected && state !== expected/)
+  assert.match(liveShotSection, /include: state\.include && state\.hasObjects/)
+  assert.match(liveShotSection, /scope: state\.scope/)
+  assert.match(liveShotSection, /projectId: state\.projectId/)
+  assert.match(liveShotSection, /boardId: state\.sourceBoardId/)
+  assert.match(liveShotSection, /library\.projects\.find\(item => item\.id === ref\.projectId\)/)
+  assert.match(liveShotSection, /findIndex\(board => board\.id === ref\.boardId\)/)
+})
+
+test('the sheet asks one thing: whether the objects come along', () => {
+  // one default-on switch, and the scope was settled before the sheet opened
+  assert.match(liveShotSection, /role="switch" aria-checked="\$\{hasObjects\}" data-import-include/)
+  assert.match(liveShotSection, /const scope: CarrySelection = selected\.length \? selected : 'all'/)
+  assert.match(liveShotSection, /include: hasObjects,/)
+  assert.doesNotMatch(liveShotSection, /data-import-target|data-import-scope|BroadcastImportTarget/)
+  // no objects to include: the row is there but unavailable, not another question
+  assert.match(liveShotSection, /toggle\.disabled = state\.busy \|\| !state\.hasObjects/)
 })
 
 test('both paths decode through the one URL-safe helper', () => {

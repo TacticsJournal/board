@@ -1,4 +1,5 @@
 import { DEFAULT_PITCH, pitchById } from './pitches.ts'
+import { normalizeAppearance, type BoardAppearance } from './appearance.ts'
 import type { PathNode, NodeCurve } from './path-nodes.ts'
 
 export type { PathNode, NodeCurve }
@@ -16,14 +17,35 @@ type Flippable = {
 }
 
 export type PlayerNameDisplay = 'first' | 'last' | 'full'
+export type PlayerMark = 'facing' | 'arms'
 
 export type PlayerObj = {
   id: string; type: 'player'
   x: number; y: number; r: number
   color: string
   label: string
+  /** Numbers off hides the shirt number without forgetting it. */
+  showLabel?: boolean
+  /**
+   * Which way the player is facing, in degrees clockwise from the right, drawn
+   * as a head on the edge of the token. Absent means no arrow at all.
+   */
+  facing?: number
+  /**
+   * Arms: two bars off the token in the board's own ink, opening away from the
+   * angle held here. Which way a player is turned, as a body rather than a
+   * point. Absent means none.
+   */
+  arms?: number
+  /** Marks that keep pointing at the first ball until this player is moved or turned. */
+  trackBall?: PlayerMark[]
   name: string
-  namePos: 'top' | 'bottom'
+  /**
+   * Which side of the token the name sits on. 'auto' hands the choice to the
+   * board, which keeps the name off whichever side a head or a pair of arms
+   * reaches into; 'top' and 'bottom' are the player's own word and stay put.
+   */
+  namePos: 'top' | 'bottom' | 'auto'
   nameSize: number
   nameDisplay: PlayerNameDisplay
   team?: string
@@ -68,6 +90,11 @@ export type ArrowObj = {
   /** Measurement lines behave like arrows/lines but have no middle bend handle. */
   measure?: boolean
   headSize?: number
+  /**
+   * This arrow's own shadow, where it has been given one. Absent means it is
+   * drawn with whatever the board's appearance asks for.
+   */
+  shadow?: number
 }
 export type BoxObj = {
   id: string; type: 'box'
@@ -83,6 +110,9 @@ export type BoxObj = {
       them is only where a zone starts: node editing adds and removes them,
       and each one carries its own curve. */
   corners?: PathNode[]
+  /** This zone's own border, where it has been given one. Absent follows the board. */
+  border?: number
+  borderStyle?: 'solid' | 'dashed'
 } & Flippable
 /**
  * Which zone shapes are four draggable corners. The others are a box the
@@ -101,6 +131,8 @@ export type TextObj = {
   bold: boolean
   color: string
   rotation: number
+  /** This label's own halo, where it has been given one. Absent follows the board. */
+  halo?: number
 } & Flippable
 
 /**
@@ -122,7 +154,59 @@ export type ImageObj = {
  */
 export type Grouped = { group?: string }
 
-export type SceneObj = (PlayerObj | BallObj | ConeObj | GoalObj | MarkerObj | ArrowObj | BoxObj | TextObj | ImageObj) & Grouped
+/** One of an object's points as the pitch itself reads it (pitch-map.ts). */
+export type PitchMark = { u: number; v: number }
+
+/**
+ * The sizes a board hands a new object. Size is a board setting rather than
+ * anything the pitch decides, so carrying a board over hands each object the
+ * new board's idea of how big its kind is.
+ */
+export type BoardSizes = { player: number; name: number; arrow: number; measure: number; text: number }
+export type BoardSizeName = keyof BoardSizes
+export const BOARD_SIZE_NAMES: BoardSizeName[] = ['player', 'name', 'arrow', 'measure', 'text']
+
+/**
+ * What the pitch map left on an object so a change of pitch can be undone
+ * exactly. Neither note is the user's, and neither is taken on trust: both are
+ * dropped the moment the object stops matching them.
+ */
+export type PitchCarry = {
+  /**
+   * Where the object stood on the pitch when it last arrived on this style,
+   * and the sizes that board handed it, so a size the user has since changed
+   * by hand can be told from one the board gave.
+   */
+  onPitch?: { pitch: string; points: PitchMark[]; sizes?: Partial<BoardSizes> }
+  /** The object this one was copied from, onto the second of two pitches. */
+  mirrorOf?: string
+}
+
+export type SceneObj = (PlayerObj | BallObj | ConeObj | GoalObj | MarkerObj | ArrowObj | BoxObj | TextObj | ImageObj) & Grouped & PitchCarry
+
+/**
+ * Keep opted-in player marks aimed at the first ball on the board. Moving
+ * either the player or the ball changes that angle without ending tracking;
+ * turning a player's mark by hand is what opts that mark out.
+ * Returns the players whose drawn angle changed.
+ */
+export function trackPlayersAtBall(objects: readonly SceneObj[], _movedIds: readonly string[] = []): string[] {
+  const ball = objects.find((o): o is BallObj => o.type === 'ball')
+  const changed: string[] = []
+  for (const o of objects) {
+    if (o.type !== 'player') continue
+    if (!ball || !o.trackBall?.length) continue
+    const deg = ((Math.atan2(ball.y - o.y, ball.x - o.x) * 180 / Math.PI) % 360 + 360) % 360
+    let turned = false
+    for (const mark of o.trackBall) {
+      if (typeof o[mark] !== 'number' || o[mark] === deg) continue
+      o[mark] = deg
+      turned = true
+    }
+    if (turned) changed.push(o.id)
+  }
+  return changed
+}
 
 /** Draw-order tier: zones and arrows always sit behind tactical assets. */
 export const TYPE_Z: Record<SceneObj['type'], number> = { box: 0, arrow: 1, goal: 2, marker: 2, cone: 3, image: 3, player: 4, ball: 5, text: 6 }
@@ -164,6 +248,11 @@ export type Scene = {
   match?: MatchInfo
   /** Optional user-defined meanings for arrow line styles. */
   arrowLegend?: ArrowLegend
+  /**
+   * How this board is drawn: its type, and how each kind of piece is finished.
+   * Absent on every board nobody has styled, which is most of them.
+   */
+  appearance?: BoardAppearance
   objects: SceneObj[]
 }
 
@@ -211,6 +300,103 @@ export function isLight(hex: string): boolean {
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62
 }
+
+/**
+ * White, or near enough that a shape filled with it disappears into the pitch.
+ * A lilac or a keeper's grey is a colour and carries itself; only this needs a
+ * line drawn round it.
+ */
+/**
+ * The head: a triangle standing clear of the ring, pointing the way the player
+ * faces. The ring is r * 0.38 about the radius, so its outer edge is r * 1.19
+ * and the head starts a fifth of a radius past that - touching, the two read as
+ * one heavy blob rather than a dot with a head.
+ */
+export function headPoints(deg: number, r: number): number[] {
+  const a = deg * Math.PI / 180
+  const base = r * 1.41, tip = base + r * 0.9, half = r * 0.78
+  const ux = Math.cos(a), uy = Math.sin(a)
+  return [
+    ux * tip, uy * tip,
+    ux * base - uy * half, uy * base + ux * half,
+    ux * base + uy * half, uy * base - ux * half,
+  ]
+}
+
+/**
+ * One arm. It leaves the ring behind the shoulder and reaches forward, so the
+ * free end is the one out in front - that is what makes it read as an arm
+ * rather than a fin. The base starts inside the ring so the two are one shape
+ * with no seam, and both ends are cut square: a taper reads as a claw.
+ */
+export function armPoints(deg: number, side: 1 | -1, r: number): number[] {
+  const base = deg * Math.PI / 180
+  const FROM = 100, TO = 46          // degrees off the facing direction
+  const NEAR = 0.95, FAR = 1.66      // radius, in r, at each end
+  const HALF = 0.17                  // half the arm's thickness, in r
+  const steps = 18
+  const outer: number[] = []
+  const inner: number[] = []
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps
+    const a = base + side * (FROM + (TO - FROM) * t) * Math.PI / 180
+    const rad = r * (NEAR + (FAR - NEAR) * t)
+    const ux = Math.cos(a), uy = Math.sin(a)
+    outer.push(ux * (rad + r * HALF), uy * (rad + r * HALF))
+    inner.unshift(ux * (rad - r * HALF), uy * (rad - r * HALF))
+  }
+  return [...outer, ...inner]
+}
+
+/** Room left between the token and its name, in board units. */
+const NAME_GAP = 5
+/** How much further down than up a mark must reach before a name moves, in r. */
+const NAME_LEAN = 0.25
+/** A lean this far down fills the space below the token whatever the reach. */
+const NAME_FILL = 1
+
+/** How far a player's marks reach up and down, in board units, y down. */
+function markSpan(o: { r?: number; facing?: number; arms?: number }): { up: number; down: number } {
+  const r = Number.isFinite(o.r) ? Number(o.r) : 13
+  let up = 0, down = 0
+  const take = (pts: number[]) => {
+    for (let i = 1; i < pts.length; i += 2) {
+      if (pts[i] > down) down = pts[i]
+      if (-pts[i] > up) up = -pts[i]
+    }
+  }
+  if (typeof o.facing === 'number') take(headPoints(o.facing, r))
+  if (typeof o.arms === 'number') for (const side of [1, -1] as const) take(armPoints(o.arms, side, r))
+  return { up, down }
+}
+
+/**
+ * Where a name actually goes. 'top' and 'bottom' are chosen, so they stay
+ * chosen. 'auto' watches the head and the arms and lifts the name above the
+ * token once one of them reaches past the line the name would sit on. Arms
+ * reach both ways at once, so the mark also has to lean clearly downwards
+ * before the name moves; otherwise a slow turn would flap it about. A pair of
+ * arms held straight down splays its ends sideways and falls just short of the
+ * name line, so a strong lean counts on its own and the name stays put through
+ * the turn. Turning the player is all it takes: the side is worked out as the
+ * player is drawn.
+ */
+export function resolveNamePos(o: { namePos?: string; r?: number; facing?: number; arms?: number }): 'top' | 'bottom' {
+  if (o.namePos !== 'auto') return o.namePos === 'top' ? 'top' : 'bottom'
+  const r = Number.isFinite(o.r) ? Number(o.r) : 13
+  const { up, down } = markSpan(o)
+  const lean = down - up
+  if (lean <= r * NAME_LEAN) return 'bottom'
+  return down > r + NAME_GAP || lean > r * NAME_FILL ? 'top' : 'bottom'
+}
+
+export function isWhiteish(hex: string): boolean {
+  const c = normalizeHex(hex)
+  if (!c) return false
+  const [r, g, b] = [1, 3, 5].map(k => Number.parseInt(c.slice(k, k + 2), 16))
+  return r >= 232 && g >= 232 && b >= 232
+}
+
 
 export function playerDisplayName(name: string, mode: PlayerObj['nameDisplay'] = 'last'): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -305,6 +491,8 @@ export function emptyScene(pitch: string = DEFAULT_PITCH): Scene {
 }
 
 const MAX_IMPORTED_OBJECTS = 2000
+/** A zone's corners are capped at 200 nodes, and an arrow keeps three points. */
+const MAX_PITCH_MARKS = 210
 
 function finiteNumber(value: unknown, fallback: number, min = -10000, max = 10000): number {
   return typeof value === 'number' && Number.isFinite(value)
@@ -357,12 +545,37 @@ function safeNodes(value: unknown, min: number, max = 200): PathNode[] | null {
   return nodes as PathNode[]
 }
 
-/** Every type keeps its own fields; the group id rides along on all of them. */
+/** The pitch map's own note, kept only where it is whole and readable. */
+function safeCarry(value: Record<string, any>): PitchCarry {
+  const carry: PitchCarry = {}
+  const mirrorOf = boundedString(value.mirrorOf, 64).trim()
+  if (mirrorOf) carry.mirrorOf = mirrorOf
+  const stash = value.onPitch
+  const pitch = stash && typeof stash === 'object' ? boundedString(stash.pitch, 64).trim() : ''
+  const raw = stash && Array.isArray(stash.points) ? stash.points : null
+  if (!pitch || !raw || !raw.length || raw.length > MAX_PITCH_MARKS) return carry
+  const points: PitchMark[] = []
+  for (const point of raw) {
+    if (!point || typeof point !== 'object' || !Number.isFinite(point.u) || !Number.isFinite(point.v)) return carry
+    points.push({ u: finiteNumber(point.u, 0, -100, 100), v: finiteNumber(point.v, 0, -100, 100) })
+  }
+  const sizes: Partial<BoardSizes> = {}
+  for (const name of BOARD_SIZE_NAMES) {
+    if (Number.isFinite(stash.sizes?.[name])) sizes[name] = finiteNumber(stash.sizes[name], 0, 0, 4000)
+  }
+  carry.onPitch = { pitch, points, ...(Object.keys(sizes).length ? { sizes } : {}) }
+  return carry
+}
+
+/** Every type keeps its own fields; the ride-along notes go on all of them. */
 function sanitizeObject(value: unknown): SceneObj | null {
   const clean = sanitizeShape(value)
   if (!clean) return null
-  const group = boundedString((value as Record<string, any>).group, 64).trim()
-  return group ? { ...clean, group } : clean
+  const raw = value as Record<string, any>
+  const group = boundedString(raw.group, 64).trim()
+  const carry = safeCarry(raw)
+  if (!group && !carry.onPitch && !carry.mirrorOf) return clean
+  return { ...clean, ...(group ? { group } : {}), ...carry }
 }
 
 function sanitizeShape(value: unknown): SceneObj | null {
@@ -377,11 +590,18 @@ function sanitizeShape(value: unknown): SceneObj | null {
 
   if (o.type === 'player') {
     const team = boundedString(o.team, 100).trim() || undefined
+    const trackBall = Array.isArray(o.trackBall)
+      ? (['facing', 'arms'] as PlayerMark[]).filter(mark => o.trackBall.includes(mark) && Number.isFinite(o[mark]))
+      : []
     return {
       id, type: 'player', x, y, r: finiteNumber(o.r, 13, 2, 100),
       color: safeColor(o.color, TEAM_COLORS[team || ''] || '#e02020'),
       label: boundedString(o.label, 20), name: boundedString(o.name, 120),
-      namePos: o.namePos === 'top' ? 'top' : 'bottom',
+      ...(o.showLabel === false ? { showLabel: false } : {}),
+      ...(Number.isFinite(o.facing) ? { facing: ((Number(o.facing) % 360) + 360) % 360 } : {}),
+      ...(Number.isFinite(o.arms) ? { arms: ((Number(o.arms) % 360) + 360) % 360 } : {}),
+      ...(trackBall.length ? { trackBall } : {}),
+      namePos: o.namePos === 'top' ? 'top' : o.namePos === 'auto' ? 'auto' : 'bottom',
       nameSize: finiteNumber(o.nameSize, 18, 8, 96),
       nameDisplay: ['first', 'last', 'full'].includes(o.nameDisplay) ? o.nameDisplay : 'last',
       ...(team ? { team } : {}), ...flips, ...spin,
@@ -425,6 +645,7 @@ function sanitizeShape(value: unknown): SceneObj | null {
       color: safeColor(o.color, '#111111'), width, head: o.head !== false,
       measure: o.measure === true,
       headSize: finiteNumber(o.headSize, Math.max(12, width * 3.2), 2, 200),
+      ...(Number.isFinite(o.shadow) ? { shadow: finiteNumber(o.shadow, 0, 0, 3) } : {}),
     }
   }
   if (o.type === 'box') {
@@ -439,6 +660,8 @@ function sanitizeShape(value: unknown): SceneObj | null {
       fill: safeColor(o.fill, '#9ca3af'), opacity: finiteNumber(o.opacity, 0.45, 0, 1),
       label: boundedString(o.label, 120),
       labelPos: ['top', 'right', 'bottom', 'left'].includes(o.labelPos) ? o.labelPos : 'top',
+      ...(Number.isFinite(o.border) ? { border: finiteNumber(o.border, 0, 0, 10) } : {}),
+      ...(o.borderStyle === 'dashed' || o.borderStyle === 'solid' ? { borderStyle: o.borderStyle } : {}),
       ...(corners ? { corners } : {}), ...flips,
     }
   }
@@ -446,7 +669,9 @@ function sanitizeShape(value: unknown): SceneObj | null {
     return {
       id, type: 'text', x, y, text: boundedString(o.text, 500),
       size: finiteNumber(o.size, 18, 6, 200), bold: o.bold === true,
-      color: safeColor(o.color, '#111111'), rotation: finiteNumber(o.rotation, 0, -3600, 3600), ...flips,
+      color: safeColor(o.color, '#111111'), rotation: finiteNumber(o.rotation, 0, -3600, 3600),
+      ...(Number.isFinite(o.halo) ? { halo: finiteNumber(o.halo, 0, 0, 6) } : {}),
+      ...flips,
     }
   }
   return null
@@ -486,9 +711,10 @@ export function migrate(data: any): Scene {
     const style = pitchById(typeof data.pitch === 'string' ? data.pitch : undefined)
     const h = style.live ? finiteNumber(data.board?.h, style.boardH, 100, 4000) : style.boardH
     const arrowLegend = sanitizeArrowLegend(data.arrowLegend)
+    const appearance = normalizeAppearance(data.appearance)
     return {
       version: 4, board: { w: BOARD_W, h }, pitch: style.id, match: sanitizeMatch(data.match),
-      ...(arrowLegend ? { arrowLegend } : {}), objects,
+      ...(arrowLegend ? { arrowLegend } : {}), ...(appearance ? { appearance } : {}), objects,
     }
   }
   const v1 = Array.isArray(data.objects) ? data.objects.slice(0, MAX_IMPORTED_OBJECTS) : Array.isArray(data) ? data.slice(0, MAX_IMPORTED_OBJECTS) : []

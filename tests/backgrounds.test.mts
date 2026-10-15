@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  boardHeightFor, cleanName, createBackgroundStore, dataUrlBytes, fitSize, freeName, isBackgroundId,
+  boardHeightFor, browserDriver, cleanName, createBackgroundStore, dataUrlBytes, fitSize, freeName, isBackgroundId,
   memoryDriver, memoryMirror, type BackgroundMeta, type StoredBackground,
 } from '../src/backgrounds.ts'
 
@@ -94,6 +94,80 @@ test('the shelf survives a reload before the database opens', async () => {
   await second.load()
   assert.equal(second.ready, true)
   assert.equal(await second.image(meta.id), IMAGE)
+})
+
+test('the browser driver shares one database connection across simultaneous thumbnail reads', async () => {
+  const rows = new Map<string, StoredBackground>([
+    ['bg:one', { id: 'bg:one', name: 'One', kind: 'broadcast', w: 800, h: 450, boardH: 450,
+      bytes: 300, at: 1_000, updatedAt: '2026-08-27T00:00:00.000Z', full: IMAGE, thumb: IMAGE }],
+  ])
+  let opens = 0
+  let database: Record<string, unknown>
+
+  const request = (result: unknown, transaction: Record<string, unknown>) => {
+    const req = { result, error: null, onsuccess: null as null | (() => void) }
+    queueMicrotask(() => {
+      req.onsuccess?.()
+      queueMicrotask(() => (transaction.oncomplete as null | (() => void))?.())
+    })
+    return req
+  }
+  database = {
+    objectStoreNames: { contains: () => true },
+    onversionchange: null,
+    close() {},
+    transaction() {
+      const transaction: Record<string, unknown> = { error: null, oncomplete: null, onerror: null, onabort: null }
+      transaction.objectStore = () => ({
+        getAll: () => request([...rows.values()], transaction),
+        get: (id: string) => request(rows.get(id), transaction),
+        put: (row: StoredBackground) => { rows.set(row.id, row); return request(row.id, transaction) },
+        delete: (id: string) => { rows.delete(id); return request(undefined, transaction) },
+      })
+      return transaction
+    },
+  }
+  let blockNext = true
+  let throwNext = false
+  const factory = {
+    open() {
+      opens += 1
+      if (throwNext) { throwNext = false; throw new Error('restricted for this attempt') }
+      const req = {
+        result: database, error: null, onupgradeneeded: null,
+        onsuccess: null as null | (() => void), onerror: null,
+        onblocked: null as null | (() => void),
+      }
+      queueMicrotask(() => {
+        if (blockNext) { blockNext = false; req.onblocked?.() }
+        queueMicrotask(() => req.onsuccess?.())
+      })
+      return req
+    },
+  }
+
+  const driver = browserDriver(factory as unknown as IDBFactory)
+  const reads = [driver.list(), ...Array.from({ length: 10 }, (_, i) => driver.get(i ? 'bg:missing' : 'bg:one'))]
+  const [all, one] = await Promise.all(reads)
+  assert.equal(opens, 1, 'the full ten-tile workload waits on one open, including a transient blocked event')
+  assert.equal((all as StoredBackground[]).length, 1)
+  assert.equal((one as StoredBackground | null)?.name, 'One')
+
+  const added = { ...rows.get('bg:one')!, id: 'bg:two', name: 'Two' }
+  await driver.put(added)
+  await driver.remove('bg:two')
+  assert.equal(rows.has('bg:two'), false)
+  assert.equal(opens, 1, 'adds and deletes keep using the open database')
+
+  ;(database.onversionchange as () => void)()
+  await driver.get('bg:one')
+  assert.equal(opens, 2, 'a version change closes the old connection and lets the next read reopen it')
+
+  ;(database.onversionchange as () => void)()
+  throwNext = true
+  await assert.rejects(driver.get('bg:one'), /restricted/)
+  await driver.get('bg:one')
+  assert.equal(opens, 4, 'a synchronous open refusal does not poison later attempts')
 })
 
 test('storage that throws leaves the shelf usable rather than breaking the board', async () => {

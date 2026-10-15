@@ -23,21 +23,36 @@ export const TOOLBAR_ACTION_ATTR = 'data-ext-action'
 
 type Options = {
   host: OfficialExtensionHost
-  toolbar: HTMLElement
+  /** Called whenever the set of live toolbar controls changes. */
+  onToolbarChange?: () => void
   extensions?: readonly OfficialExtension[]
+}
+
+/** One live control an extension is offering the bar. */
+export type OfficialToolbarEntry = {
+  /** Stable bar id: `ext:<extension>:<button>`. */
+  key: string
+  extensionId: string
+  extensionName: string
+  label: string
+}
+
+export function officialToolbarKey(extensionId: string, buttonId: string): string {
+  return `ext:${extensionId}:${buttonId}`
 }
 
 export class OfficialExtensions {
   private readonly extensions: readonly OfficialExtension[]
   private readonly host: OfficialExtensionHost
-  private readonly toolbar: HTMLElement
+  private readonly onToolbarChange: () => void
   private readonly running = new Map<string, OfficialExtensionInstance>()
+  private readonly described = new Map<string, readonly OfficialToolbarButton[]>()
   private state: OfficialExtensionState
 
   constructor(options: Options) {
     this.extensions = options.extensions || OFFICIAL_EXTENSIONS
     this.host = options.host
-    this.toolbar = options.toolbar
+    this.onToolbarChange = options.onToolbarChange || (() => {})
     this.state = loadOfficialExtensionState(this.ids())
   }
 
@@ -67,7 +82,58 @@ export class OfficialExtensions {
       this.running.delete(id)
       safely(() => instance.deactivate())
     }
-    this.renderToolbar()
+    this.onToolbarChange()
+  }
+
+  /**
+   * Every control a bundled extension could offer, running or not, so Tool
+   * settings can list one that is switched off without starting it.
+   */
+  toolbarEntries(): OfficialToolbarEntry[] {
+    const entries: OfficialToolbarEntry[] = []
+    for (const extension of this.extensions) {
+      for (const button of this.buttonsFor(extension)) {
+        entries.push({
+          key: officialToolbarKey(extension.id, button.id),
+          extensionId: extension.id,
+          extensionName: extension.name,
+          label: button.label,
+        })
+      }
+    }
+    return entries
+  }
+
+  /**
+   * A ready-to-place button for one bar id, or null when the extension behind
+   * it is switched off. The bar keeps the id either way, so turning the
+   * extension back on puts the control back where it was.
+   */
+  createToolbarButton(key: string): HTMLButtonElement | null {
+    for (const extension of this.extensions) {
+      const instance = this.running.get(extension.id)
+      for (const button of instance?.toolbar || []) {
+        if (officialToolbarKey(extension.id, button.id) === key) return this.mountButton(extension, button)
+      }
+    }
+    return null
+  }
+
+  /**
+   * What an extension offers without running it. Activating asks the host for
+   * real view changes, so a switched-off extension is described by starting it
+   * and standing it straight back down.
+   */
+  private buttonsFor(extension: OfficialExtension): readonly OfficialToolbarButton[] {
+    const running = this.running.get(extension.id)
+    if (running) return running.toolbar || []
+    const cached = this.described.get(extension.id)
+    if (cached) return cached
+    const probe = safely(() => extension.activate(this.host))
+    const buttons = probe?.toolbar ? [...probe.toolbar] : []
+    if (probe) safely(() => probe.deactivate())
+    this.described.set(extension.id, buttons)
+    return buttons
   }
 
   private sync(): void {
@@ -82,17 +148,7 @@ export class OfficialExtensions {
         safely(() => instance.deactivate())
       }
     }
-    this.renderToolbar()
-  }
-
-  private renderToolbar(): void {
-    for (const el of Array.from(this.toolbar.querySelectorAll(`[${TOOLBAR_ACTION_ATTR}]`))) el.remove()
-    for (const extension of this.extensions) {
-      const instance = this.running.get(extension.id)
-      for (const button of instance?.toolbar || []) {
-        this.toolbar.appendChild(this.mountButton(extension, button))
-      }
-    }
+    this.onToolbarChange()
   }
 
   private mountButton(extension: OfficialExtension, button: OfficialToolbarButton): HTMLButtonElement {

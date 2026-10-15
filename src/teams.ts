@@ -531,6 +531,13 @@ export class TeamPanel {
         if (o.corners) for (const n of o.corners) flipNodeX(n)
       } else {
         o.x = BOARD_W - o.x
+        // A player turned across a mirrored board is turned the other way: the
+        // head and the arms are directions, so they mirror with everything else.
+        if (o.type === 'player') {
+          const mirror = (deg: number) => ((((180 - deg) % 360) + 360) % 360)
+          if (typeof o.facing === 'number') o.facing = mirror(o.facing)
+          if (typeof o.arms === 'number') o.arms = mirror(o.arms)
+        }
       }
     }
   }
@@ -1088,7 +1095,7 @@ export class TeamPanel {
       id: uid(), type: 'player',
       x: BOARD_W * 0.2 + col * 56, y: this.store.scene.board.h * 0.25 + row * 56,
       r: 13, color: this.defaults.playerColor,
-      label: p.number || '', name: normalizeName(p.name), namePos: 'bottom', nameSize: 18, nameDisplay: 'last',
+      label: p.number || '', name: normalizeName(p.name), namePos: 'auto', nameSize: 18, nameDisplay: 'last',
       team: this.teamName || undefined,
       flipX: false,
       flipY: false,

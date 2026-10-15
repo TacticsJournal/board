@@ -6,7 +6,7 @@ import test from 'node:test'
 import {
   AgentImportError, agentImportFile, agentImportSource, boardImportReadyRows, createBoardImportUrl, createProjectImportUrl,
   createStoredProjectImportUrl, decodeAgentImport, fetchAgentImport, MAX_AGENT_IMPORT_PAYLOAD_CHARS,
-  projectImportReadyRows, STORED_PROJECT_IMPORT_LIMITS,
+  projectImportReadyRows, projectLimitChoiceRows, projectLimitConfirmRows, STORED_PROJECT_IMPORT_LIMITS,
 } from '../src/agent-import.ts'
 import { addBoard, newProject } from '../src/projects.ts'
 
@@ -165,6 +165,58 @@ test('a constrained context can add a shared project to an existing project', ()
   ])
 })
 
+test('the capped new-project choice offers only a licence or room before anything is opened', () => {
+  const choices = projectLimitChoiceRows(3)
+  assert.deepEqual(choices.map(row => row.action), ['pro', 'remove-project'])
+  assert.equal(choices[0].label, 'Upgrade')
+  assert.equal(choices[0].detail, 'License or Pro removes the three-project limit')
+  assert.equal(choices[0].primary, true)
+  assert.equal(choices[1].detail, 'Delete one of your 3 projects, then add this copy')
+  assert.equal(projectLimitChoiceRows(1)[1].detail, 'Delete your project, then add this copy')
+
+  // the way out comes first so a stray Tab and Enter cannot destroy a project
+  assert.deepEqual(projectLimitConfirmRows('Pressing patterns', 4), [
+    { label: 'Choose another project', detail: 'Nothing has changed yet', action: 'destination-back' },
+    {
+      label: 'Delete “Pressing patterns”', detail: 'Deletes 4 boards, then adds the copy',
+      action: 'confirm', primary: true, destructive: true,
+    },
+  ])
+  const remove = projectLimitConfirmRows('Old plan', 1)
+  assert.equal(remove[1].detail, 'Deletes 1 board, then adds the copy')
+})
+
+test('the capped dialog keeps the import and wires removal to the host', () => {
+  const ui = readFileSync(new URL('../src/agent-import-ui.ts', import.meta.url), 'utf8')
+  const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
+  const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+  // the licence panel may only open from the explicit choice, never from the row
+  assert.doesNotMatch(ui, /action === 'new-project'.*openPro/s)
+  assert.match(ui, /copyLink && action === 'project-limit'.*stage = 'limit'/)
+  assert.match(ui, /copyLink && action === 'remove-project'.*pickMode = 'replace'/)
+  assert.match(ui, /action === 'confirm' && pending && pickMode !== 'append'/)
+  assert.match(ui, /projectLimitChoiceRows\(options\.boardDestinations\(\)\.length\)/)
+  assert.match(ui, /projectLimitConfirmRows\(pending\.name, pending\.boardCount\)/)
+  // a list tap on a destructive picker confirms by name instead of mutating
+  assert.match(ui, /pending = options\.boardDestinations\(\)\.find\(item => item\.id === projectId\) \?\? null/)
+  assert.match(ui, /stage === 'confirm'.*stage = 'pick'/)
+  assert.match(ui, /stage === 'pick'.*pickMode === 'append' \? 'ready' : 'limit'/)
+  assert.match(ui, /preview\.hidden = !!error \|\| stage === 'pick'/)
+  assert.match(ui, /options\.addProject\(draft, projectId, mode\) : options\.addBoard\(draft, projectId, mode\)/)
+  assert.match(ui, /addCopy\(null, 'new'\)/)
+  assert.match(ui, /addCopy\(projectId, 'append'\)/)
+  assert.match(main, /mode === 'replace'/)
+  // the capped screen offers upgrading or removing only: no write-over path
+  assert.doesNotMatch(ui, /overwrite/i)
+  // the copy has to reach storage before the project it makes room for goes
+  const replace = main.indexOf('function replaceSharedProject')
+  const removeCall = main.indexOf('saves.removeDocument(removed.id)', replace)
+  assert.ok(replace > 0 && removeCall > 0)
+  assert.ok(main.indexOf('saves.persistProjectDocuments([project])', replace) < removeCall)
+  assert.match(main.slice(replace), /library\.projects\.splice\(index, 1\)/)
+  assert.match(styles, /\.agentImportRowDanger/)
+})
+
 test('a board link rejects a payload too large for reliable URLs', async () => {
   const project = newProject(scene as never, 'Oversized board')
   project.boards[0].note = deterministicBase64(6000)
@@ -255,7 +307,6 @@ test('the import prompt preserves its fragment for browser handoff, then clears 
   assert.match(ui, /const projectCopyLink = source\?\.kind === 'project-copy'/)
   assert.match(ui, /copyLink \? 'ready'/)
   assert.match(ui, /projectImportReadyRows\(draft\.name, draft\.boardCount, destinations\.length, options\.canCreateProject\(\)\)/)
-  assert.match(ui, /projectCopyLink \? options\.addProject\(draft, projectId\) : options\.addBoard\(draft, projectId\)/)
   assert.match(ui, /projectId && copyLink/)
   assert.match(ui, /copyLink && action === 'existing'/)
   assert.match(ui, /projectCopyLink && !\('boards' in value\.document\)/)
@@ -264,7 +315,6 @@ test('the import prompt preserves its fragment for browser handoff, then clears 
   assert.match(ui, /Add “\$\{draft\.name\}” to…/)
   assert.match(ui, /agentImportBack/)
   assert.match(ui, /agentImportChev/)
-  assert.match(ui, /preview\.hidden = !!error \|\| picking/)
   assert.match(ui, /Keep browsing/)
   assert.doesNotMatch(ui, /'Add board'/)
   assert.match(ui, /Your current board stays open/)

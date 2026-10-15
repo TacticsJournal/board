@@ -34,7 +34,11 @@
     "test:import-security": "npm run build && (npm run preview -- --port 4173 > /tmp/tbm-import-security-preview.log 2>&1 & pid=$!; trap \"kill $pid 2>/dev/null\" EXIT; sleep 2; node scripts/verify-import-security.mjs)",
     "test:local": "npm run build && (npm run preview -- --port 4173 > /tmp/tbm-preview.log 2>&1 & pid=$!; trap \"kill $pid 2>/dev/null\" EXIT; sleep 2; node scripts/verify.mjs && node scripts/verify-saves.mjs && node scripts/verify-selection-drag.mjs)",
     "test:desktop": "node scripts/verify-desktop-layout.mjs",
-    "test:team-search": "node scripts/verify-team-search-mobile.mjs"
+    "test:team-search": "node scripts/verify-team-search-mobile.mjs",
+    "test:top-bar": "node scripts/verify-top-bar.mjs",
+    "test:appearance": "node scripts/verify-appearance.mjs",
+    "test:styles-tabs": "node scripts/verify-styles-tabs.mjs",
+    "test:magnet-centre": "node scripts/verify-magnet-centre.mjs"
   },
   "dependencies": {
     "@polar-sh/checkout": "^0.4.1",

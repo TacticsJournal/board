@@ -10,11 +10,14 @@ import {
   boardName,
   canAnimate,
   canCreateProject,
+  carryObjects,
+  undoCarry,
   copyDocumentForConflict,
   documentScene,
   firstLine,
   frameAt,
   frameAtPos,
+  HANDOFF,
   pointOnArrow,
   tweenScene,
   freshDeviceDestination,
@@ -208,6 +211,44 @@ test('copying a board keeps object ids, so movement can be derived', () => {
   assert.equal(fresh.scene.objects.length, 0)
 })
 
+test('carrying selected or all objects preserves order, ids, and target edits', () => {
+  const start = scene()
+  start.objects.push(
+    { id: 'first', type: 'ball', x: 10, y: 20, size: 18, flipX: false, flipY: false } as never,
+    { id: 'second', type: 'ball', x: 30, y: 40, size: 18, flipX: false, flipY: false } as never,
+  )
+  const project = newProject(start)
+  const next = addBoard(project, 0, false, scene())
+  const later = addBoard(project, 1, false, scene())
+  later.scene.objects.push({ id: 'first', type: 'ball', x: 900, y: 900, size: 9, flipX: false, flipY: false } as never)
+  project.updated = 1
+  const before = project.updated
+  const result = carryObjects(project, project.boards[0], [next.id, later.id], ['first', 'missing'])
+  assert.deepEqual(result, { boards: 1, objects: 1, skipped: 1, added: [{ boardId: next.id, objectIds: ['first'] }] })
+  assert.deepEqual(next.scene.objects.map(object => object.id), ['first'])
+  assert.deepEqual(later.scene.objects.map(object => object.x), [900])
+  assert.notEqual(project.updated, before)
+  assert.notEqual(next.scene.objects[0], project.boards[0].scene.objects[0])
+  ;(next.scene.objects[0] as any).x = 999
+  assert.equal(project.boards[0].scene.objects[0].x, 10)
+  later.scene.objects.push(JSON.parse(JSON.stringify(project.boards[0].scene.objects[1])))
+
+  const untouched = project.updated
+  const none = carryObjects(project, 'missing', [next.id], 'all')
+  assert.deepEqual(none, { boards: 0, objects: 0, skipped: 0, added: [] })
+  assert.equal(project.updated, untouched)
+  const duplicate = carryObjects(project, project.boards[0].id, [later.id], 'all')
+  assert.deepEqual(duplicate, { boards: 0, objects: 0, skipped: 2, added: [] })
+  assert.equal(project.updated, untouched)
+
+  const allTarget = addBoard(project, project.boards.length - 1, false, scene())
+  project.updated = 2
+  const all = carryObjects(project, project.boards[0].id, [allTarget.id, allTarget.id], 'all')
+  assert.deepEqual(all, { boards: 1, objects: 2, skipped: 0, added: [{ boardId: allTarget.id, objectIds: ['first', 'second'] }] })
+  assert.deepEqual(allTarget.scene.objects.map(object => object.id), ['first', 'second'])
+  assert.notEqual(project.updated, 2)
+})
+
 test('a shared board can start a project or join one without reusing its board id', () => {
   const sourceProject = newProject(scene(), 'Source')
   const source = sourceProject.boards[0]
@@ -347,6 +388,122 @@ test('the last opened project survives a failed full-library write', () => {
   }
 })
 
+test('the library stores durable Projects as small refs and keeps dirty work inline', () => {
+  const libraryKey = 'test-compact-library'
+  const savedKey = 'test-durable-projects'
+  const values = new Map<string, string>()
+  const storage = {
+    get length() { return values.size },
+    clear() { values.clear() },
+    getItem(key: string) { return values.get(key) ?? null },
+    key(index: number) { return Array.from(values.keys())[index] ?? null },
+    removeItem(key: string) { values.delete(key) },
+    setItem(key: string, value: string) { values.set(key, value) },
+  }
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage })
+  try {
+    const durable = newProject(scene(), 'Durable')
+    const dirty = newProject(scene(), 'Dirty')
+    const olderDirty = structuredClone(dirty)
+    dirty.boards[0].note = 'An edit that has not reached the durable row'
+    dirty.updated += 1
+    // A clock correction must not let the durable timestamp erase inline work.
+    olderDirty.updated = dirty.updated + 100
+    values.set(savedKey, JSON.stringify({
+      Durable: { savedAt: '2026-01-01T00:00:00.000Z', scene: durable },
+      Dirty: { savedAt: '2026-01-01T00:00:00.000Z', scene: olderDirty },
+    }))
+    const library: Library = { version: 2, currentId: dirty.id, projects: [durable, dirty] }
+
+    assert.equal(saveLibrary(library, libraryKey, savedKey), true)
+    const stored = JSON.parse(values.get(libraryKey)!)
+    assert.equal(stored.version, 3)
+    assert.deepEqual(stored.projects[0], { id: durable.id })
+    assert.equal(stored.projects[1].boards[0].note, dirty.boards[0].note)
+
+    const loaded = loadLibrary(libraryKey, 'unused-legacy', savedKey)!
+    assert.equal(loaded.currentId, dirty.id)
+    assert.equal(loaded.projects.find(project => project.id === durable.id)?.name, 'Durable')
+    const loadedDirty = loaded.projects.find(project => project.id === dirty.id)!
+    assert.equal(loadedDirty.boards[0].note, dirty.boards[0].note)
+    assert.ok(loadedDirty.updated > olderDirty.updated)
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'localStorage', previous)
+    else delete (globalThis as { localStorage?: unknown }).localStorage
+  }
+})
+
+test('reload restores a newly durable active Project when the old library write missed it', () => {
+  const libraryKey = 'test-stale-library'
+  const savedKey = 'test-new-durable-project'
+  const values = new Map<string, string>()
+  const storage = {
+    get length() { return values.size },
+    clear() { values.clear() },
+    getItem(key: string) { return values.get(key) ?? null },
+    key(index: number) { return Array.from(values.keys())[index] ?? null },
+    removeItem(key: string) { values.delete(key) },
+    setItem(key: string, value: string) { values.set(key, value) },
+  }
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage })
+  try {
+    const oldProject = newProject(scene(), 'Old project')
+    const newProjectDocument = newProject(scene(), 'New project')
+    values.set(libraryKey, JSON.stringify({ version: 3, currentId: oldProject.id, projects: [{ id: oldProject.id }] }))
+    values.set(savedKey, JSON.stringify({
+      Old: { savedAt: '2026-01-01T00:00:00.000Z', scene: oldProject },
+      New: { savedAt: '2026-01-02T00:00:00.000Z', scene: newProjectDocument },
+    }))
+    values.set(`${libraryKey}:active-project`, newProjectDocument.id)
+
+    const loaded = loadLibrary(libraryKey, 'unused-legacy', savedKey)!
+    assert.equal(loaded.currentId, newProjectDocument.id)
+    assert.deepEqual(new Set(loaded.projects.map(project => project.id)), new Set([oldProject.id, newProjectDocument.id]))
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'localStorage', previous)
+    else delete (globalThis as { localStorage?: unknown }).localStorage
+  }
+})
+
+test('compacting durable Projects makes room for the next library write', () => {
+  const libraryKey = 'test-quota-library'
+  const savedKey = 'test-quota-durable'
+  const values = new Map<string, string>()
+  const storage = {
+    get length() { return values.size },
+    clear() { values.clear() },
+    getItem(key: string) { return values.get(key) ?? null },
+    key(index: number) { return Array.from(values.keys())[index] ?? null },
+    removeItem(key: string) { values.delete(key) },
+    setItem(key: string, value: string) {
+      if (key === libraryKey && value.length > 500) throw new Error('quota exceeded')
+      values.set(key, value)
+    },
+  }
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage })
+  try {
+    const first = newProject(scene(), 'First')
+    const second = newProject(scene(), 'Second')
+    first.boards[0].note = 'x'.repeat(2_000)
+    second.boards[0].note = 'y'.repeat(2_000)
+    values.set(savedKey, JSON.stringify({
+      First: { savedAt: '2026-01-01T00:00:00.000Z', scene: first },
+      Second: { savedAt: '2026-01-02T00:00:00.000Z', scene: second },
+    }))
+    const library: Library = { version: 2, currentId: second.id, projects: [first, second] }
+
+    assert.equal(saveLibrary(library, libraryKey, savedKey), true)
+    assert.ok(values.get(libraryKey)!.length < 500)
+    assert.deepEqual(JSON.parse(values.get(libraryKey)!).projects, [{ id: first.id }, { id: second.id }])
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'localStorage', previous)
+    else delete (globalThis as { localStorage?: unknown }).localStorage
+  }
+})
+
 test('a library keeps the last board of each project it still has', () => {
   const a = newProject(scene(), 'A')
   const b = newProject(scene(), 'B')
@@ -434,6 +591,60 @@ test('an object arriving fades in where it will be, one leaving fades out', () =
   assert.equal(frameAtPos(project, 0.9).enterAlpha, 1, 'it is fully there before the move ends')
 })
 
+test('the ground hands over at the one moment neither board has anything to show', () => {
+  const project = newProject(scene())
+  addBoard(project, 0, true)
+  project.boards[0].scene.pitch = 'bg:one'
+  project.boards[0].scene.board = { w: 800, h: 640 }
+  project.boards[1].scene.pitch = 'bg:two'
+  project.boards[1].scene.board = { w: 800, h: 450 }
+  const gone = { id: 'old-one', type: 'player', x: 100, y: 100, r: 14, color: '#e02020' }
+  const fresh = { ...gone, id: 'new-one', x: 500 }
+  const both = { ...gone, id: 'stays', x: 200, y: 200 }
+  project.boards[0].scene.objects = [gone, both] as never
+  project.boards[1].scene.objects = [fresh, { ...both, x: 600, y: 300 }] as never
+
+  // before it: board one's photograph, and nothing of board two is visible yet
+  const before = frameAtPos(project, HANDOFF - 0.01)
+  assert.equal(before.scene.pitch, 'bg:one')
+  assert.equal(before.scene.board.h, 640)
+  assert.equal(before.enterAlpha, 0, 'no arriving asset over the outgoing photograph')
+  assert.ok(before.exitAlpha > 0, 'the old board is still fading out on its own ground')
+
+  // at it: both boards' own assets are invisible, so the cut shows neither
+  const at = frameAtPos(project, HANDOFF)
+  assert.equal(at.exitAlpha, 0)
+  assert.equal(at.enterAlpha, 0)
+  assert.equal(at.scene.pitch, 'bg:two', 'the ground changes exactly here')
+  assert.equal(at.scene.board.h, 450)
+
+  // after it: board two's photograph, and nothing of board one is left
+  const after = frameAtPos(project, HANDOFF + 0.01)
+  assert.equal(after.scene.pitch, 'bg:two')
+  assert.equal(after.exitAlpha, 0, 'no outgoing asset over the arriving photograph')
+
+  // the ground is written once across the whole move, not per frame
+  const grounds: string[] = []
+  for (let i = 0; i <= 100; i++) {
+    const frame = frameAtPos(project, i / 100)
+    const pitch = String(frame.scene.pitch)
+    if (pitch !== grounds[grounds.length - 1]) grounds.push(pitch)
+    if (frame.arriving.size && frame.enterAlpha > 0) assert.equal(pitch, 'bg:two', `arriving over the wrong ground at p=${frame.p}`)
+    if (frame.fading.size && frame.exitAlpha > 0) assert.equal(pitch, 'bg:one', `leaving over the wrong ground at p=${frame.p}`)
+  }
+  assert.deepEqual(grounds, ['bg:one', 'bg:two'], 'one cut, in one direction')
+
+  // an object on both boards keeps travelling right through the handoff
+  const path = [0.2, HANDOFF - 0.01, HANDOFF, HANDOFF + 0.01, 0.8].map(p => {
+    const obj = frameAtPos(project, p).scene.objects.find(o => o.id === 'stays') as { x: number }
+    return obj.x
+  })
+  for (let i = 1; i < path.length; i++) {
+    assert.ok(path[i] > path[i - 1], `the common object keeps moving (${path.join(', ')})`)
+  }
+  assert.ok(Math.abs(path[2] - path[1]) < 20, 'and does not jump at the cut')
+})
+
 test('a player with an arrow to its destination rides the arrow', () => {
   const project = newProject(scene())
   addBoard(project, 0, true)
@@ -483,4 +694,29 @@ test('a board named by its note heading, and one not named at all', () => {
   assert.equal(boardName(project, 0), 'Board 1')
   project.boards[0].title = 'Named by hand'
   assert.equal(boardName(project, 0), 'Named by hand')
+})
+
+test('undo takes back only the copies one carry added', () => {
+  const start = scene()
+  start.objects.push(
+    { id: 'first', type: 'ball', x: 10, y: 20, size: 18, flipX: false, flipY: false } as never,
+    { id: 'second', type: 'ball', x: 30, y: 40, size: 18, flipX: false, flipY: false } as never,
+  )
+  const project = newProject(start)
+  const target = addBoard(project, 0, false, scene())
+  // a target object that was already there keeps its id and is never a copy
+  target.scene.objects.push({ id: 'first', type: 'ball', x: 900, y: 900, size: 9, flipX: false, flipY: false } as never)
+  target.scene.objects.push({ id: 'own', type: 'ball', x: 5, y: 5, size: 18, flipX: false, flipY: false } as never)
+
+  const result = carryObjects(project, project.boards[0].id, [target.id], 'all')
+  assert.deepEqual(result.added, [{ boardId: target.id, objectIds: ['second'] }])
+  assert.deepEqual(target.scene.objects.map(object => object.id), ['first', 'own', 'second'])
+
+  assert.equal(undoCarry(project, result.added), 1)
+  assert.deepEqual(target.scene.objects.map(object => object.id), ['first', 'own'])
+  assert.deepEqual(target.scene.objects.map(object => object.x), [900, 5])
+  // the source is untouched, and a second undo has nothing left to take
+  assert.deepEqual(project.boards[0].scene.objects.map(object => object.id), ['first', 'second'])
+  assert.equal(undoCarry(project, result.added), 0)
+  assert.equal(undoCarry(project, [{ boardId: 'missing', objectIds: ['first'] }]), 0)
 })

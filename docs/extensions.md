@@ -4,7 +4,9 @@
 
 Official extensions are reviewed first-party modules bundled with Board. They run in hosted and self-hosted builds and may use only the narrow host methods declared in `src/extensions/official/types.ts`. The registry is `src/extensions/official/registry.ts`.
 
-3D View is the first official extension. It contributes the cube control to the top toolbar and uses Board's live Konva camera, so editing, undo, autosave, and export continue to use the same scene. Its enablement and camera mode are device preferences, not board content.
+3D View is the first official extension. It offers the cube control to the bar above the board and uses Board's live Konva camera, so editing, undo, autosave, and export continue to use the same scene. Its enablement and camera mode are device preferences, not board content.
+
+An extension offers its controls to the bar; it does not place them. A control arrives switched off, and the reader adds it in Settings → Tool settings, where it sits in the same list as the built-in controls and can be moved anywhere along the bar. Turning an extension on therefore no longer rearranges the bar on its own, and turning one off leaves the control's place waiting for it.
 
 ## Self-host extensions
 

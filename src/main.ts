@@ -7,9 +7,9 @@ import Konva from 'konva'
 import {
   Board, Tool, ToolDefaults, makeArrowShape, arrowHeadSize,
   ballSrc, coneSrc, goalFullSrc, goalSmallSrc, livePlayerSrc,
-  CONE_ASPECT, GOAL_ASPECT, LIVE_PLAYER_CROP,
+  CONE_ASPECT, GOAL_ASPECT, LIVE_ART_SHEET, LIVE_PLAYER_CROP,
 } from './board'
-import { ArrowObj, BallObj, BoxObj, GoalObj, ImageObj, MarkerObj, PlayerObj, Scene, SceneObj, TextObj, PLAYER_PALETTE, BOARD_W, emptyMatch, emptyScene, migrate, normalizeHex, uid, insertByTier, TYPE_Z, boxHasCorners, cornersFromRect, nodesForShape, rectFromCorners, isLight } from './types'
+import { ArrowObj, BallObj, BoardSizes, BoxObj, GoalObj, ImageObj, MarkerObj, PlayerObj, Scene, SceneObj, TextObj, PLAYER_PALETTE, BOARD_W, emptyMatch, emptyScene, migrate, normalizeHex, uid, insertByTier, TYPE_Z, boxHasCorners, cornersFromRect, nodesForShape, rectFromCorners, isLight, headPoints, armPoints, trackPlayersAtBall } from './types'
 import type { NodeCurve, PathNode } from './path-nodes'
 import { ImportPanel } from './importer'
 import { SavesPanel } from './saves'
@@ -22,6 +22,9 @@ import {
   DEFAULT_PITCH, PITCHES, clearActiveSharedPitches, customPitches, pitchById,
   setActiveSharedPitch, setActiveSharedPitches, sharedPitchPlaceholder,
 } from './pitches'
+import {
+  attackAngle as attackAngleFor, formationSlotPoint, pitchLayout, remapObjects,
+} from './pitch-map'
 import { addBoardChoices } from './add-board-options'
 import { backgrounds } from './background-library.ts'
 import {
@@ -55,9 +58,20 @@ import { previewSvg, sceneShapesSvg } from './saves'
 import { icon } from './icons'
 import { ExtensionRuntime, type ExtensionManifest } from './extension-runtime'
 import { OfficialExtensions } from './extensions/official/manager.ts'
+import {
+  APPEARANCE_KEYS, AUTO, appearanceSpec, fontStack, isDefaultAppearance, keysInGroup,
+  normalizeAppearance, objectAppearance, resolveAppearance, withAppearance,
+  type AppearanceGroup, type AppearanceKey, type BoardAppearance, type ResolvedAppearance,
+} from './appearance.ts'
+import {
+  BUNDLED_FONTS, FONT_SEARCH_AVAILABLE, SYSTEM_FONTS, ensureFont, fontLabel, searchFonts, type FontChoice,
+} from './fonts.ts'
+import { loadTopBarState, moveTopBarItem, normalizeTopBarState, saveTopBarState, setTopBarVisible, visibleTopBar, isTopBarVisible, FIXED_TOP_BAR, DEFAULT_TOP_BAR, defaultTopBarState, type TopBarState } from './top-bar.ts'
 import { BOARD_EXTENSION_PATHS, BOARD_SELF_HOSTED } from './build-mode.ts'
+import { entries as changelogEntries, entryDate, markAllSeen as markChangelogSeen, unreadEntries, type ChangelogEntry } from './changelog.ts'
+import { registerWebMcp } from './webmcp.ts'
 import { addUserSkill, deleteSkill, installExtension, loadProjectSkillsState, mergeSyncedSkills, newUserSkill, removeExtension, saveProjectSkillsState, saveSkill, setExtensionEnabled, skillsForSync, type ProjectSkillsState, type Skill } from './skills-extensions'
-import { BoardsView, type AddBoardUpload } from './boards-view'
+import { BoardsView, type AddBoardUpload, type ProjectActions } from './boards-view'
 import { openComposer } from './composer'
 import { CATEGORY_SCENES_RECOVERED_SUFFIX, planCategorySnapshotRecovery } from './category-recovery'
 import { exportAnimation } from './animate-export'
@@ -65,10 +79,11 @@ import { recordProductEvent } from './product-events'
 import { saveFreeBackupIntent, selectedFreeBackup, setSelectedFreeBackup, takeFreeBackupIntent, type FreeBackupSource } from './free-backup'
 import { downloadProjectImage, exportProjectImages, type ProjectImageFile } from './project-image-export'
 import { startAgentImport, type BoardImportResult } from './agent-import-ui'
-import { createBoardImportUrl, createProjectImportUrl, createStoredProjectImportUrl, isAgentImportTooLarge, type AgentImportDraft } from './agent-import'
+import { createBoardImportUrl, createProjectImportUrl, createStoredProjectImportUrl, isAgentImportTooLarge, MAX_COMMUNITY_POST_CAPTION_CHARS, postBoardToCommunity, type AgentImportDraft, type BoardImportMode } from './agent-import'
+import { boardPostKey, communityHintDue, communityPostFor, postedAgo, rememberCommunityPost, retireCommunityHint } from './community-post-state'
 import {
-  addBoard, appendBoardCopy, appendProjectCopy, boardName, canAnimate, canCreateProject, currentProject, documentScene, freshDeviceDestination, loadLibrary, migrateProject, newProject, newProjectFromBoard, newProjectFromProjectCopy, orderedProjects, reconcileProjectLibrary, rememberBoard, saveLibrary, storedBoardIndex, touch,
-  type BoardDocument, type Library, type Project,
+  addBoard, appendBoardCopy, appendProjectCopy, boardName, canAnimate, canCreateProject, carryObjects, currentProject, documentScene, freshDeviceDestination, loadLibrary, migrateProject, newProject, newProjectFromBoard, newProjectFromProjectCopy, orderedProjects, reconcileProjectLibrary, rememberBoard, saveLibrary, storedBoardIndex, touch, undoCarry, viewAfterScene,
+  type BoardDocument, type CarryAddition, type CarryResult, type CarrySelection, type Library, type Project,
 } from './projects'
 
 let extensionRuntime: ExtensionRuntime | null = null
@@ -78,6 +93,40 @@ let accountBinding: string | null = null
 // same image the tacticsjournal.com header uses (site avatar IMG_5503.png),
 // downscaled from 4096px for the 24px logo slot
 const tjLogoSrc = new URL('../assets/brand/tj-logo.png', import.meta.url).href
+
+/* ---------- what's new ---------- */
+
+const CHANGELOG_PANEL_LIMIT = 10
+// Read before the header renders: a first visit records the newest entry here
+// and so opens with no dot and no banner. A self-host build carries no site
+// header, so it carries no changelog either.
+const changelog = BOARD_SELF_HOSTED ? [] : changelogEntries()
+const changelogUnread = BOARD_SELF_HOSTED ? [] : unreadEntries(changelog)
+
+function changelogEntryMarkup(entry: ChangelogEntry, unread: boolean) {
+  return `<li class="site-changelog-entry${unread ? ' is-unread' : ''}">
+              <span class="site-changelog-dot" aria-hidden="true"></span>
+              <div class="site-changelog-entry-text">
+                <p class="site-changelog-meta"><time datetime="${entry.date}">${esc(entryDate(entry.date))}</time>${entry.tag ? `<span class="site-changelog-tag">${esc(entry.tag)}</span>` : ''}</p>
+                <h3 class="site-changelog-entry-title">${esc(entry.title)}</h3>
+                ${entry.body ? `<p class="site-changelog-body">${esc(entry.body)}</p>` : ''}
+              </div>
+            </li>`
+}
+
+function changelogPanelMarkup() {
+  if (!changelog.length) return ''
+  const unread = new Set(changelogUnread.map(entry => entry.id))
+  const items = changelog.slice(0, CHANGELOG_PANEL_LIMIT).map(entry => changelogEntryMarkup(entry, unread.has(entry.id))).join('')
+  return `<div id="site-changelog-panel" class="site-overlay-panel site-changelog-panel" hidden>
+        <div class="site-changelog-head site-panel-animate">
+          <h2 class="site-changelog-title">What's new</h2>
+          <p class="site-changelog-intro">Recent changes to the Tactics Journal board.</p>
+        </div>
+        <ol class="site-changelog-list site-panel-animate">${items}</ol>
+        <p class="site-changelog-more site-panel-animate"><a href="/changelog">Full history</a></p>
+      </div>`
+}
 
 const svg = (path: string, vb = '0 0 24 24') =>
   `<svg viewBox="${vb}" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`
@@ -107,7 +156,7 @@ const ICONS = {
   flipH: svg('<path d="M10.3 5.4v13.2L3.6 12z" fill="currentColor" stroke="none"/><path d="M13.7 5.4v13.2L20.4 12z"/>'),
   rotate: svg('<path d="M17.6 7.4A7 7 0 1 1 13.2 5.2"/><path d="M12.4 2.7l4.2 2.5-4.2 2.5z" fill="currentColor" stroke="none"/>'),
   export: svg('<path d="M12 14V3"/><path d="M8.5 6.5L12 3l3.5 3.5"/><path d="M8 9H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2"/>'),
-  fit: svg('<path d="M9 4H6a2 2 0 0 0-2 2v3"/><path d="M15 4h3a2 2 0 0 1 2 2v3"/><path d="M9 20H6a2 2 0 0 1-2-2v-3"/><path d="M15 20h3a2 2 0 0 0 2-2v-3"/>'),
+  previousBoard: svg('<circle cx="7" cy="12" r="4.5" stroke-dasharray="2 2"/><path d="M11.5 12h2.5"/><circle cx="19" cy="12" r="4" fill="currentColor" stroke="none"/>'),
   newBoard: svg('<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 9v6M9 12h6"/>'),
   import: svg('<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="8.7" cy="9.7" r="1.6"/><path d="M20.5 15.5l-4.5-4.5-8 8"/>'),
   camera: svg('<path d="M4 8h3l1.5-2.5h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.4"/>'),
@@ -128,12 +177,21 @@ const MEASURE_WIDTH_OPTIONS: [string, string][] = [['3', 'S'], ['4.5', 'M'], ['6
 const BOX_FILLS = ['#9ca3af', '#fde047', '#ef4444', '#3b82f6']
 const TEXT_COLORS = ['#111111', '#ffffff', '#e02020', '#1e2f6f']
 
+const DEFAULT_OBJECT_SIZES = { player: 13, name: 18, label: 22 }
+/** The weight a measurement line starts at, the same on every pitch. */
+const DEFAULT_MEASURE_WIDTH = 3
+
 const defaults: ToolDefaults = {
   playerColor: '#e02020',
+  nameSize: DEFAULT_OBJECT_SIZES.name,
+  playerSize: DEFAULT_OBJECT_SIZES.player,
+  showNumbers: true,
+  showFacing: false,
+  showArms: false,
   arrow: { dash: 'solid', color: '#111111', width: 4.5, head: true },
   measure: { color: '#111827', width: 3 },
   box: { shape: 'rect', fill: '#9ca3af', opacity: 0.25 },
-  text: { bold: true, size: 22, color: '#111111' },
+  text: { bold: true, size: DEFAULT_OBJECT_SIZES.label, color: '#111111' },
   place: 'ball',
   goal: { variant: 'small' },
 }
@@ -159,13 +217,107 @@ function retuneArrowWidth(width: number, live: boolean): number {
 /** Which ladder the new-arrow defaults currently sit on. */
 let arrowDefaultsLive = false
 
+/**
+ * What a board says a player, a name, an arrow, a measurement line and a label
+ * are: the styles saved for that pitch, then the pitch's own, then the app's.
+ * Read without touching the live defaults, because carrying a board over has
+ * to ask two pitches at once, and neither of them need be the one on screen.
+ */
+function pitchSizes(id: string | undefined): BoardSizes {
+  const style = pitchById(id)
+  const built = style.defaultSizes ?? DEFAULT_OBJECT_SIZES
+  const saved = loadPitchStyles()[style.id]
+  const or = (value: unknown, fallback: number) => (Number.isFinite(value) ? Number(value) : fallback)
+  return {
+    player: or(saved?.playerSize, built.player),
+    name: or(saved?.nameSize, built.name),
+    arrow: or(saved?.arrow?.width, Number(arrowWidthOptions(!!style.live)[1][0])),
+    measure: or(saved?.measure?.width, DEFAULT_MEASURE_WIDTH),
+    text: or(saved?.text?.size, built.label),
+  }
+}
+
+function applyBuiltInPitchSizes(style: ReturnType<typeof pitchById>) {
+  const sizes = style.defaultSizes ?? DEFAULT_OBJECT_SIZES
+  defaults.playerSize = sizes.player
+  defaults.nameSize = sizes.name
+  defaults.text.size = sizes.label
+}
+
 function applyPitchArrowDefault(style: ReturnType<typeof pitchById>) {
+  // A pitch you have saved styles for keeps them; the rules below are only for
+  // pitches you have not customized.
+  if (applyPitchStyle(style.id)) { arrowDefaultsLive = !!style.live; return }
+  applyBuiltInPitchSizes(style)
   if (style.live && defaults.arrow.color === '#111111') defaults.arrow.color = '#ffffff'
   else if (!style.live && defaults.arrow.color === '#ffffff') defaults.arrow.color = '#111111'
   const live = !!style.live
   if (live === arrowDefaultsLive) return
   arrowDefaultsLive = live
   defaults.arrow.width = retuneArrowWidth(defaults.arrow.width, live)
+}
+
+/**
+ * Every pitch remembers how you left it. A broadcast board wants a white arrow
+ * over video where a drawn pitch wants a dark one, which the app has always
+ * bent for by hand; saving per pitch makes it a setting instead of a rule.
+ * Only the defaults are stored - boards already drawn are never touched.
+ */
+const PITCH_STYLE_KEY = 'tbm-pitch-styles-v1'
+type SavedPitchStyle = Pick<ToolDefaults, 'playerColor' | 'nameSize' | 'playerSize' | 'showNumbers' | 'arrow' | 'measure' | 'box' | 'text' | 'goal'>
+
+function loadPitchStyles(): Record<string, SavedPitchStyle> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PITCH_STYLE_KEY) || '{}')
+    return raw && typeof raw === 'object' ? raw as Record<string, SavedPitchStyle> : {}
+  } catch { return {} }
+}
+
+function currentPitchStyle(): SavedPitchStyle {
+  return {
+    playerColor: defaults.playerColor,
+    nameSize: defaults.nameSize,
+    playerSize: defaults.playerSize,
+    showNumbers: defaults.showNumbers,
+    arrow: { ...defaults.arrow },
+    measure: { ...defaults.measure },
+    box: { ...defaults.box },
+    text: { ...defaults.text },
+    goal: { ...defaults.goal },
+  }
+}
+
+function savePitchDefaults() {
+  const id = pitchById(store.scene.pitch).id
+  const all = loadPitchStyles()
+  all[id] = currentPitchStyle()
+  try { localStorage.setItem(PITCH_STYLE_KEY, JSON.stringify(all)) } catch { /* private mode */ }
+  showToast(`New boards on ${pitchById(id).label} will start with these styles.`)
+}
+
+function resetPitchDefaults() {
+  const id = pitchById(store.scene.pitch).id
+  const all = loadPitchStyles()
+  if (!(id in all)) { showToast('This pitch is already on the original styles.'); return }
+  delete all[id]
+  try { localStorage.setItem(PITCH_STYLE_KEY, JSON.stringify(all)) } catch { /* private mode */ }
+  showToast(`${pitchById(id).label} is back to the original styles.`)
+}
+
+/** Wear a pitch's saved styles, if it has any, when a board on it opens. */
+function applyPitchStyle(id: string) {
+  const saved = loadPitchStyles()[id]
+  if (!saved) return false
+  if (saved.playerColor) defaults.playerColor = saved.playerColor
+  if (Number.isFinite(saved.nameSize)) defaults.nameSize = clampProjectSize('nameSize', saved.nameSize)
+  if (Number.isFinite(saved.playerSize)) defaults.playerSize = clampProjectSize('playerSize', saved.playerSize)
+  if (typeof saved.showNumbers === 'boolean') defaults.showNumbers = saved.showNumbers
+  if (saved.arrow) Object.assign(defaults.arrow, saved.arrow)
+  if (saved.measure) Object.assign(defaults.measure, saved.measure)
+  if (saved.box) Object.assign(defaults.box, saved.box)
+  if (saved.text) Object.assign(defaults.text, saved.text)
+  if (saved.goal) Object.assign(defaults.goal, saved.goal)
+  return true
 }
 
 // A saved board, an undo or a collaborator's scene can change the pitch without
@@ -181,82 +333,12 @@ applyPitchArrowDefault(pitchById(store.scene.pitch))
 /** Board height follows the scene's pitch style; width is fixed. */
 const boardH = () => store.scene.board.h
 
-type PitchLayout = 'horizontal' | 'vertical-half' | 'sidebyside'
-
-const pitchLayout = (id: string | undefined): PitchLayout => {
-  // pitch-up is one attacking half: goal at the top, halfway line at the bottom.
-  if (id === 'pitch-up') return 'vertical-half'
-  if (id === 'sidebyside') return 'sidebyside'
-  return 'horizontal'
-}
-const clamp01 = (n: number) => Math.max(0, Math.min(1, n))
-const isVerticalLayout = (layout: PitchLayout) => layout !== 'horizontal'
-
-function mapPitchPoint(x: number, y: number, from: PitchLayout, fromH: number, to: PitchLayout, toH: number, side: 0 | 1 = 0) {
-  const srcW = from === 'sidebyside' ? BOARD_W / 2 : BOARD_W
-  const srcX = from === 'sidebyside' ? x % srcW : x
-  let u: number
-  let v: number
-  if (from === 'horizontal') {
-    u = srcX / srcW
-    v = y / fromH
-  } else if (from === 'vertical-half') {
-    // Half-pitch vertical boards cover only the attacking half of the full pitch:
-    // y=0 is the goal line, y=boardH is the halfway line (u=0.5).
-    u = 1 - (y / (fromH * 2))
-    v = srcX / srcW
-  } else {
-    u = 1 - (y / fromH)
-    v = srcX / srcW
-  }
-
-  if (to === 'horizontal') return { x: u * BOARD_W, y: v * toH }
-  const dstW = to === 'sidebyside' ? BOARD_W / 2 : BOARD_W
-  const dstX = side * dstW + v * dstW
-  if (to === 'vertical-half') return { x: dstX, y: clamp01((1 - u) * 2) * toH }
-  return { x: dstX, y: (1 - u) * toH }
-}
-
-function remapObjectToPitch<T extends SceneObj>(obj: T, from: PitchLayout, fromH: number, to: PitchLayout, toH: number, side: 0 | 1 = 0): T {
-  const o = JSON.parse(JSON.stringify(obj)) as T
-  if (side) o.id = uid()
-  const p = (x: number, y: number) => mapPitchPoint(x, y, from, fromH, to, toH, side)
-  if (o.type === 'arrow') {
-    const a = o
-    ;({ x: a.x1, y: a.y1 } = p(a.x1, a.y1))
-    ;({ x: a.mx, y: a.my } = p(a.mx, a.my))
-    ;({ x: a.x2, y: a.y2 } = p(a.x2, a.y2))
-  } else {
-    const xy = p(o.x, o.y)
-    o.x = xy.x; o.y = xy.y
-    if (o.type === 'box') {
-      if (isVerticalLayout(from) !== isVerticalLayout(to)) {
-        const dstW = to === 'sidebyside' ? BOARD_W / 2 : BOARD_W
-        const srcW = from === 'sidebyside' ? BOARD_W / 2 : BOARD_W
-        const sx = dstW / srcW
-        const sy = toH / fromH
-        ;[o.w, o.h] = [o.h * sx, o.w * sy]
-      }
-      if (o.corners) {
-        for (const c of o.corners) {
-          const mapped = p(c.x, c.y)
-          c.x = mapped.x; c.y = mapped.y
-        }
-      }
-    }
-  }
-  return o
-}
-
 function setPitchPreservingLayout(scene: typeof store.scene, pitch: string, h: number) {
   const fromPitch = pitchById(scene.pitch)
   const fromH = scene.board?.h || fromPitch.boardH
-  const from = pitchLayout(fromPitch.id)
-  const to = pitchLayout(pitch)
-  const one = scene.objects.map(o => remapObjectToPitch(o, from, fromH, to, h, 0))
-  scene.objects = to === 'sidebyside' && from !== 'sidebyside'
-    ? [...one, ...scene.objects.map(o => remapObjectToPitch(o, from, fromH, to, h, 1))]
-    : one
+  scene.objects = remapObjects(scene.objects, fromPitch.id, fromH, pitch, h, uid, {
+    from: pitchSizes(fromPitch.id), to: pitchSizes(pitch),
+  })
   scene.pitch = pitch
   scene.board = { w: BOARD_W, h }
 }
@@ -450,37 +532,50 @@ const FORMATION_HALF_START = 0.06
 // Leave a center-channel gap when both home and away XIs are added.
 const FORMATION_HALF_END = 0.46
 
-function formationX(slotX: number, isAway: boolean) {
+/** How far up the pitch a slot stands, 0 at the home goal and 1 at the away goal. */
+function formationDepth(slotX: number, isAway: boolean) {
   const span = FORMATION_X_MAX - FORMATION_X_MIN || 1
   const t = (slotX - FORMATION_X_MIN) / span
-  const homeX = FORMATION_HALF_START + t * (FORMATION_HALF_END - FORMATION_HALF_START)
-  const xNorm = isAway ? 1 - homeX : homeX
-  return xNorm * BOARD_W
+  const home = FORMATION_HALF_START + t * (FORMATION_HALF_END - FORMATION_HALF_START)
+  return isAway ? 1 - home : home
 }
 
-function buildLineupObjects(teamName: string): PlayerObj[] {
+/** Where a slot stands on the board the scene is on. */
+function formationPoint(slot: TeamFormationSlot, isAway: boolean) {
+  return formationSlotPoint(formationDepth(slot.x, isAway), slot.y, store.scene.pitch, boardH())
+}
+
+const attackAngle = (isAway: boolean) => attackAngleFor(pitchLayout(store.scene.pitch), isAway)
+
+function buildLineupObjects(teamName: string, sideHint?: TeamSide): PlayerObj[] {
   // plain dots in formation: names and numbers are added per dot from the
   // roster dropdown when wanted
   const team = teams.getTeam(teamName)
-  const isAway = team?.side === 'away'
+  // An eleven belongs to a side even when no team has been picked: the row it
+  // was taken from says which, so it lines up on its own half in its own kit.
+  const side: TeamSide = team?.side ?? sideHint ?? 'home'
+  const isAway = side === 'away'
   const playerTeam = team?.name || teamName || undefined
-  const gkColor = isAway ? '#d1d5db' : '#6b7280'
-  const teamColor = team?.color ?? defaults.playerColor
+  const gkColor = keeperColor(side)
+  const teamColor = team?.color ?? sidePlayerColor(side)
   const slotsToUse: TeamFormationSlot[] = (team?.slots as TeamFormationSlot[] | undefined) ?? TEAM_FORMATION_442
 
   return slotsToUse.map((slot, i) => {
-    const x = formationX(slot.x, isAway)
+    const { x, y } = formationPoint(slot, isAway)
     const color = (slot.role === 'gk' || i === 0) ? gkColor : teamColor
     return {
       id: uid(), type: 'player',
       x,
-      y: slot.y * boardH(),
-      r: 13,
+      y,
+      r: defaults.playerSize,
+      ...(defaults.showNumbers ? {} : { showLabel: false }),
+      ...(defaults.showFacing ? { facing: attackAngle(isAway) } : {}),
+      ...(defaults.showArms ? { arms: attackAngle(isAway) } : {}),
       color,
       label: '',
       name: '',
-      namePos: 'bottom',
-      nameSize: 18,
+      namePos: 'auto',
+      nameSize: defaults.nameSize,
       nameDisplay: 'last',
       team: playerTeam,
       flipX: false,
@@ -489,8 +584,8 @@ function buildLineupObjects(teamName: string): PlayerObj[] {
   })
 }
 
-function addTeamFromPlayerMenu(teamName: string) {
-  const objects = buildLineupObjects(teamName)
+function addTeamFromPlayerMenu(teamName: string, sideHint?: TeamSide) {
+  const objects = buildLineupObjects(teamName, sideHint)
   store.apply((s) => {
     for (const obj of objects) insertByTier(s.objects, obj)
   })
@@ -540,9 +635,12 @@ function addPlayerFromPlayerMenu(name = '', label = '', teamName?: string | null
   const team = teamName === undefined ? teams.activeTeamName() : teamName
   const obj: PlayerObj = {
     id: uid(), type: 'player',
-    x: pos.x, y: pos.y, r: 13,
+    x: pos.x, y: pos.y, r: defaults.playerSize,
+    ...(defaults.showNumbers ? {} : { showLabel: false }),
+    ...(defaults.showFacing ? { facing: startingAngle({ team }) } : {}),
+    ...(defaults.showArms ? { arms: startingAngle({ team }) } : {}),
     color: defaults.playerColor,
-    label, name, namePos: 'bottom', nameSize: 18, nameDisplay: 'last',
+    label, name, namePos: 'auto', nameSize: defaults.nameSize, nameDisplay: 'last',
     team,
     flipX: false,
     flipY: false,
@@ -715,6 +813,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           </div>
         </div>
       </div>
+      ${changelogPanelMarkup()}
       <a href="https://tacticsjournal.com/search/" class="site-action site-action-toggle" data-inline-toggle="search" aria-label="Search" aria-expanded="false" aria-controls="site-search-panel">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16L21 21"/></svg>
       </a>
@@ -722,8 +821,9 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1.5-3.5 4.1-5.25 7-5.25S17.5 16.5 19 20"/></svg>
       </a>
       <details class="site-menu">
-        <summary class="site-action" aria-label="Menu">
+        <summary class="site-action site-menu-summary" aria-label="Menu">
           <svg class="menu-icon" viewBox="0 0 24 24"><path class="menu-top" d="M4 8h16"/><path class="menu-bottom" d="M4 16h16"/></svg>
+          ${changelogUnread.length ? '<span class="site-menu-badge" aria-hidden="true"></span>' : ''}
         </summary>
         <div class="site-menu-overlay"></div>
         <div class="site-menu-panel">
@@ -742,6 +842,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
             <a href="https://tacticsjournal.com/follow/">Follow</a>
             <a href="https://tacticsjournal.com/contact/">Contact</a>
             <a href="https://tacticsjournal.com/key/">Key</a>
+            ${changelog.length ? '<a href="/changelog" class="site-menu-changelog-link" data-inline-toggle="changelog" aria-expanded="false" aria-controls="site-changelog-panel">What\'s new</a>' : ''}
           </div>
           <div class="site-menu-theme">
             <div class="theme-setting" data-theme-setting>
@@ -757,22 +858,22 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </details>
     </div>
   </header>
-  <div class="actionRow">
-    <span class="actGroup" data-ext-toolbar>
-      <button class="iconBtn" data-top="snap" id="snapBtn" aria-label="Snap to grid" title="Snap to grid">${ICONS.magnet}</button>
-      <button class="iconBtn" data-top="export" aria-label="Share" title="Share and export" aria-haspopup="dialog" aria-expanded="false" aria-controls="shareMenu">${ICONS.export}</button>
-      <button class="iconBtn" data-top="fit" aria-label="Fit view" title="Fit view (F)">${ICONS.fit}</button>
-    </span>
-    <span class="actGroup">
-      <button class="iconBtn" data-top="undo" aria-label="Undo" title="Undo (${HINT_UNDO})">${ICONS.undo}</button>
-      <button class="iconBtn" data-top="redo" aria-label="Redo" title="Redo (${HINT_REDO})">${ICONS.redo}</button>
-    </span>
-    <span class="actGroup">
-      <button class="iconBtn" data-top="boards" aria-label="Boards" title="Boards in this project">${icon('stack')}</button>
-      <button class="iconBtn" data-top="match" aria-label="Match settings" title="Match settings">${ICONS.cog}</button>
-      <button class="iconBtn" data-top="note" aria-label="Note" title="This board's note">${icon('note')}</button>
-      <button class="iconBtn hidden" data-top="live-shot" aria-label="Import live screenshot" title="Change live screenshot">${ICONS.camera}</button>
-    </span>
+  <div class="actionRow" id="actionRow">
+    <button class="iconBtn" data-top="snap" id="snapBtn" aria-label="Snap to grid" title="Snap to grid">${ICONS.magnet}</button>
+    <button class="iconBtn" data-top="export" aria-label="Share" title="Share and export" aria-haspopup="dialog" aria-expanded="false" aria-controls="shareMenu">${ICONS.export}</button>
+    <button class="iconBtn" data-top="previous-board" id="previousBoardBtn" aria-label="Show previous board" title="Show previous board" aria-pressed="false" disabled>${ICONS.previousBoard}</button>
+    <button class="iconBtn" data-top="undo" aria-label="Undo" title="Undo (${HINT_UNDO})">${ICONS.undo}</button>
+    <button class="iconBtn" data-top="redo" aria-label="Redo" title="Redo (${HINT_REDO})">${ICONS.redo}</button>
+    <button class="iconBtn" data-top="boards" aria-label="Boards" title="Boards in this project">${icon('stack')}</button>
+    <button class="iconBtn" data-top="more" id="barMoreBtn" aria-label="More" title="More" aria-haspopup="menu" aria-expanded="false" aria-controls="barMenu">${icon('dots')}</button>
+    <button class="iconBtn" data-top="note" aria-label="Note" title="This board's note">${icon('note')}</button>
+    <button class="iconBtn hidden" data-top="match" aria-label="Board settings" title="Board settings">${ICONS.cog}</button>
+    <button class="iconBtn hidden" data-top="live-shot" aria-label="Import live screenshot" title="Change live screenshot">${ICONS.camera}</button>
+    <div class="barMenu t-dropdown" id="barMenu" data-origin="top-center" role="menu" aria-label="More" hidden>
+      <div class="barMenuOverflow" data-bar-overflow></div>
+      <button data-bar-menu="extensions" role="menuitem">${icon('puzzle')}<span>Extensions</span></button>
+      <button data-bar-menu="tools" role="menuitem">${icon('adjustments')}<span>Tool settings</span></button>
+    </div>
     <input data-live-file type="file" accept="image/*" multiple style="display:none">
     <input data-asset-file type="file" accept="image/png,image/jpeg,image/webp" style="display:none">
   </div>
@@ -805,6 +906,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         </div>
         <button class="fab" data-act="link-menu" aria-label="Group or save" title="Group or save" aria-haspopup="menu" aria-expanded="false">${icon('link')}</button>
       </div>
+      <div class="exportMenu t-dropdown carryMenu" data-origin="bottom-left" id="carryMenu" role="menu" aria-label="Carry objects to">
+        <button type="button" role="menuitem" data-carry="next">Next board</button>
+        <button type="button" role="menuitem" data-carry="choose">Choose boards</button>
+      </div>
       <button class="backBtn hidden" id="backBtn" data-act="back-node-edit">&larr; Back</button>
     </main>
     <section id="libRoot"></section>
@@ -812,16 +917,18 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <section class="colorPicker" id="colorPicker" role="dialog" aria-label="Color picker" aria-modal="false">
         <div class="pickerHeader">
           <button class="pickerEye hidden" type="button" data-picker-eye aria-label="Pick color from board">${svg('<path d="M13.4 3.6a2.6 2.6 0 0 1 3.7 3.7l-1.6 1.6-3.7-3.7 1.6-1.6Z"/><path d="M11.2 5.8 4 13v3.6h3.6l7.2-7.2"/>')}</button>
-          <div class="pickerTabs" role="tablist" aria-label="Color picker views"><button type="button" role="tab" data-picker-tab="custom" aria-selected="true">Custom</button><button type="button" role="tab" data-picker-tab="swatches" aria-selected="false">Swatches</button></div>
+          <div class="pickerTabs" role="tablist" aria-label="Color picker views"><button type="button" role="tab" data-picker-tab="custom" aria-selected="false">Custom</button><button type="button" role="tab" data-picker-tab="swatches" aria-selected="true">Swatches</button></div>
         </div>
-        <div class="pickerSwatches" data-picker-swatches role="tabpanel" hidden></div>
-        <div class="pickerCustom" data-picker-custom role="tabpanel"><div class="pickerWheel"><div class="pickerHue" aria-hidden="true"></div><button class="pickerHueHit" type="button" data-picker-hue aria-label="Hue ring"></button><svg class="pickerTriangle" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="pickerWhite" gradientUnits="userSpaceOnUse" x1="84" y1="70" x2="33" y2="40"><stop stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient><linearGradient id="pickerBlack" gradientUnits="userSpaceOnUse" x1="16" y1="70" x2="67" y2="40"><stop/><stop offset="1" stop-opacity="0"/></linearGradient></defs><g data-picker-triangle-group><polygon data-picker-triangle points="50,11 83.77,69.5 16.23,69.5" fill="#e02020"/><polygon points="50,11 83.77,69.5 16.23,69.5" fill="url(#pickerWhite)"/><polygon points="50,11 83.77,69.5 16.23,69.5" fill="url(#pickerBlack)"/></g></svg><span class="pickerRingHandle" data-picker-ring></span><span class="pickerTriHandle" data-picker-triangle-handle></span></div></div>
+        <div class="pickerSwatches" data-picker-swatches role="tabpanel"></div>
+        <div class="pickerCustom" data-picker-custom role="tabpanel" hidden><div class="pickerWheel"><div class="pickerHue" aria-hidden="true"></div><button class="pickerHueHit" type="button" data-picker-hue aria-label="Hue ring"></button><svg class="pickerTriangle" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="pickerWhite" gradientUnits="userSpaceOnUse" x1="84" y1="70" x2="33" y2="40"><stop stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient><linearGradient id="pickerBlack" gradientUnits="userSpaceOnUse" x1="16" y1="70" x2="67" y2="40"><stop/><stop offset="1" stop-opacity="0"/></linearGradient></defs><g data-picker-triangle-group><polygon data-picker-triangle points="50,11 83.77,69.5 16.23,69.5" fill="#e02020"/><polygon points="50,11 83.77,69.5 16.23,69.5" fill="url(#pickerWhite)"/><polygon points="50,11 83.77,69.5 16.23,69.5" fill="url(#pickerBlack)"/></g></svg><span class="pickerRingHandle" data-picker-ring></span><span class="pickerTriHandle" data-picker-triangle-handle></span></div></div>
         <footer class="pickerFooter"><button type="button" data-picker-hex aria-expanded="false">#E02020</button><input data-picker-input type="text" inputmode="text" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex color" hidden></footer>
       </section>
       <span class="pickerCurrentDot" data-color-floating-dot aria-hidden="true"></span>
       <div class="colorDock" data-color-dock><span class="colorDockCurrent" data-color-dock-dot aria-hidden="true"></span><button class="colorDockChip" type="button" disabled aria-label="Unavailable color"><span></span></button><button class="colorDockChip" type="button" disabled aria-label="Unavailable color"><span></span></button><button class="colorDockClose" type="button" data-color-close aria-label="Close color picker">${icon('chevron-down')}</button></div>
       <div class="shelf hidden" id="shelf"></div>
       <button class="panelFold hidden" id="panelFold" data-act="fold-panel" aria-label="Hide panel">${icon('chevron-left')}<span>Hide panel</span></button>
+      <div class="stylesShelf hidden" id="stylesShelf"></div>
+      <div class="quickSet hidden" id="quickSet"></div>
       <div class="options" id="options"></div>
     </div>
     <nav class="toolbar" id="toolbar"></nav>
@@ -917,6 +1024,8 @@ const stageWrap = document.querySelector<HTMLDivElement>('.stageWrap')!
 const optionsEl = document.querySelector<HTMLDivElement>('#options')!
 const toolbarEl = document.querySelector<HTMLDivElement>('#toolbar')!
 const shelfEl = document.querySelector<HTMLDivElement>('#shelf')!
+const stylesShelfEl = document.querySelector<HTMLDivElement>('#stylesShelf')!
+const quickSetEl = document.querySelector<HTMLDivElement>('#quickSet')!
 const panelDockEl = document.querySelector<HTMLDivElement>('#panelDock')!
 const ctxDockEl = document.querySelector<HTMLDivElement>('#ctxDock')!
 const fabColEl = document.querySelector<HTMLElement>('#fabCol')!
@@ -956,6 +1065,15 @@ if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
 }
 
 const board = new Board(store, stageEl, defaults)
+// Full Pitch is height-driven, so late viewport changes on iOS Safari must
+// refit the board instead of only updating the viewport gate.
+const refitBoard = () => board.refit()
+window.addEventListener('resize', refitBoard)
+window.visualViewport?.addEventListener('resize', refitBoard)
+window.addEventListener('orientationchange', () => {
+  refitBoard()
+  window.setTimeout(refitBoard, 300)
+})
 /** Installed after saved-board/session setup; keeping these no-ops makes board switches safe during boot. */
 let collaborationBoardChanged = () => {}
 let clearCollaborationPreview = () => {}
@@ -1051,7 +1169,7 @@ function applyDefaultOption(key: string, v?: string) {
  * Styles holds whatever the selection can be changed by; Text is its own room
  * because its one useful action is making a new one.
  */
-type Room = 'shapes' | 'text' | 'styles'
+type Room = 'settings' | 'shapes' | 'text' | 'styles'
 let room: Room = 'shapes'
 let panelOpen = true
 let shelfCat = 'players'
@@ -1073,6 +1191,7 @@ const TOOL_KEYS: { tool: Tool; cat: string }[] = [
 ]
 
 const ROOMS: { room: Room; label: string; tool?: Tool }[] = [
+  { room: 'settings', label: 'Settings' },
   { room: 'shapes', label: 'Shapes' },
   { room: 'text', label: 'Text', tool: 'text' },
   { room: 'styles', label: 'Styles' },
@@ -1124,6 +1243,13 @@ const shelfArrowColor = () =>
 const img = (src: string, w: number, h: number) =>
   `<img src="${src}" width="${w}" height="${h}" alt="" draggable="false">`
 
+/** A flat [x, y, x, y] list as a closed path, for the shapes the board shares. */
+function polyPath(pts: number[]): string {
+  let d = ''
+  for (let i = 0; i < pts.length; i += 2) d += `${i ? ' L' : 'M'} ${pts[i].toFixed(2)} ${pts[i + 1].toFixed(2)}`
+  return `${d} Z`
+}
+
 const shelfArt = {
   /** Konva fills the circle and strokes it at 0.38r in near-black. */
   player: (color: string) =>
@@ -1131,9 +1257,14 @@ const shelfArt = {
   /** A keeper is the same token in the keeper's colour - nothing else differs. */
   keeper: (color: string) =>
     `<svg viewBox="0 0 34 34" style="filter:drop-shadow(1.2px 1.8px 3.5px rgba(0,0,0,.3))"><circle cx="17" cy="17" r="10" fill="${color}" stroke="#0b0b0e" stroke-width="3.8"/></svg>`,
+  /**
+   * A whole side, drawn as three tokens rather than eleven: at 34px a full
+   * formation collapses into a speckle, so the cell shows the smallest group
+   * that still reads as a team, in the token's own fill and stroke.
+   */
   eleven: (color: string) => {
-    const dot = (x: number, y: number) => `<circle cx="${x}" cy="${y}" r="4" fill="${color}" stroke="#0b0b0e" stroke-width="1.5"/>`
-    return `<svg viewBox="0 0 34 34">${dot(7, 8)}${dot(17, 8)}${dot(27, 8)}${dot(7, 17)}${dot(17, 17)}${dot(27, 17)}${dot(12, 26)}${dot(22, 26)}</svg>`
+    const dot = (x: number, y: number) => `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#0b0b0e" stroke-width="1.9"/>`
+    return `<svg viewBox="0 0 34 34">${dot(17, 10)}${dot(9, 24)}${dot(25, 24)}</svg>`
   },
   /** Side picker: the kit token the board draws, plus that team's code. */
   teamPick: (color: string, code: string) =>
@@ -1147,16 +1278,17 @@ const shelfArt = {
   setTeams: `<svg viewBox="0 0 34 34" fill="none"><circle cx="12" cy="14" r="6" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3"/><circle cx="23" cy="21" r="6" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3"/></svg>`,
   /** The live marker is the same crop of the same screenshot the board uses. */
   marker: `<span class="cellCrop" style="background-image:url(${livePlayerSrc});
-    background-size:${(4096 / LIVE_PLAYER_CROP.width) * 100}% ${(4096 / LIVE_PLAYER_CROP.height) * 100}%;
-    background-position:${(LIVE_PLAYER_CROP.x / (4096 - LIVE_PLAYER_CROP.width)) * 100}% ${(LIVE_PLAYER_CROP.y / (4096 - LIVE_PLAYER_CROP.height)) * 100}%;"></span>`,
+    background-size:${(LIVE_ART_SHEET / LIVE_PLAYER_CROP.width) * 100}% ${(LIVE_ART_SHEET / LIVE_PLAYER_CROP.height) * 100}%;
+    background-position:${(LIVE_PLAYER_CROP.x / (LIVE_ART_SHEET - LIVE_PLAYER_CROP.width)) * 100}% ${(LIVE_PLAYER_CROP.y / (LIVE_ART_SHEET - LIVE_PLAYER_CROP.height)) * 100}%;"></span>`,
   arrow: (dash: ArrowObj['dash'], head: boolean) =>
     `<img class="cellWide" src="${arrowPreview(dash, head, shelfArrowColor(), defaults.arrow.width, false, liveArrows())}" alt="" draggable="false">`,
   measure: () =>
     `<img class="cellWide" src="${arrowPreview('solid', false, defaults.measure.color, defaults.measure.width, true)}" alt="" draggable="false">`,
   box: (fill: string, opacity: number) =>
     `<svg viewBox="0 0 34 34"><rect x="4" y="10" width="26" height="15" rx="1" fill="${fill}" opacity="${opacity}"/></svg>`,
+  /* The shelf draws what it places, and what it places is a circle. */
   ellipse: (fill: string, opacity: number) =>
-    `<svg viewBox="0 0 34 34"><ellipse cx="17" cy="17" rx="13" ry="8" fill="${fill}" opacity="${opacity}"/></svg>`,
+    `<svg viewBox="0 0 34 34"><circle cx="17" cy="17" r="10" fill="${fill}" opacity="${opacity}"/></svg>`,
   triangle: (fill: string, opacity: number) =>
     `<svg viewBox="0 0 34 34"><polygon points="17,8 30,25 4,25" fill="${fill}" opacity="${opacity}"/></svg>`,
   outline: (fill: string) =>
@@ -1256,20 +1388,22 @@ function shelfCategories(): { cat: string; label: string; items: ShelfItem[] }[]
         run: () => addPlayerForSide(side, true),
       })
     }
-    // A whole eleven needs a team to fill it. One side having one still keeps
-    // its row: the other side holds its place rather than letting the columns
-    // after it slide up.
-    if (home || away) {
-      for (const side of SIDES) {
-        const team = side === 'home' ? home : away
-        players.push(team
-          ? {
-              id: `xi-${side}`, title: `${team.name} eleven`, tool: 'player',
-              art: shelfArt.eleven(team.color),
-              run: () => addTeamFromPlayerMenu(team.name),
-            }
-          : { id: `xi-${side}`, title: '', art: '', spacer: true })
-      }
+    // A whole eleven, on each side's row whether or not a team has been picked.
+    // With a team it is that team's, kit and slots and all; without one it is
+    // still that side's eleven, in that side's fallback kit and on its half.
+    for (const side of SIDES) {
+      const team = side === 'home' ? home : away
+      players.push(team
+        ? {
+            id: `xi-${side}`, title: `${team.name} eleven`, tool: 'player',
+            art: shelfArt.eleven(team.color),
+            run: () => addTeamFromPlayerMenu(team.name),
+          }
+        : {
+            id: `xi-${side}`, title: `${side === 'home' ? 'Home' : 'Away'} eleven`, tool: 'player',
+            art: shelfArt.eleven(sidePlayerColor(side)),
+            run: () => addTeamFromPlayerMenu('', side),
+          })
     }
   }
 
@@ -1304,7 +1438,7 @@ function shelfCategories(): { cat: string; label: string; items: ShelfItem[] }[]
       label: 'Zones',
       items: [
         { id: 'rect', title: 'Box', art: shelfArt.box(defaults.box.fill, defaults.box.opacity), tool: 'box', opts: [['d-shape', 'rect']], active: () => defaults.box.shape === 'rect' },
-        { id: 'ellipse', title: 'Oval', art: shelfArt.ellipse(defaults.box.fill, defaults.box.opacity), tool: 'box', opts: [['d-shape', 'ellipse']], active: () => defaults.box.shape === 'ellipse' },
+        { id: 'ellipse', title: 'Circle', art: shelfArt.ellipse(defaults.box.fill, defaults.box.opacity), tool: 'box', opts: [['d-shape', 'ellipse']], active: () => defaults.box.shape === 'ellipse' },
         { id: 'triangle', title: 'Triangle', art: shelfArt.triangle(defaults.box.fill, defaults.box.opacity), tool: 'box', opts: [['d-shape', 'triangle']], active: () => defaults.box.shape === 'triangle' },
         { id: 'outline', title: 'Outline', art: shelfArt.outline(defaults.box.fill), tool: 'box', opts: [['d-shape', 'outline']], active: () => defaults.box.shape === 'outline' },
         ...stampItems('zones'),
@@ -1696,13 +1830,35 @@ for (const [row, x, cells] of PICKER_BLOCKS) for (const [hex, name] of cells) {
 }
 let pickerColor = '#e02020'
 let pickerPreview = pickerColor
-let pickerTab: 'custom' | 'swatches' = 'custom'
+/* Swatches lead: a kit is nearly always one of the colours already there, and
+   the wheel is for the one time a season it is not. */
+let pickerTab: 'custom' | 'swatches' = 'swatches'
+/**
+ * With Styles open the picker paints what is picked rather than what will be
+ * drawn next: the swatch at the end of the name row is the kit of that player.
+ * Everything else still sets the tool's own colour.
+ */
+function selectionColorTarget(): { get: () => string; set: (c: string) => void } | null {
+  if (!stylesShowing()) return null
+  const sel = store.selected
+  if (sel?.type === 'player') return { get: () => sel.color, set: c => styleAll(o => { o.color = c }) }
+  // Every other kind is styled in tabs, and the dot under the tab strip is the
+  // colour of whichever one is open.
+  return activeStyleTab()?.color ?? null
+}
+
 function pickerTarget() {
   if (room === 'text' || board.tool === 'text') return 'd-tcolor'
   if (shelfCat === 'players') return teams.activeTeamName() ? 'd-team-color' : 'd-pcolor'
   return ({ arrows: 'd-color', zones: 'd-fill', equipment: 'd-measure-color', text: 'd-tcolor' } as Record<string, string>)[shelfCat] ?? 'd-pcolor'
 }
+/** A row outside the panel that has borrowed the picker, if any. */
+let pickerOverride: { get: () => string; set: (color: string) => void } | null = null
+
 function currentPickerColor() {
+  if (pickerOverride) return pickerOverride.get()
+  const picked = selectionColorTarget()
+  if (picked) return picked.get()
   if (room === 'text' || board.tool === 'text') return defaults.text.color
   if (shelfCat === 'players') return teams.activeTeamName() ? teams.getTeamForSide('home')?.name === teams.activeTeamName() ? teams.getTeamForSide('home')!.color : teams.getTeamForSide('away')?.color ?? defaults.playerColor : defaults.playerColor
   if (shelfCat === 'arrows') return defaults.arrow.color
@@ -1761,7 +1917,10 @@ function commitPickerColor(hex = pickerPreview) {
   if (!color) return
   pickerColor = color
   setPickerVisual(color)
-  applyDefaultOption(pickerTarget(), color)
+  if (pickerOverride) { pickerOverride.set(color); return }
+  const picked = selectionColorTarget()
+  if (picked) picked.set(color)
+  else applyDefaultOption(pickerTarget(), color)
 }
 function syncPicker() { pickerColor = currentPickerColor(); setPickerVisual(pickerColor) }
 function setPickerOpen(open: boolean, restoreFocus = true) {
@@ -1771,13 +1930,14 @@ function setPickerOpen(open: boolean, restoreFocus = true) {
   colorDockEl.classList.toggle('open', open)
   panelDockEl.classList.toggle('pickerOpen', open)
   shelfEl.classList.toggle('pickerHidden', open)
+  stylesShelfEl.classList.toggle('pickerHidden', open)
   shelfEl.querySelector<HTMLElement>('.shelfRail')?.classList.toggle('pickerHidden', open)
-  shelfEl.querySelectorAll<HTMLButtonElement>('[data-color-trigger]').forEach(btn => btn.setAttribute('aria-expanded', String(open)))
-  if (open) { pickerFocus = document.activeElement as HTMLElement; pickerTab = 'custom'; selectPickerTab('custom'); syncPicker() }
+  panelDockEl.querySelectorAll<HTMLButtonElement>('[data-color-trigger]').forEach(btn => btn.setAttribute('aria-expanded', String(open)))
+  if (open) { pickerFocus = document.activeElement as HTMLElement; pickerTab = 'swatches'; selectPickerTab('swatches'); syncPicker() }
   else {
     const scroll = shelfEl.querySelector<HTMLElement>('[data-shelf-scroll]')
     if (scroll) { scroll.scrollLeft = shelfScrollX; scroll.scrollTop = shelfScrollY }
-    if (restoreFocus) (pickerFocus?.isConnected ? pickerFocus : shelfEl.querySelector<HTMLElement>('[data-color-trigger]'))?.focus()
+    if (restoreFocus) (pickerFocus?.isConnected ? pickerFocus : panelDockEl.querySelector<HTMLElement>('[data-color-trigger]'))?.focus()
   }
   syncPanelHeight()
 }
@@ -1850,7 +2010,7 @@ triHit.addEventListener('pointerup', e => endTrianglePreview(e.pointerId, true))
 triHit.addEventListener('pointercancel', e => endTrianglePreview(e.pointerId, false))
 shelfEl.addEventListener('click', e => { if ((e.target as HTMLElement).closest('[data-color-trigger]')) setPickerOpen(!pickerOpen) })
 colorDockEl.addEventListener('click', e => { if ((e.target as HTMLElement).closest('[data-color-close]')) setPickerOpen(false) })
-document.addEventListener('pointerdown', e => { if (pickerOpen && !panelDockEl.contains(e.target as Node)) setPickerOpen(false) })
+document.addEventListener('pointerdown', e => { if (pickerOpen && !pickerOverride && !panelDockEl.contains(e.target as Node)) setPickerOpen(false) })
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && pickerOpen) { e.preventDefault(); e.stopImmediatePropagation(); setPickerOpen(false) } })
 if ('EyeDropper' in window) colorPickerEl.querySelector('[data-picker-eye]')?.classList.remove('hidden')
 
@@ -1896,8 +2056,9 @@ function applyLayout() {
   if (on) {
     if (pickerOpen) setPickerOpen(false, false)
     ctxDockEl.append(fabColEl, fabBLEl, optionsEl)
-    // Styles is a room the rail has no seat for: its controls are the bar.
-    if (room === 'styles') room = 'shapes'
+    // Styles and Settings are rooms the rail has no seat for: styling is the
+    // bar, and settings is the sheet the rail's own foot button opens.
+    if (room === 'styles' || room === 'settings') room = 'shapes'
     panelOpen = deskPanelPref()
   } else {
     stageWrap.append(fabColEl, fabBLEl)
@@ -1929,12 +2090,14 @@ function renderRail() {
 function renderToolbar() {
   if (deskMode) { renderRail(); return }
   toolbarEl.innerHTML =
-    `<button data-bar="settings" title="Settings"><span class="tlabel">Settings</span></button>` +
     ROOMS.map(r => {
       // A put-away drawer leaves no room open, so nothing in the band stays lit.
       const on = room === r.room && panelOpen
-      const cls = on ? 'active' : ''
-      return `<button data-room="${r.room}" ${r.tool ? `data-tool="${r.tool}"` : ''} title="${r.label}" class="${cls}" aria-expanded="${on && panelOpen}"><span class="tlabel">${r.label}</span></button>`
+      // Styles restyles what is picked, so with nothing picked there is nothing
+      // for it to be: the tab greys out rather than opening on an empty room.
+      const off = r.room === 'styles' && !stylesHasSubject()
+      const cls = [on ? 'active' : '', off ? 'disabled' : ''].filter(Boolean).join(' ')
+      return `<button data-room="${r.room}" ${r.tool ? `data-tool="${r.tool}"` : ''} title="${r.label}" class="${cls}"${off ? ' disabled aria-disabled="true"' : ''} aria-expanded="${on && panelOpen}"><span class="tlabel">${r.label}</span></button>`
     }).join('')
 }
 
@@ -1942,6 +2105,8 @@ function renderToolbar() {
 function renderPanel() {
   renderToolbar()
   renderShelf()
+  renderStylesShelf()
+  renderQuickSet()
   syncPicker()
   renderOptions()
   panelFoldEl.classList.toggle('hidden', !deskMode || !shelfHasContent())
@@ -1973,6 +2138,25 @@ function syncPanelPitchMode(): boolean {
  * there is nothing to inset.
  */
 function syncPanelHeight() {
+  // The colour picker is a sheet over the board, not a taller panel. Publishing
+  // its height would inset the stage and refit the pitch, so the board slides
+  // out from under the thing you just opened; it keeps the inset it had and the
+  // picker covers it instead.
+  if (pickerOpen && !deskMode) return
+  /* What the panel may take is what is left, not a share of the screen. A
+     fraction of `vh` is a fraction of the window as if the browser had no
+     chrome of its own, which on a phone it always does: the panel took the
+     board's whole height and left a sliver of pitch above it. Measure the
+     space the two actually share, and keep a floor under the board - it is
+     the thing every one of these controls is being judged against. */
+  const work = document.querySelector<HTMLElement>('.workArea')
+  const workH = Math.round(work?.getBoundingClientRect().height ?? 0)
+  if (workH > 0 && !deskMode) {
+    const boardFloor = Math.max(170, Math.round(workH * 0.42))
+    document.documentElement.style.setProperty('--quickMax', `${Math.max(150, workH - boardFloor)}px`)
+  } else {
+    document.documentElement.style.removeProperty('--quickMax')
+  }
   const h = deskMode ? 0 : Math.round(panelDockEl.getBoundingClientRect().height)
   document.documentElement.style.setProperty('--panelH', `${h}px`)
   board.bottomInset = h
@@ -2003,11 +2187,16 @@ function syncRoomToSelection() {
   if (deskMode) return
   if (store.selectedIds.length) {
     const sel = store.selected
-    if (!sel || !RESTYLABLE.has(sel.type)) return
-    // A new shape opens Styles the way a picked one does - it is the thing you
-    // just made, and restyling it is the next move. A new player is the
-    // exception: they arrive a squad at a time, so the shelf stays put.
-    if (!board.picking && sel.type === 'player') return
+    // A mixed pick has nothing in common to change, so it opens nothing; the
+    // band still has to be redrawn, because the tab's state follows the pick.
+    if (!sel || !stylesHasSubject()) { renderToolbar(); return }
+    // Several at once is a pick you made to move, copy or delete them. Styles
+    // still takes the lot when you open it by hand; it just does not jump in
+    // front of the board while you are gathering them up.
+    if (store.selectedIds.length > 1) { renderToolbar(); return }
+    // A new shape opens Styles the way a picked one does, players included: the
+    // one you just put down is the one you name, and Shapes is a tab away when
+    // the next player is the next move.
     if (room !== 'styles') roomBeforeStyles = room
     room = 'styles'
     panelOpen = true
@@ -2071,6 +2260,7 @@ toolbarEl.addEventListener('click', (e) => {
   }
   const next = btn.dataset.room as Room | undefined
   if (!next) return
+  if (btn.hasAttribute('disabled')) return
   // Tapping the room you are already in puts the panel away, and brings it back.
   // Putting it away closes the room with it: Text stops writing until it is
   // opened again, so a tap on the board does not still make text.
@@ -2092,6 +2282,1540 @@ toolbarEl.addEventListener('click', (e) => {
   }
   if (next !== 'styles') store.select(null)
   renderPanel()
+})
+
+
+/* ---------- the styles shelf ---------- */
+
+/**
+ * Styles is a shelf of pictures, not a strip of words: a setting that can be
+ * drawn is drawn, at the same 40pt cell the Shapes shelf uses, over two rows.
+ * Only text keeps words - a name is unreadable at cell size - so the name and
+ * everything about it sit together in a row above the cells.
+ */
+type StyleCell = {
+  id: string
+  title: string
+  art: string
+  /** Lit: this is the setting the selection already has. */
+  on?: boolean
+  /** A board action rather than a setting: quieter, and off the cell rhythm. */
+  act?: boolean
+  wide?: boolean
+  disabled?: boolean
+  run: () => void
+}
+type StyleGroup = { id: string; cells: StyleCell[] }
+
+const styleArt = {
+  dot: (color: string) => `<span class="dot" style="background:${color}"></span>`,
+  arrow: (dash: ArrowObj['dash'], head: boolean, color: string, width: number, live: boolean) =>
+    `<img class="cellWide" src="${arrowPreview(dash, head, color, width, false, live)}" alt="" draggable="false">`,
+  /**
+   * The head and the arms as the board draws them - the same geometry, on the
+   * same ring - so a pill cannot show a shape the board does not use. Both take
+   * currentColor, so one drawing serves a lit pill and a bare one.
+   *
+   * A pill is a button, not a readout: the mark always points right. Turning it
+   * with the player made a row of controls that moved about while you worked.
+   * The box is measured off the drawing, so a head hanging out to one side sits
+   * in the middle of its pill rather than shunted against the edge.
+   */
+  mark: (shapes: number[][], r: number) => {
+    const xs = shapes.flatMap(pts => pts.filter((_, i) => i % 2 === 0)).concat([-r, r])
+    const ys = shapes.flatMap(pts => pts.filter((_, i) => i % 2 === 1)).concat([-r, r])
+    const pad = r * 0.22
+    const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad
+    const y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad
+    const side = Math.max(x1 - x0, y1 - y0)
+    const box = `${(x0 + (x1 - x0 - side) / 2).toFixed(2)} ${(y0 + (y1 - y0 - side) / 2).toFixed(2)} ${side.toFixed(2)} ${side.toFixed(2)}`
+    return `<svg class="ic markIc" viewBox="${box}" aria-hidden="true" focusable="false">`
+      + shapes.map(pts => `<path d="${polyPath(pts)}" fill="currentColor"/>`).join('')
+      + `<circle cx="0" cy="0" r="${r}" fill="none" stroke="currentColor" stroke-width="${(r * 0.38).toFixed(2)}"/></svg>`
+  },
+  facing: () => styleArt.mark([headPoints(0, 6)], 6),
+  arms: () => styleArt.mark([armPoints(0, 1, 7), armPoints(0, -1, 7)], 7),
+  letter: (size: number, bold: boolean) =>
+    `<span class="cellLetter" style="font-size:${size}px;font-weight:${bold ? 700 : 400}">A</span>`,
+  straighten: `<svg viewBox="0 0 24 24" fill="none"><path d="M3 15c5-9 13 1 18-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M3 20h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  resetStyle: `<svg viewBox="0 0 24 24" fill="none"><path d="M5 12a7 7 0 1 0 2.3-5.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4.6 3.8v3.6h3.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  carry: `<svg viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="9" height="12" rx="1.6" stroke="currentColor" stroke-width="1.8"/><path d="M15 12h6M18.4 9l3 3-3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  editText: `<svg viewBox="0 0 24 24" fill="none"><path d="M14.6 4.6a2 2 0 0 1 2.8 2.8L9 15.8l-3.6 1 1-3.6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M4 20h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  squad: icon('users-group', 'ic markIc'),
+  /* The three finishes Appearance adds, drawn as what they do rather than as
+     an icon of the idea: a token over its own shadow, an edge round a wash,
+     and a letter with its halo behind it. */
+  shadow: (level: number) =>
+    `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">`
+    + `<ellipse cx="12" cy="19" rx="${(5 + level * 2).toFixed(1)}" ry="2.2" fill="currentColor" opacity="${level ? (0.16 + level * 0.14).toFixed(2) : '0.06'}"/>`
+    + `<circle cx="12" cy="11" r="6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`,
+  border: (width: number, dashed: boolean) =>
+    `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">`
+    + `<rect x="4" y="6" width="16" height="12" rx="2" fill="currentColor" opacity="0.22"/>`
+    + (width ? `<rect x="4" y="6" width="16" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="${width.toFixed(1)}"${dashed ? ' stroke-dasharray="4 3"' : ''}/>` : '')
+    + `</svg>`,
+  halo: (width: number) =>
+    `<svg viewBox="0 0 24 24" aria-hidden="true">`
+    + `<text x="12" y="18" text-anchor="middle" font-size="17" font-weight="700" fill="currentColor"`
+    + (width ? ` stroke="currentColor" stroke-opacity="0.3" stroke-width="${(width * 1.6).toFixed(1)}" paint-order="stroke" stroke-linejoin="round"` : '')
+    + `>A</text></svg>`,
+}
+
+/* ---------- the same finishes, on one object ----------
+   Appearance sets what the board does; Styles lets one arrow, zone or label
+   depart from it. Players are not here: a squad is styled as a squad, so their
+   finish only ever comes from Appearance. */
+
+const OBJECT_FINISHES = {
+  shadow: [[0, 'No shadow'], [1, 'Soft shadow'], [2.5, 'Deep shadow']],
+  border: [[0, 'No border'], [2, 'Thin border'], [5, 'Thick border']],
+  halo: [[0, 'No halo'], [1.5, 'Thin halo'], [3.5, 'Thick halo']],
+} as const
+
+/** The finish cells for the picked object. */
+function finishCells(kind: 'shadow' | 'border' | 'halo', current: number): StyleCell[] {
+  return OBJECT_FINISHES[kind].map(([value, title]) => ({
+    id: `${kind}-${value}`, title,
+    art: kind === 'shadow' ? styleArt.shadow(value) : kind === 'border' ? styleArt.border(value, false) : styleArt.halo(value),
+    on: current === value,
+    run: () => setFinish(kind, value),
+  }))
+}
+
+/**
+ * Write one finish onto the picked pieces. With nothing picked the room is
+ * showing what the next shape will look like, so it lands on the board.
+ */
+function setFinish(key: 'shadow' | 'border' | 'borderStyle' | 'halo', value: number | string) {
+  if (!store.selected) {
+    const path = (key === 'shadow' ? 'arrow.shadow'
+      : key === 'halo' ? 'text.halo'
+      : key === 'border' ? 'zone.border' : 'zone.borderStyle') as AppearanceKey
+    setBoardAppearance(path, value)
+    return
+  }
+  styleAll(o => { (o as any)[key] = value })
+}
+
+
+/**
+ * Every picked object of the kind Styles is showing, changed as one. Three
+ * arrows are three arrows: a tap on dashed makes all three dashed, rather than
+ * whichever one the store happens to call the selection.
+ */
+function styleAll(mutate: (o: any) => void) {
+  const type = stylesSubject()
+  store.apply(() => {
+    for (const o of selectedObjects()) if (!type || o.type === type) mutate(o)
+  })
+}
+
+/** Colour cells for one palette, writing through a single setter. */
+function colorCells(id: string, colors: string[], active: string, set: (c: string) => void): StyleCell[] {
+  const seen = new Set<string>()
+  const cells: StyleCell[] = []
+  for (const c of colors) {
+    const key = normalizeHex(c) ?? c
+    if (seen.has(key)) continue
+    seen.add(key)
+    cells.push({
+      id: `${id}-${c}`, title: c, art: styleArt.dot(c),
+      on: (normalizeHex(active) ?? active) === key,
+      run: () => set(c),
+    })
+  }
+  return cells
+}
+
+/** Carry forward is a board action, so it reads as one: grey, behind a rule. */
+function carryCell(): StyleCell | null {
+  if (!library?.projects?.length || board.interactionState === 'node-edit') return null
+  const source = currentBoard()
+  if (!source || !store.scene.objects.length) return null
+  const project = currentProject(library)
+  const index = project.boards.findIndex(item => item.id === source.id)
+  const picked = selectedObjects().length
+  const what = picked ? `${picked} selected` : `all ${store.scene.objects.length} objects`
+  return {
+    id: 'carry', title: `Carry ${what} to every later board`, art: styleArt.carry, act: true,
+    disabled: !(index >= 0 && index < project.boards.length - 1),
+    run: () => carryForward(),
+  }
+}
+
+/* ---------- Styles, one tab per property ----------
+   A zone, an arrow and a label are set the way Appearance sets the board: a tab
+   per property, one control under it, and the same column down the right of
+   every tab, use on another board with the colour under it. Players are not
+   here: their row already says everything about a player in words. */
+
+type StyleRail = {
+  id: string; low: string; high: string
+  min: number; max: number; step: number; value: number
+  /** Set where the exact number matters: the high end becomes the value, typed. */
+  unit?: string
+  set: (value: number) => void
+}
+type StyleRing = { id: string; title: string; art: string; on: boolean; run: () => void }
+type StyleColor = { get: () => string; set: (color: string) => void }
+type StyleAct = { title: string; art: string; run: () => void }
+type StyleTab = { id: string; label: string; rings?: StyleRing[]; rails?: StyleRail[]; color?: StyleColor; reset?: StyleAct }
+
+/** The tab the room is on. Cleared with the selection, so a new pick opens first. */
+let styleTab: string | null = null
+
+/** A board colour still set to Automatic has no hex to show, so it borrows one. */
+function lookColor(key: AppearanceKey, fallback: string): string {
+  const value = boardLook()[key]
+  return typeof value === 'string' && value !== AUTO ? value : fallback
+}
+
+/**
+ * Put an arrow back to the one the board draws: the dash, head, width and
+ * colour the next arrow will have, and its shadow following the board again.
+ * With nothing picked it is the pitch's own arrow that comes back, which is
+ * what the tool started the session with.
+ */
+function resetArrowStyle() {
+  const arrows = selectedObjects().filter(o => o.type === 'arrow')
+  if (!arrows.length) {
+    applyPitchArrowDefault(pitchById(store.scene.pitch))
+    renderPanel()
+    return
+  }
+  const { dash, head, width, color } = defaults.arrow
+  store.apply(() => {
+    for (const o of arrows as ArrowObj[]) {
+      if (!o.measure) { o.dash = dash; o.head = head }
+      o.width = width
+      o.color = color
+      delete o.shadow
+      delete o.headSize
+    }
+  })
+}
+
+/** The tabs for what is picked, or for what the armed tool will draw next. */
+function styleTabs(): StyleTab[] {
+  const sel = store.selected
+  const tool = board.tool
+  const live = liveArrows()
+  const ink = shelfArrowColor()
+
+  if (sel?.type === 'arrow' || (!sel && tool === 'arrow')) {
+    const arrow = sel?.type === 'arrow' ? sel : null
+    const measure = !!arrow?.measure
+    const dash = arrow ? arrow.dash : defaults.arrow.dash
+    const head = arrow ? arrow.head : defaults.arrow.head
+    const width = arrow ? arrow.width : defaults.arrow.width
+    const color = arrow ? arrow.color : defaults.arrow.color
+    const widths = (measure ? MEASURE_WIDTH_OPTIONS : sceneArrowWidths()).map(([v]) => Number(v))
+    /* A ring draws its own choice and nothing else. Drawing them at the arrow's
+       live width and head made the whole row redraw while a rail was moving,
+       which read as the pictures answering the slider. */
+    const ringWidth = widths[Math.floor(widths.length / 2)]
+    const colorTarget: StyleColor = {
+      get: () => color,
+      set: c => { if (arrow) styleAll(o => { o.color = c }); else applyDefaultOption(measure ? 'd-measure-color' : 'd-color', c) },
+    }
+    const reset: StyleAct = {
+      title: 'Back to the default arrow', art: styleArt.resetStyle, run: () => resetArrowStyle(),
+    }
+    const widthRail: StyleRail = {
+      id: 'arrow-width', low: 'Thin', high: 'Thick',
+      min: widths[0], max: widths[widths.length - 1], step: 0.5, value: width,
+      set: v => { if (arrow) styleAll(o => { o.width = v }); else applyDefaultOption(measure ? 'd-measure-width' : 'd-width', String(v)) },
+    }
+    if (measure) return [{ id: 'line', label: 'Line', rails: [widthRail], color: colorTarget, reset }]
+    return [
+      {
+        id: 'line', label: 'Line',
+        rings: (['solid', 'dashed', 'dotted'] as const).map(d => ({
+          id: `dash-${d}`, title: `${d[0].toUpperCase()}${d.slice(1)} line`,
+          art: styleArt.arrow(d, true, ink, ringWidth, live), on: dash === d,
+          run: () => { if (arrow) styleAll(o => { o.dash = d }); else applyDefaultOption('d-dash', d) },
+        })),
+        rails: [widthRail],
+        color: colorTarget,
+        reset,
+      },
+      {
+        id: 'head', label: 'Head',
+        rings: [
+          {
+            id: 'head-on', title: 'Arrow head', art: styleArt.arrow('solid', true, ink, ringWidth, live), on: head,
+            run: () => { if (arrow) styleAll(o => { o.head = true }); else applyDefaultOption('d-head', 'head') },
+          },
+          {
+            id: 'head-off', title: 'No head', art: styleArt.arrow('solid', false, ink, ringWidth, live), on: !head,
+            run: () => { if (arrow) styleAll(o => { o.head = false }); else applyDefaultOption('d-head', 'nohead') },
+          },
+        ],
+        rails: [{
+          id: 'head-size', low: 'Small', high: 'Large',
+          min: 0.3, max: 3, step: 0.05, value: boardLook()['arrow.head'] as number,
+          set: v => setBoardAppearance('arrow.head', v),
+        }],
+        color: colorTarget,
+        reset,
+      },
+      {
+        id: 'shadow', label: 'Shadow',
+        rails: [{
+          id: 'arrow-shadow', low: 'Off', high: 'Dark',
+          min: 0, max: 6, step: 0.25,
+          value: objectAppearance(arrow?.shadow, boardLook()['arrow.shadow'] as number),
+          set: v => setFinish('shadow', v),
+        }],
+        color: colorTarget,
+        reset,
+      },
+    ]
+  }
+
+  if (sel?.type === 'box' || (!sel && tool === 'box')) {
+    const box = sel?.type === 'box' ? sel : null
+    const shape = box ? box.shape : defaults.box.shape
+    const fill = box ? box.fill : defaults.box.fill
+    const opacity = box ? box.opacity : defaults.box.opacity
+    const border = objectAppearance(box?.border, boardLook()['zone.border'] as number)
+    const dashed = objectAppearance(box?.borderStyle, boardLook()['zone.borderStyle'] as string) === 'dashed'
+    return [
+      {
+        id: 'fill', label: 'Fill',
+        rails: shape === 'outline' ? [] : [{
+          id: 'fill-opacity', low: 'Off', high: 'Opaque',
+          min: 0.05, max: 1, step: 0.05, value: opacity,
+          set: v => { if (box) styleAll(o => { o.opacity = v }); else applyDefaultOption('d-opacity', String(v)) },
+        }],
+        color: {
+          get: () => fill,
+          set: c => { if (box) styleAll(o => { o.fill = c }); else applyDefaultOption('d-fill', c) },
+        },
+      },
+      {
+        id: 'border', label: 'Border',
+        rings: ([['solid', false], ['dashed', true]] as const).map(([id, wantsDash]) => ({
+          id: `border-${id}`, title: `${id[0].toUpperCase()}${id.slice(1)} border`,
+          art: styleArt.border(3, wantsDash), on: dashed === wantsDash,
+          run: () => setFinish('borderStyle', id),
+        })),
+        rails: [{
+          id: 'border-width', low: 'Off', high: 'Thick',
+          min: 0, max: 16, step: 0.5, value: border,
+          set: v => setFinish('border', v),
+        }],
+        color: {
+          get: () => lookColor('zone.borderColor', fill),
+          set: c => setBoardAppearance('zone.borderColor', c),
+        },
+      },
+    ]
+  }
+
+  if (sel?.type === 'text' || (!sel && tool === 'text')) {
+    const label = sel?.type === 'text' ? sel : null
+    const bold = label ? label.bold : defaults.text.bold
+    const size = label ? label.size : defaults.text.size
+    const color = label ? label.color : defaults.text.color
+    return [
+      {
+        id: 'text', label: 'Text',
+        rings: [
+          {
+            id: 'bold', title: 'Bold', art: styleArt.letter(20, true), on: bold,
+            run: () => { if (label) styleAll(o => { o.bold = true }); else applyDefaultOption('d-bold', 'bold') },
+          },
+          {
+            id: 'light', title: 'Light', art: styleArt.letter(20, false), on: !bold,
+            run: () => { if (label) styleAll(o => { o.bold = false }); else applyDefaultOption('d-bold', 'light') },
+          },
+        ],
+        rails: [{
+          id: 'text-size', low: 'Small', high: 'Large', unit: 'px',
+          min: 8, max: 200, step: 1, value: size,
+          set: v => setProjectSize('textSize', v),
+        }],
+        color: {
+          get: () => color,
+          set: c => { if (label) styleAll(o => { o.color = c }); else applyDefaultOption('d-tcolor', c) },
+        },
+      },
+      {
+        id: 'halo', label: 'Halo',
+        rails: [{
+          id: 'halo-width', low: 'Off', high: 'Thick',
+          min: 0, max: 12, step: 0.5,
+          value: objectAppearance(label?.halo, boardLook()['text.halo'] as number),
+          set: v => setFinish('halo', v),
+        }],
+        color: {
+          get: () => lookColor('text.haloColor', '#ffffff'),
+          set: c => setBoardAppearance('text.haloColor', c),
+        },
+      },
+    ]
+  }
+
+  return []
+}
+
+/**
+ * The number a rail is at, as a box for as long as it takes to type one. The
+ * same move Appearance's value makes, so a size can be exact without the rail
+ * having to land on it.
+ */
+function editStyleNumber(id: string): void {
+  const button = stylesShelfEl.querySelector<HTMLElement>(`[data-style-num="${CSS.escape(id)}"]`)
+  const rail = (activeStyleTab()?.rails ?? []).find(r => r.id === id)
+  if (!button || !rail) return
+  const input = document.createElement('input')
+  input.className = 'styleNum styleNumEdit'
+  input.dataset.styleNum = id
+  input.value = String(Math.round(rail.value))
+  input.inputMode = 'decimal'
+  input.setAttribute('aria-label', `${rail.low} in ${rail.unit ?? ''}`.trim())
+  const done = () => {
+    const typed = Number(input.value)
+    if (Number.isFinite(typed)) rail.set(Math.min(rail.max, Math.max(rail.min, typed)))
+    renderStylesShelf()
+  }
+  input.addEventListener('blur', done)
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); done() }
+    if (e.key === 'Escape') { e.preventDefault(); renderStylesShelf() }
+  })
+  button.replaceWith(input)
+  input.focus()
+  input.select()
+}
+
+/** The tab on screen, with the pick clamped to what this selection offers. */
+function activeStyleTab(): StyleTab | null {
+  const tabs = styleTabs()
+  if (!tabs.length) return null
+  return tabs.find(t => t.id === styleTab) ?? tabs[0]
+}
+
+/** How far along its own range a rail sits, for the filled part of the track. */
+const railPercent = (rail: StyleRail) =>
+  Math.round(((rail.value - rail.min) / (rail.max - rail.min)) * 100)
+
+function styleTabsHtml(tabs: StyleTab[]): string {
+  const active = activeStyleTab()
+  const head = tabs.map(t => {
+    const on = t.id === active?.id
+    return `<button type="button" class="styleTab${on ? ' on' : ''}" role="tab"` +
+      ` aria-selected="${on}" data-style-tab="${esc(t.id)}">${esc(t.label)}</button>`
+  }).join('')
+  const rings = (active?.rings ?? []).map(r =>
+    `<button type="button" class="styleRing${r.on ? ' on' : ''}" data-style-ring="${esc(r.id)}"` +
+    ` title="${esc(r.title)}" aria-label="${esc(r.title)}" aria-pressed="${r.on}">${r.art}</button>`).join('')
+  const rails = (active?.rails ?? []).map(rail =>
+    `<div class="styleSld">` +
+      `<span class="styleEnds"><span>${esc(rail.low)}</span>` +
+        (rail.unit
+          ? `<button type="button" class="styleNum" data-style-num="${esc(rail.id)}"` +
+            ` aria-label="${esc(rail.low)} in ${esc(rail.unit)}, tap to type one">` +
+            `${Math.round(rail.value)}${esc(rail.unit)}</button>`
+          : `<span>${esc(rail.high)}</span>`) +
+      `</span>` +
+      `<input type="range" class="styleRail" data-style-rail="${esc(rail.id)}" style="--pct:${railPercent(rail)}%"` +
+      ` min="${rail.min}" max="${rail.max}" step="${rail.step}" value="${rail.value}"` +
+      ` aria-label="${esc(rail.low)} to ${esc(rail.high)}">` +
+    `</div>`).join('')
+  const carry = carryCell()
+  const acts =
+    (active?.reset
+      ? `<button type="button" class="styleAct" data-style="reset" title="${esc(active.reset.title)}"` +
+        ` aria-label="${esc(active.reset.title)}">${active.reset.art}</button>`
+      : '') +
+    (carry
+      ? `<button type="button" class="styleAct" data-style="carry" title="${esc(carry.title)}"` +
+        ` aria-label="${esc(carry.title)}"${carry.disabled ? ' disabled' : ''}>${carry.art}</button>`
+      : '')
+  const kit = active?.color
+    ? `<button type="button" class="styleKit" data-style="kit" data-color-trigger` +
+      ` aria-expanded="${pickerOpen}" aria-controls="colorPicker" aria-label="Colour" title="Colour">` +
+      `<span data-color-dot style="background:${esc(active.color.get())}"></span>` +
+      `<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 8.5 8 2l7 6.5"/></svg></button>`
+    : ''
+  return `<div class="styleTabs"><span class="styleTabList" role="tablist" aria-label="Styles">${head}</span>${kit}</div>` +
+    `<div class="styleBody">` +
+      (rings ? `<div class="styleRings">${rings}</div>` : '') +
+      `<div class="styleMain">${rails}</div>` +
+      (acts ? `<div class="styleActs">${acts}</div>` : '') +
+    `</div>`
+}
+
+/** What the shelf can change about the selection, or about the next shape. */
+function styleGroups(): StyleGroup[] {
+  const groups: StyleGroup[] = []
+  const sel = store.selected
+  const live = liveArrows()
+  const push = (id: string, cells: (StyleCell | null)[]) => {
+    const kept = cells.filter(Boolean) as StyleCell[]
+    if (kept.length) groups.push({ id, cells: kept })
+  }
+
+  if (sel?.type === 'arrow') {
+    const ink = isLight(sel.color) ? sel.color : sel.color
+    if (!sel.measure) {
+      push('line', [
+        ...(['solid', 'dashed', 'dotted'] as const).map(dash => ({
+          id: `dash-${dash}`, title: `${dash[0].toUpperCase()}${dash.slice(1)} line`,
+          art: styleArt.arrow(dash, sel.head, shelfArrowColor(), sel.width, live),
+          on: sel.dash === dash, wide: true,
+          run: () => styleAll(o => { o.dash = dash }),
+        })),
+        { id: 'head-on', title: 'Arrow head', art: styleArt.arrow(sel.dash, true, shelfArrowColor(), sel.width, live), on: sel.head, wide: true, run: () => styleAll(o => { o.head = true }) },
+        { id: 'head-off', title: 'No head', art: styleArt.arrow(sel.dash, false, shelfArrowColor(), sel.width, live), on: !sel.head, wide: true, run: () => styleAll(o => { o.head = false }) },
+      ])
+    }
+    const widths = sel.measure ? MEASURE_WIDTH_OPTIONS : sceneArrowWidths()
+    push('width', widths.map(([v, label]) => ({
+      id: `width-${v}`, title: `${label} thickness`,
+      art: styleArt.arrow(sel.measure ? 'solid' : sel.dash, sel.measure ? false : sel.head, shelfArrowColor(), Number(v), live),
+      on: sel.width === Number(v), wide: true,
+      run: () => styleAll(o => { o.width = Number(v) }),
+    })))
+    push('color', colorCells('acolor', ARROW_COLORS, sel.color, c => styleAll(o => { o.color = c })))
+    push('shadow', finishCells('shadow', objectAppearance(sel.shadow, boardLook()['arrow.shadow'] as number)))
+    push('act', [
+      sel.curved && !sel.measure
+        ? { id: 'straighten', title: 'Straighten', art: styleArt.straighten, act: true, run: () => styleAll(o => { o.curved = false; o.mx = (o.x1 + o.x2) / 2; o.my = (o.y1 + o.y2) / 2 }) }
+        : null,
+      carryCell(),
+    ])
+    void ink
+    return groups
+  }
+
+  if (sel?.type === 'box') {
+    push('shape', [
+      { id: 'shape-rect', title: 'Box', art: shelfArt.box(sel.fill, sel.opacity), on: sel.shape === 'rect', run: () => styleAll(o => { o.shape = 'rect' }) },
+      { id: 'shape-ellipse', title: 'Circle', art: shelfArt.ellipse(sel.fill, sel.opacity), on: sel.shape === 'ellipse', run: () => styleAll(o => { o.shape = 'ellipse' }) },
+      { id: 'shape-triangle', title: 'Triangle', art: shelfArt.triangle(sel.fill, sel.opacity), on: sel.shape === 'triangle', run: () => styleAll(o => { o.shape = 'triangle' }) },
+      { id: 'shape-outline', title: 'Outline', art: shelfArt.outline(sel.fill), on: sel.shape === 'outline', run: () => styleAll(o => { o.shape = 'outline' }) },
+    ])
+    push('fill', colorCells('fill', BOX_FILLS, sel.fill, c => styleAll(o => { o.fill = c })))
+    if (sel.shape !== 'outline') {
+      push('opacity', [0.25, 0.45, 0.65].map(o => ({
+        id: `op-${o}`, title: `${Math.round(o * 100)}% solid`,
+        art: shelfArt.box(sel.fill, o), on: sel.opacity === o,
+        run: () => styleAll(t => { t.opacity = o }),
+      })))
+    }
+    if (sel.shape !== 'outline') {
+      const edge = boardLook()
+      const width = objectAppearance(sel.border, edge['zone.border'] as number)
+      push('border', finishCells('border', width))
+      if (width > 0) {
+        const dashed = objectAppearance(sel.borderStyle, edge['zone.borderStyle'] as string) === 'dashed'
+        push('border-style', ([['solid', false], ['dashed', true]] as const).map(([id, wantsDash]) => ({
+          id: `border-${id}`, title: `${id[0].toUpperCase()}${id.slice(1)} border`,
+          art: styleArt.border(width, wantsDash), on: dashed === wantsDash,
+          run: () => setFinish('borderStyle', id),
+        })))
+      }
+    }
+    push('act', [carryCell()])
+    return groups
+  }
+
+  if (sel?.type === 'text') {
+    push('weight', [
+      { id: 'bold', title: 'Bold', art: styleArt.letter(20, true), on: sel.bold, run: () => styleAll(o => { o.bold = true }) },
+      { id: 'light', title: 'Light', art: styleArt.letter(20, false), on: !sel.bold, run: () => styleAll(o => { o.bold = false }) },
+    ])
+    push('size', [16, 22, 30].map(size => ({
+      id: `tsize-${size}`, title: `${size === 16 ? 'Small' : size === 22 ? 'Medium' : 'Large'} text`,
+      art: styleArt.letter(size === 16 ? 13 : size === 22 ? 18 : 24, sel.bold), on: sel.size === size,
+      run: () => setProjectSize('textSize', size),
+    })))
+    push('color', colorCells('tcolor', TEXT_COLORS, sel.color, c => styleAll(o => { o.color = c })))
+    push('halo', finishCells('halo', objectAppearance(sel.halo, boardLook()['text.halo'] as number)))
+    push('act', [
+      { id: 'edit-text', title: 'Edit text', art: styleArt.editText, act: true, run: () => openTextEditor(sel.id, { x: sel.x, y: sel.y }) },
+      carryCell(),
+    ])
+    return groups
+  }
+
+  if (sel?.type === 'goal') {
+    push('variant', [
+      { id: 'goal-small', title: 'Small goal', art: shelfArt.goalSmall, on: sel.variant === 'small', run: () => styleAll(o => { o.variant = 'small' }) },
+      { id: 'goal-normal', title: 'Full-size goal', art: shelfArt.goalFull, on: sel.variant === 'normal', run: () => styleAll(o => { o.variant = 'normal' }) },
+    ])
+    push('act', [carryCell()])
+    return groups
+  }
+
+  // A player has no cells: its kit is the swatch at the end of the name row,
+  // and the two sizes are project settings rather than properties of this one.
+  if (sel?.type === 'player') return groups
+
+  if (sel?.type === 'marker') {
+    push('act', [carryCell()])
+    return groups
+  }
+
+  // Nothing picked: the same shelf, bound to what the next shape will look like.
+  const t = board.tool
+  if (t === 'arrow') {
+    push('line', [
+      ...(['solid', 'dashed', 'dotted'] as const).map(dash => ({
+        id: `d-dash-${dash}`, title: `${dash[0].toUpperCase()}${dash.slice(1)} line`,
+        art: styleArt.arrow(dash, defaults.arrow.head, shelfArrowColor(), defaults.arrow.width, live),
+        on: defaults.arrow.dash === dash, wide: true,
+        run: () => applyDefaultOption('d-dash', dash),
+      })),
+      { id: 'd-head-on', title: 'Arrow head', art: styleArt.arrow(defaults.arrow.dash, true, shelfArrowColor(), defaults.arrow.width, live), on: defaults.arrow.head, wide: true, run: () => applyDefaultOption('d-head', 'head') },
+      { id: 'd-head-off', title: 'No head', art: styleArt.arrow(defaults.arrow.dash, false, shelfArrowColor(), defaults.arrow.width, live), on: !defaults.arrow.head, wide: true, run: () => applyDefaultOption('d-head', 'nohead') },
+    ])
+    push('width', sceneArrowWidths().map(([v, label]) => ({
+      id: `d-width-${v}`, title: `${label} thickness`,
+      art: styleArt.arrow(defaults.arrow.dash, defaults.arrow.head, shelfArrowColor(), Number(v), live),
+      on: defaults.arrow.width === Number(v), wide: true,
+      run: () => applyDefaultOption('d-width', v),
+    })))
+    push('color', colorCells('d-acolor', ARROW_COLORS, defaults.arrow.color, c => applyDefaultOption('d-color', c)))
+  } else if (t === 'box') {
+    push('shape', [
+      { id: 'd-rect', title: 'Box', art: shelfArt.box(defaults.box.fill, defaults.box.opacity), on: defaults.box.shape === 'rect', run: () => applyDefaultOption('d-shape', 'rect') },
+      { id: 'd-ellipse', title: 'Circle', art: shelfArt.ellipse(defaults.box.fill, defaults.box.opacity), on: defaults.box.shape === 'ellipse', run: () => applyDefaultOption('d-shape', 'ellipse') },
+      { id: 'd-triangle', title: 'Triangle', art: shelfArt.triangle(defaults.box.fill, defaults.box.opacity), on: defaults.box.shape === 'triangle', run: () => applyDefaultOption('d-shape', 'triangle') },
+      { id: 'd-outline', title: 'Outline', art: shelfArt.outline(defaults.box.fill), on: defaults.box.shape === 'outline', run: () => applyDefaultOption('d-shape', 'outline') },
+    ])
+    push('fill', colorCells('d-fill', BOX_FILLS, defaults.box.fill, c => applyDefaultOption('d-fill', c)))
+    if (defaults.box.shape !== 'outline') {
+      push('opacity', [0.25, 0.45, 0.65].map(o => ({
+        id: `d-op-${o}`, title: `${Math.round(o * 100)}% solid`,
+        art: shelfArt.box(defaults.box.fill, o), on: defaults.box.opacity === o,
+        run: () => applyDefaultOption('d-opacity', String(o)),
+      })))
+    }
+  } else if (t === 'text') {
+    push('weight', [
+      { id: 'd-bold', title: 'Bold', art: styleArt.letter(20, true), on: defaults.text.bold, run: () => applyDefaultOption('d-bold', 'bold') },
+      { id: 'd-light', title: 'Light', art: styleArt.letter(20, false), on: !defaults.text.bold, run: () => applyDefaultOption('d-bold', 'light') },
+    ])
+    push('size', [16, 22, 30].map(size => ({
+      id: `d-tsize-${size}`, title: `${size === 16 ? 'Small' : size === 22 ? 'Medium' : 'Large'} text`,
+      art: styleArt.letter(size === 16 ? 13 : size === 22 ? 18 : 24, defaults.text.bold), on: defaults.text.size === size,
+      run: () => setProjectSize('textSize', size),
+    })))
+    push('color', colorCells('d-tcolor', TEXT_COLORS, defaults.text.color, c => applyDefaultOption('d-tcolor', c)))
+  } else {
+    const team = teams.activeTeamName() ? teams.getTeam(teams.activeTeamName()!) : null
+    const palette = team ? Array.from(new Set([...team.colours, ...PLAYER_PALETTE])) : PLAYER_PALETTE
+    const active = team ? team.color : defaults.playerColor
+    push('kit', colorCells('d-pcolor', palette, active, c => {
+      if (team) teams.setTeamColor(team.name, c)
+      else applyDefaultOption('d-pcolor', c)
+    }))
+  }
+  push('act', [carryCell()])
+  return groups
+}
+
+/** The number pill has been held, so it is a field for as long as that lasts. */
+let editingNumber = false
+/** A hold on a mark pill has fired, so the release is not also a tap. */
+let markHeld = false
+
+/** The squad list is open under the name field, and no keyboard is up. */
+let rosterOpen = false
+/** What has been typed into the name field, for filtering that list. */
+let rosterFilter = ''
+
+/** Ignore accents and match on any word: a guess at a spelling still lands. */
+function rosterKey(text: string) {
+  return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+}
+function rosterMatches(name: string, filter: string) {
+  const needle = rosterKey(filter.trim())
+  if (!needle) return true
+  return rosterKey(name).split(/\s+/).some(word => word.startsWith(needle)) || rosterKey(name).startsWith(needle)
+}
+
+/** Short position tag, from whatever the roster carries. */
+function positionTag(pos: string) {
+  const p = pos.trim()
+  if (!p) return ''
+  if (p.length <= 3) return p.toUpperCase()
+  const words = p.split(/\s+/)
+  return (words.length > 1 ? words.map(w => w[0]).join('') : p.slice(0, 2)).toUpperCase()
+}
+
+function isGoalkeeperPosition(pos: string) {
+  return /^(gk|goalkeeper|keeper)\b/i.test(pos.trim())
+}
+
+function rosterListHtml(sel: PlayerObj): string {
+  const picks = teams.getRosterForPicker(sel.team).filter(p => rosterMatches(normalizePlayerName(p.name), rosterFilter))
+  if (!picks.length) return `<div class="rosterEmpty">No player by that name.</div>`
+  let html = '<div class="rosterList" role="listbox" aria-label="Squad">'
+  let team = ''
+  picks.forEach((p, i) => {
+    if (p.team !== team) { team = p.team; html += `<div class="rosterHead">${esc(team)}</div>` }
+    const name = normalizePlayerName(p.name)
+    const on = name === sel.name
+    const pickedTeam = teams.getTeam(p.team)
+    const color = isGoalkeeperPosition(p.position) && pickedTeam?.side ? keeperColor(pickedTeam.side) : pickedTeam?.color ?? sel.color
+    html += `<button type="button" class="rosterRow${on ? ' on' : ''}" role="option" aria-selected="${on}" data-roster="${i}">` +
+      `<span class="rNum">${esc(p.number || '')}</span>` +
+      `<span class="rDot" style="background:${esc(color)}"></span>` +
+      `<span class="rName">${esc(name)}</span>` +
+      `<span class="rPos">${esc(positionTag(p.position))}</span>` +
+      `</button>`
+  })
+  return html + '</div>'
+}
+
+/**
+ * The number pill is the player's number: a tap turns numbers off and on for
+ * the board, and a hold turns the pill itself into the field. One control
+ * rather than a button beside a box that says the same thing twice.
+ */
+let numberHold: number | undefined
+let markHold: number | undefined
+stylesShelfEl.addEventListener('pointerdown', (e) => {
+  // Holding a mark says the same thing about everyone at once. It is a hold
+  // rather than a second tap because a second tap cannot be told apart from
+  // switching the mark off and straight back on, which is a thing people do.
+  const mark = (e.target as HTMLElement).closest<HTMLElement>('[data-style="facing"], [data-style="arms"]')
+  if (mark) {
+    markHeld = false
+    markHold = window.setTimeout(() => {
+      markHold = undefined
+      markHeld = true
+      pointAtBall(mark.dataset.style as PlayerMark)
+    }, 500)
+    return
+  }
+  const pill = (e.target as HTMLElement).closest<HTMLElement>('[data-style="numbers"]')
+  if (!pill) return
+  numberHold = window.setTimeout(() => {
+    numberHold = undefined
+    editingNumber = true
+    renderStylesShelf()
+    const field = stylesShelfEl.querySelector<HTMLInputElement>('.numEdit')
+    field?.focus()
+    field?.select()
+  }, 450)
+})
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
+  stylesShelfEl.addEventListener(ev, () => {
+    if (numberHold) { clearTimeout(numberHold); numberHold = undefined }
+    if (markHold) { clearTimeout(markHold); markHold = undefined }
+  })
+}
+stylesShelfEl.addEventListener('focusout', (e) => {
+  if (!editingNumber || !(e.target as HTMLElement).classList?.contains('numEdit')) return
+  editingNumber = false
+  renderStylesShelf()
+})
+stylesShelfEl.addEventListener('keydown', (e) => {
+  if (!(e.target as HTMLElement).classList?.contains('numEdit')) return
+  if (e.key !== 'Enter' && e.key !== 'Escape') return
+  editingNumber = false
+  renderStylesShelf()
+})
+
+/** Carry forward, for the rooms with no shelf to put a cell on. */
+function carryRowButton() {
+  const cell = carryCell()
+  if (!cell) return ''
+  return `<button type="button" class="rowAct" data-style="carry" title="${esc(cell.title)}" aria-label="${esc(cell.title)}"${cell.disabled ? ' disabled' : ''}>${cell.art}</button>`
+}
+
+/** The name and everything about it: the one place Styles uses words. */
+function nameBoxHtml(): string {
+  const sel = store.selected
+  if (sel?.type === 'marker') {
+    return `<div class="nameBox"><div class="nameFields">` +
+      `<input class="in nameIn" data-style="mname" maxlength="24" value="${esc(sel.name)}" placeholder="Name" aria-label="Name">` +
+      `</div><div class="nameOpts">` +
+      seg([['top', 'Above'], ['bottom', 'Below']], sel.namePos, 'namepos') +
+      `</div></div>`
+  }
+  if (sel?.type !== 'player') return ''
+  const hasRoster = teams.getRosterForPicker(sel.team).length > 0
+  const numbersOn = sel.showLabel !== false
+  const facingOn = typeof sel.facing === 'number'
+  const armsOn = typeof sel.arms === 'number'
+  const clear = sel.name || sel.label
+    ? `<button type="button" class="nameClear" data-style="name-clear">Clear</button>`
+    : ''
+  const squad = hasRoster
+    ? `<button type="button" class="rosterBtn${rosterOpen ? ' on' : ''}" data-style="roster-toggle" aria-expanded="${rosterOpen}" aria-label="Pick from the squad" title="Pick from the squad">${styleArt.squad}</button>`
+    : ''
+  const opts = `<div class="nameOpts">` +
+    seg([['auto', 'Auto'], ['top', 'Above'], ['bottom', 'Below']], sel.namePos, 'namepos') +
+    seg([['last', 'Last'], ['first', 'First'], ['full', 'Full']], sel.nameDisplay ?? 'last', 'namedisplay') +
+    `<span class="nameOptsGap"></span>` +
+    carryRowButton() +
+    `<button type="button" class="shelfRailRight rowKit" data-style="kit" data-color-trigger aria-expanded="${pickerOpen}" aria-controls="colorPicker" aria-label="Kit colour" title="Kit colour">` +
+      `<span data-color-dot style="background:${esc(sel.color)}"></span>` +
+      `<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 8.5 8 2l7 6.5"/></svg>` +
+    `</button>` +
+    `</div>`
+  return `<div class="nameBox"><div class="nameFields">` +
+    `<input class="in nameIn" data-style="name" maxlength="24" value="${esc(sel.name)}" placeholder="Name" aria-label="Player name">` +
+    (editingNumber
+      // held: the pill becomes the field, in the same place and the same size
+      ? `<input class="numToggle numEdit" data-style="label" inputmode="numeric" maxlength="4" value="${esc(sel.label)}" aria-label="Shirt number">`
+      : `<button type="button" class="numToggle${numbersOn ? ' on' : ''}${sel.label ? ' hasNo' : ''}" data-style="numbers" aria-pressed="${numbersOn}"`
+        + ` aria-label="${sel.label ? `Shirt number ${esc(sel.label)}, tap to hide numbers, hold to change` : 'Show shirt numbers, hold to set one'}"`
+        + ` title="${sel.label ? 'Tap to hide, hold to change' : 'Hold to set a number'}">`
+        + (sel.label ? esc(sel.label) : icon('number', 'ic markIc')) + `</button>`) +
+    `<button type="button" class="numToggle facingToggle${facingOn ? ' on' : ''}" data-style="facing" aria-pressed="${facingOn}" aria-label="Show which way the player faces" title="Which way he faces">${styleArt.facing()}</button>` +
+    `<button type="button" class="numToggle facingToggle${armsOn ? ' on' : ''}" data-style="arms" aria-pressed="${armsOn}" aria-label="Show arms" title="Arms">${styleArt.arms()}</button>` +
+    clear + squad +
+    `</div>` + (rosterOpen ? rosterListHtml(sel) : opts) + `</div>`
+}
+
+function styleCellsHtml(groups: StyleGroup[]): string {
+  return groups.map((g, i) => {
+    const rule = i ? '<span class="styleRule" aria-hidden="true"></span>' : ''
+    const cells = g.cells.map(c => {
+      const classes = ['cell', c.act ? 'cellUtil' : '', c.wide ? 'cellWideSlot' : '', c.on ? 'active' : ''].filter(Boolean).join(' ')
+      return `<button type="button" class="${classes}" data-style-cell="${esc(c.id)}" title="${esc(c.title)}" aria-label="${esc(c.title)}" aria-pressed="${!!c.on}"${c.disabled ? ' disabled' : ''}>${c.art}</button>`
+    }).join('')
+    return `${rule}<div class="styleGroup${g.cells.some(c => c.wide) ? ' wide' : ''}">${cells}</div>`
+  }).join('')
+}
+
+/**
+ * What Styles is working on: the one kind every picked object shares. Three
+ * arrows have settings in common and restyle together; an arrow and a zone
+ * have none, so the room has nothing to be and stays shut.
+ */
+function stylesSubject(): SceneObj['type'] | null {
+  if (board.interactionState === 'node-edit') return store.selected?.type ?? null
+  const picked = selectedObjects()
+  if (!picked.length) return null
+  const type = picked[0].type
+  if (!RESTYLABLE.has(type)) return null
+  return picked.every(o => o.type === type) ? type : null
+}
+
+const stylesHasSubject = () => stylesSubject() !== null
+
+/** True while the styles shelf is on screen and owns the styling controls. */
+function stylesShowing() {
+  return !deskMode && panelOpen && room === 'styles' && board.interactionState !== 'node-edit'
+}
+
+/** The object the shelf last drew, so a new one starts with a closed list. */
+let styledId: string | null = null
+
+/** A rail being dragged, so the whole drag undoes as one step. */
+let styleRailDrag: string | null = null
+function renderStylesShelf() {
+  // A rail being dragged is the element the pointer is on. Redrawing the shelf
+  // under it, which writing a project size does, ends the drag after one step.
+  if (styleRailDrag) return
+  const id = store.selected?.id ?? null
+  if (id !== styledId) { styledId = id; rosterOpen = false; rosterFilter = ''; editingNumber = false; styleTab = null }
+  if (!stylesShowing()) {
+    stylesShelfEl.classList.add('hidden')
+    stylesShelfEl.innerHTML = ''
+    return
+  }
+  stylesShelfEl.classList.remove('hidden')
+  const tabs = styleTabs()
+  const groups = tabs.length ? [] : styleGroups()
+  const name = nameBoxHtml()
+  const cells = rosterOpen && store.selected?.type === 'player' ? '' : styleCellsHtml(groups)
+  const empty = !name && !tabs.length && !groups.length
+    ? `<p class="styleEmpty">${store.selected ? 'Nothing to change on this one.' : 'Pick something on the board.'}</p>`
+    : ''
+  stylesShelfEl.innerHTML = name + (tabs.length ? styleTabsHtml(tabs) : '')
+    + (cells ? `<div class="styleScroll" data-style-scroll><div class="styleTrack">${cells}</div></div>` : '') + empty
+  mountSlidingPills(stylesShelfEl)
+}
+
+stylesShelfEl.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement
+  const tab = target.closest<HTMLElement>('[data-style-tab]')
+  if (tab) {
+    styleTab = tab.dataset.styleTab ?? null
+    renderStylesShelf()
+    return
+  }
+  const num = target.closest<HTMLElement>('[data-style-num]')
+  if (num && num.tagName !== 'INPUT') { editStyleNumber(num.dataset.styleNum!); return }
+  const ring = target.closest<HTMLElement>('[data-style-ring]')
+  if (ring) {
+    const pick = (activeStyleTab()?.rings ?? []).find(r => r.id === ring.dataset.styleRing)
+    if (pick) { pick.run(); renderPanel() }
+    return
+  }
+  const row = target.closest<HTMLElement>('[data-roster]')
+  if (row) {
+    const sel = store.selected
+    if (sel?.type !== 'player') return
+    const picks = teams.getRosterForPicker(sel.team).filter(p => rosterMatches(normalizePlayerName(p.name), rosterFilter))
+    const pick = picks[Number(row.dataset.roster)]
+    if (!pick) return
+    // The list already shows the number, so picking one should not leave it
+    // to be typed again.
+    store.apply(() => {
+      sel.name = normalizePlayerName(pick.name)
+      if (pick.number) sel.label = pick.number
+    })
+    rosterOpen = false
+    rosterFilter = ''
+    renderPanel()
+    return
+  }
+  const opt = target.closest<HTMLElement>('[data-opt]')
+  if (opt && opt.tagName !== 'INPUT') {
+    const key = opt.dataset.opt!, v = opt.dataset.v
+    const picked = selectedObjects()
+    if (picked.length) {
+      const type = stylesSubject()
+      for (const o of picked) if (!type || o.type === type) applySelectionOption(key, v, o)
+      renderStylesShelf()
+    }
+    return
+  }
+  const key = target.closest<HTMLElement>('[data-style]')?.dataset.style
+  if (key) {
+    const sel = store.selected
+    if (key === 'roster-toggle') { rosterOpen = !rosterOpen; renderPanel(); return }
+    if (key === 'numbers' && sel?.type === 'player') {
+      if (editingNumber) return
+      setProjectNumbers(sel.showLabel === false)
+      return
+    }
+    if ((key === 'facing' || key === 'arms') && sel?.type === 'player') {
+      // A hold has already pointed everyone at the ball; the finger coming off
+      // must not then toggle the mark it just used.
+      if (markHeld) { markHeld = false; return }
+      setProjectMark(key, typeof sel[key] !== 'number')
+      return
+    }
+    if (key === 'kit') { setPickerOpen(true); return }
+    if (key === 'carry') { carryForward(); return }
+    if (key === 'reset') { activeStyleTab()?.reset?.run(); renderPanel(); return }
+    if (key === 'name-clear' && sel?.type === 'player') {
+      store.apply(() => { sel.name = ''; sel.label = '' })
+      rosterFilter = ''
+      renderPanel()
+      return
+    }
+    return
+  }
+  const cell = target.closest<HTMLElement>('[data-style-cell]')
+  if (!cell || cell.hasAttribute('disabled')) return
+  const item = styleGroups().flatMap(g => g.cells).find(c => c.id === cell.dataset.styleCell)
+  if (!item) return
+  if (item.id === 'carry' && carryMenuOpen()) return
+  item.run()
+  renderPanel()
+})
+
+/**
+ * Carrying to a chosen board rather than to all of them was the little chevron
+ * beside the old chip. The cell holds that as its press-and-hold, the way one
+ * of your own shapes holds its manage mode.
+ */
+let carryHoldTimer: number | undefined
+stylesShelfEl.addEventListener('pointerdown', (e) => {
+  const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-style-cell="carry"]')
+  if (!cell || cell.hasAttribute('disabled')) return
+  carryHoldTimer = window.setTimeout(() => {
+    carryHoldTimer = undefined
+    openCarryMenu(cell)
+  }, 500)
+})
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
+  stylesShelfEl.addEventListener(ev, () => {
+    if (carryHoldTimer) { clearTimeout(carryHoldTimer); carryHoldTimer = undefined }
+  })
+}
+
+function endStyleRailDrag() {
+  if (!styleRailDrag) return
+  styleRailDrag = null
+  store.endGesture()
+  renderStylesShelf()
+}
+stylesShelfEl.addEventListener('pointerdown', (e) => {
+  const rail = (e.target as HTMLElement).closest<HTMLInputElement>('[data-style-rail]')
+  if (!rail || styleRailDrag) return
+  styleRailDrag = rail.dataset.styleRail ?? null
+  store.beginGesture()
+})
+window.addEventListener('pointerup', endStyleRailDrag)
+window.addEventListener('pointercancel', endStyleRailDrag)
+
+stylesShelfEl.addEventListener('input', (e) => {
+  const target = e.target as HTMLInputElement
+  const rail = target.closest<HTMLInputElement>('[data-style-rail]')
+  if (rail) {
+    const item = (activeStyleTab()?.rails ?? []).find(r => r.id === rail.dataset.styleRail)
+    if (!item) return
+    const value = Number(rail.value)
+    rail.style.setProperty('--pct', `${Math.round(((value - item.min) / (item.max - item.min)) * 100)}%`)
+    const num = stylesShelfEl.querySelector<HTMLElement>(`button[data-style-num="${CSS.escape(item.id)}"]`)
+    if (num && item.unit) num.textContent = `${Math.round(value)}${item.unit}`
+    item.set(value)
+    return
+  }
+  const key = target.dataset.style
+  const sel = store.selected
+  if (!key || !sel) return
+  if (key === 'name' && sel.type === 'player') {
+    store.apply(() => { sel.name = target.value })
+    // Typing filters the squad list rather than replacing it: the list is the
+    // way in, and typing is only the shortcut.
+    rosterFilter = target.value
+    if (rosterOpen) {
+      const list = stylesShelfEl.querySelector('.rosterList, .rosterEmpty')
+      if (list) list.outerHTML = rosterListHtml(sel)
+    }
+    return
+  }
+  if (key === 'mname' && sel.type === 'marker') { store.apply(() => { sel.name = target.value }); return }
+  if (key === 'label' && sel.type === 'player') { store.apply(() => { sel.label = target.value }); return }
+})
+
+
+/**
+ * A size is typography, not a property of one object: one name at 14 beside one
+ * at 18 is drift rather than a choice, and twenty boards is where that shows.
+ * Setting one sets every object of that kind in the project, and the next one
+ * made comes out the same, in a step that undoes as one.
+ */
+type ProjectSizeKey = 'nameSize' | 'playerSize' | 'textSize'
+/** Each shared size, the field it writes, and where the next one made reads it. */
+const PROJECT_SIZES: Record<ProjectSizeKey, {
+  type: SceneObj['type']
+  field: string
+  said: string
+  get: () => number
+  set: (v: number) => void
+}> = {
+  nameSize: { type: 'player', field: 'nameSize', said: 'name', get: () => defaults.nameSize, set: v => { defaults.nameSize = v } },
+  playerSize: { type: 'player', field: 'r', said: 'player', get: () => defaults.playerSize, set: v => { defaults.playerSize = v } },
+  textSize: { type: 'text', field: 'size', said: 'label', get: () => defaults.text.size, set: v => { defaults.text.size = v } },
+}
+
+/**
+ * Player size is the board's scale, not one shape's setting: a ball drawn for
+ * a small board looks like a beach ball on a big one, and an arrow drawn to
+ * match small tokens disappears between large ones. Everything the board is
+ * furnished with moves with it, in the proportion it was already at.
+ */
+const SCALES_WITH_PLAYERS: { type: SceneObj['type']; field: string; min: number; max: number }[] = [
+  { type: 'ball', field: 'size', min: 6, max: 120 },
+  { type: 'cone', field: 'size', min: 6, max: 120 },
+  { type: 'goal', field: 'size', min: 10, max: 400 },
+  { type: 'marker', field: 'w', min: 12, max: 240 },
+  { type: 'arrow', field: 'width', min: 1, max: 30 },
+]
+
+function scaleFurniture(objects: SceneObj[], k: number) {
+  let changed = 0
+  for (const o of objects) {
+    const rule = SCALES_WITH_PLAYERS.find(r => r.type === o.type)
+    if (!rule) continue
+    const was = (o as any)[rule.field]
+    if (!Number.isFinite(was)) continue
+    const next = Math.max(rule.min, Math.min(rule.max, Math.round(was * k * 100) / 100))
+    if (next === was) continue
+    ;(o as any)[rule.field] = next
+    changed += 1
+  }
+  return changed
+}
+
+function setProjectSize(key: ProjectSizeKey, size: number) {
+  const rule = PROJECT_SIZES[key]
+  const before = rule.get()
+  rule.set(size)
+  // the scale everything else keeps up with
+  const k = key === 'playerSize' && before > 0 ? size / before : 1
+  if (k !== 1) {
+    defaults.arrow.width = Math.max(1, Math.min(30, Math.round(defaults.arrow.width * k * 100) / 100))
+    defaults.measure.width = Math.max(1, Math.min(30, Math.round(defaults.measure.width * k * 100) / 100))
+  }
+  store.apply(s => {
+    for (const o of s.objects) if (o.type === rule.type) (o as any)[rule.field] = size
+    if (k !== 1) scaleFurniture(s.objects, k)
+  })
+  let changed = 0
+  const project = currentProject(library)
+  const open = currentBoard()
+  for (const item of project.boards) {
+    if (item.id === open?.id) continue
+    for (const o of item.scene.objects) {
+      if (o.type === rule.type && (o as any)[rule.field] !== size) { (o as any)[rule.field] = size; changed += 1 }
+    }
+    if (k !== 1) changed += scaleFurniture(item.scene.objects, k)
+  }
+  if (changed) {
+    touch(project)
+    saveProjectChanges(project)
+    showToast(`Every ${rule.said} in this project matches now.`, {
+      label: 'Undo',
+      run: () => setProjectSize(key, before),
+    })
+  }
+  renderStylesShelf()
+}
+
+/**
+ * A head and a pair of arms are ways of drawing a board, not properties of one
+ * player: one man pointing somewhere with the rest blank reads as an oversight.
+ * Adding either adds it to everybody, at the way each of them is already
+ * turned, and each is then spun on the board by holding its top-right node.
+ */
+type PlayerMark = 'facing' | 'arms'
+const MARK_SAID: Record<PlayerMark, [string, string]> = {
+  facing: ['Every player in this project has a head now.', 'Heads are off for this project.'],
+  arms: ['Every player in this project has arms now.', 'Arms are off for this project.'],
+}
+
+/**
+ * Which way a player starts out turned: home towards the away goal, away back
+ * the other way, because that is the way the two of them are playing. A board
+ * flipped after that carries them round with everything else.
+ */
+function startingAngle(o: { team?: string }) {
+  const away = teams.getTeamForSide('away')
+  return attackAngle(!!(away && o.team && o.team === away.name))
+}
+
+/**
+ * Everyone looks at the ball. It is the one thing a whole board of players has
+ * in common, and setting it by hand is eleven drags for a shape that is over in
+ * the next frame. Only this board: the ball is somewhere else on the next one.
+ */
+function setBallTracking(o: PlayerObj, mark: PlayerMark, tracking: boolean) {
+  const marks = new Set(o.trackBall ?? [])
+  if (tracking) marks.add(mark)
+  else marks.delete(mark)
+  if (marks.size) o.trackBall = [...marks]
+  else delete o.trackBall
+}
+
+function pointPlayerAtBall(id: string) {
+  const player = store.obj(id)
+  if (player?.type !== 'player') return
+  const ball = store.scene.objects.find(o => o.type === 'ball')
+  if (!ball) { showToast('Put a ball on the board first.'); return }
+  const marks = (['facing', 'arms'] as PlayerMark[]).filter(mark => typeof player[mark] === 'number')
+  if (!marks.length) { showToast('Turn on facing or arms first.'); return }
+  const before = {
+    facing: player.facing,
+    arms: player.arms,
+    trackBall: player.trackBall ? [...player.trackBall] : undefined,
+  }
+  store.apply(() => {
+    const deg = ((Math.atan2(ball.y - player.y, ball.x - player.x) * 180 / Math.PI) % 360 + 360) % 360
+    for (const mark of marks) {
+      player[mark] = deg
+      setBallTracking(player, mark, true)
+    }
+  })
+  showToast('Player is looking at the ball.', {
+    label: 'Undo',
+    run: () => {
+      store.apply(() => {
+        for (const mark of ['facing', 'arms'] as PlayerMark[]) {
+          if (typeof before[mark] === 'number') player[mark] = before[mark]
+          else delete player[mark]
+        }
+        if (before.trackBall) player.trackBall = [...before.trackBall]
+        else delete player.trackBall
+      })
+    },
+  })
+}
+
+function pointAtBall(mark: PlayerMark) {
+  const ball = store.scene.objects.find(o => o.type === 'ball')
+  if (!ball) { showToast('Put a ball on the board first.'); return }
+  const before = new Map<string, { angle: number | undefined; tracking: boolean }>()
+  let turned = 0
+  store.apply(s => {
+    for (const o of s.objects) {
+      if (o.type !== 'player') continue
+      before.set(o.id, { angle: o[mark], tracking: o.trackBall?.includes(mark) === true })
+      const deg = Math.atan2(ball.y - o.y, ball.x - o.x) * 180 / Math.PI
+      o[mark] = ((deg % 360) + 360) % 360
+      setBallTracking(o, mark, true)
+      turned += 1
+    }
+  })
+  if (!turned) return
+  if (mark === 'facing') defaults.showFacing = true
+  else defaults.showArms = true
+  renderPanel()
+  renderStylesShelf()
+  showToast(`${turned} player${turned === 1 ? '' : 's'} looking at the ball.`, {
+    label: 'Undo',
+    run: () => {
+      store.apply(s => {
+        for (const o of s.objects) {
+          if (o.type !== 'player' || !before.has(o.id)) continue
+          const was = before.get(o.id)!
+          if (typeof was.angle === 'number') o[mark] = was.angle
+          else delete o[mark]
+          setBallTracking(o, mark, was.tracking)
+        }
+      })
+      renderStylesShelf()
+    },
+  })
+}
+
+/**
+ * The angle each player was last turned to, so switching a mark off and back on
+ * puts him back the way he was rather than facing the way his side plays. It
+ * lives for as long as the tab does: a board carries the angle itself, and this
+ * only has to survive the gap between the two taps.
+ */
+const markMemory: Record<PlayerMark, Map<string, number>> = { facing: new Map(), arms: new Map() }
+
+function setProjectMark(mark: PlayerMark, show: boolean) {
+  if (mark === 'facing') defaults.showFacing = show
+  else defaults.showArms = show
+  const remembered = markMemory[mark]
+  const put = (o: any) => {
+    if (show) o[mark] = o[mark] ?? remembered.get(o.id) ?? startingAngle(o)
+    else {
+      if (typeof o[mark] === 'number') remembered.set(o.id, o[mark])
+      delete o[mark]
+      setBallTracking(o, mark, false)
+    }
+  }
+  store.apply(s => { for (const o of s.objects) if (o.type === 'player') put(o) })
+  let changed = 0
+  const project = currentProject(library)
+  const open = currentBoard()
+  for (const item of project.boards) {
+    if (item.id === open?.id) continue
+    for (const o of item.scene.objects) {
+      if (o.type !== 'player') continue
+      if ((typeof (o as any)[mark] === 'number') === show) continue
+      put(o)
+      changed += 1
+    }
+  }
+  if (changed) {
+    touch(project)
+    saveProjectChanges(project)
+    showToast(MARK_SAID[mark][show ? 0 : 1], {
+      label: 'Undo',
+      run: () => setProjectMark(mark, !show),
+    })
+  }
+  renderStylesShelf()
+}
+
+/**
+ * Numbers on or off is a board-wide choice, not a per-token one: a shirt
+ * number on one player and not the next reads as a mistake. Off hides the
+ * number rather than forgetting it, so turning them back on brings them back.
+ */
+function setProjectNumbers(show: boolean) {
+  defaults.showNumbers = show
+  store.apply(s => {
+    for (const o of s.objects) if (o.type === 'player') o.showLabel = show
+  })
+  let changed = 0
+  const project = currentProject(library)
+  const open = currentBoard()
+  for (const item of project.boards) {
+    if (item.id === open?.id) continue
+    for (const o of item.scene.objects) {
+      if (o.type === 'player' && (o.showLabel !== false) !== show) { o.showLabel = show; changed += 1 }
+    }
+  }
+  if (changed) {
+    touch(project)
+    saveProjectChanges(project)
+    showToast(show ? 'Numbers are on for this project.' : 'Numbers are off for this project.', {
+      label: 'Undo',
+      run: () => setProjectNumbers(!show),
+    })
+  }
+  renderStylesShelf()
+}
+
+
+/* ---------- the settings room ---------- */
+
+/**
+ * The settings worth reaching mid-board are few, and the sheet is a screen of
+ * its own to get to them. The band's own room holds those few, and More opens
+ * the sheet for everything else.
+ */
+function quickSetShowing() {
+  return !deskMode && panelOpen && room === 'settings' && board.interactionState !== 'node-edit'
+}
+
+/**
+ * A size row: what it sizes, an example at the size it is at, and the number.
+ * The example is the point - a number on its own says nothing about whether a
+ * name is going to fit under a token.
+ */
+function sizeExample(key: ProjectSizeKey) {
+  const size = PROJECT_SIZES[key].get()
+  // Drawn at the size it will be on the board: the board is displayed at a
+  // scale, so the example carries that scale too. A player shown at some
+  // flattering size of its own would be answering a question nobody asked.
+  const k = board.screenScale() || 1
+  if (key === 'playerSize') {
+    const d = Math.max(6, size * 2 * k)
+    const ring = Math.max(1, size * 0.38 * k)
+    return `<span class="sizeEg" aria-hidden="true"><span class="egDot" style="width:${d.toFixed(1)}px;height:${d.toFixed(1)}px;border-width:${ring.toFixed(1)}px;background:${esc(defaults.playerColor)}"></span></span>`
+  }
+  const px = Math.max(6, size * k)
+  const text = key === 'nameSize' ? 'Vitinha' : 'Half-space'
+  return `<span class="sizeEg egText" style="font-size:${px.toFixed(1)}px" aria-hidden="true">${text}</span>`
+}
+
+function quickSizeRow(key: ProjectSizeKey, label: string) {
+  const size = PROJECT_SIZES[key].get()
+  return `<div class="setItem setItemStatic">` +
+    `<span class="setItemLabel">${esc(label)}</span>` +
+    sizeExample(key) +
+    `<span class="stepper">` +
+      `<button type="button" data-size="${key}:-1" aria-label="Smaller ${esc(label.toLowerCase())}">&minus;</button>` +
+      `<input class="stepVal" data-size-val="${key}" inputmode="numeric" maxlength="2" value="${size}" aria-label="${esc(label)} size">` +
+      `<button type="button" data-size="${key}:1" aria-label="Bigger ${esc(label.toLowerCase())}">+</button>` +
+    `</span></div>`
+}
+
+function quickSetRow(action: string, label: string, value = '', kind: 'go' | 'value' | 'do' | 'quiet' = 'go') {
+  const chev = kind === 'go' ? icon('chevron-right', 'ic setChev') : ''
+  const cls = kind === 'do' ? ' quickDo' : kind === 'quiet' ? ' quickQuiet' : ''
+  return `<button class="setItem${cls}" data-quick="${action}">` +
+    `<span class="setItemLabel">${esc(label)}</span>` +
+    (value ? `<span class="setItemValue">${esc(value)}</span>` : '') +
+    chev + `</button>`
+}
+
+/**
+ * The panel's own screens. The rule is not how big a screen is: anything that
+ * changes what the board draws belongs here, where the board is behind it and
+ * every change is visible on the real thing. Everything else - the account,
+ * the device, the library - stays in the sheet, because nothing there is
+ * judged against a board and covering one costs nothing.
+ */
+type PanelScreen = 'root' | 'appearance' | 'font'
+const PANEL_TITLES: Record<PanelScreen, string> = { root: 'Board', appearance: 'Appearance', font: 'Font' }
+/** Where back goes, so a screen pushed from a screen returns to it. */
+const PANEL_PARENT: Record<PanelScreen, PanelScreen> = { root: 'root', appearance: 'root', font: 'appearance' }
+let panelScreen: PanelScreen = 'root'
+
+function showPanelScreen(next: PanelScreen) {
+  if (panelScreen === next) return
+  closeAppearancePicker()
+  lookSwatchKey = null
+  // Leaving the font screen forgets the search: coming back to a stale query
+  // hides the twenty-one families that need nothing fetched.
+  if (next !== 'font') { fontQuery = ''; fontResults = []; fontWatcher?.disconnect() }
+  panelScreen = next
+  renderQuickSet()
+  quickSetEl.querySelector('.panelScroll')?.scrollTo(0, 0)
+  syncPanelHeight()
+}
+
+/**
+ * The nav a pushed screen carries, and whatever else has to stay put while the
+ * list moves under it. The root has none: it is the panel.
+ *
+ * It is a sibling of the scrolling body rather than a sticky child of it. Kept
+ * sticky, iOS painted the top row of the list over the nav on the way past -
+ * a header outside the box that scrolls cannot be overlapped by what is in it.
+ */
+function panelHead(screen: PanelScreen, action = '', pinned = ''): string {
+  return `<div class="panelHead">
+    <div class="panelNav">
+      <button class="panelBack" data-panel="back" aria-label="Back">${icon('chevron-left', 'ic')}</button>
+      <strong>${esc(PANEL_TITLES[screen])}</strong>
+      ${action}
+    </div>
+    ${pinned}
+  </div>`
+}
+
+/** The part of a panel screen that scrolls, which is never the nav. */
+function panelScroll(body: string): string {
+  return `<div class="panelScroll">${body}</div>`
+}
+
+function renderQuickSet() {
+  if (!quickSetShowing()) {
+    quickSetEl.classList.add('hidden')
+    quickSetEl.innerHTML = ''
+    panelScreen = 'root'
+    return
+  }
+  quickSetEl.classList.remove('hidden')
+  quickSetEl.classList.toggle('panelPushed', panelScreen !== 'root')
+  if (panelScreen === 'font') {
+    quickSetEl.innerHTML = panelHead('font', '', fontSearchHtml()) + panelScroll(fontListHtml())
+    watchFontPreviews()
+    return
+  }
+  if (panelScreen === 'appearance') {
+    quickSetEl.innerHTML = panelHead('appearance',
+      `<button class="panelAct" data-panel="look-reset"${isDefaultAppearance(store.scene.appearance) ? ' disabled' : ''}>Reset</button>`,
+      panelGroupChips()) + panelScroll(panelAppearanceHtml())
+    return
+  }
+  const pitch = pitchById(store.scene.pitch)
+  const home = teams.getTeamForSide('home')
+  const away = teams.getTeamForSide('away')
+  const scoreboard = !!store.scene.match?.showScoreboard
+  // One group, no heading: the panel sits over the board, so every row it does
+  // not need is pitch it is covering.
+  quickSetEl.innerHTML = panelScroll(`<div class="setGroup">` +
+    quickSetRow('appearance', 'Appearance',
+      isDefaultAppearance(store.scene.appearance) ? 'Board default' : 'Styled') +
+    quickSetRow('teams', 'Teams', [home?.name, away?.name].filter(Boolean).join(' v ') || 'Not set') +
+    quickSetRow('pitch', 'Background', pitch.label) +
+    quickSetRow('scoreboard', 'Scoreboard', scoreboard ? 'On' : 'Off', 'value') +
+    // The cog has left the bar, so this compact strip is where the match sheet
+    // is reached from while you are drawing.
+    quickSetRow('board-settings', 'Board settings') +
+    // Sizes belong to the project, not to the object you happen to have
+    // picked, which is why they are here and not in Styles.
+    quickSizeRow('playerSize', 'Players') +
+    quickSizeRow('nameSize', 'Names') +
+    quickSizeRow('textSize', 'Labels') +
+    quickSetRow('styles-save', 'Save styles as default', '', 'do') +
+    quickSetRow('styles-reset', 'Reset', '', 'quiet') +
+    quickSetRow('more', 'More settings') +
+    `</div>`)
+}
+
+/* A drag is one change, not a hundred: the gesture opens on the first touch of
+   a slider and closes when the finger leaves, so undo takes the whole move. */
+let lookDragKey: AppearanceKey | null = null
+function endLookDrag() {
+  if (!lookDragKey) return
+  lookDragKey = null
+  store.endGesture()
+}
+quickSetEl.addEventListener('pointerdown', (e) => {
+  const range = (e.target as HTMLElement).closest<HTMLInputElement>('[data-look-range]')
+  if (!range || lookDragKey) return
+  lookDragKey = range.dataset.lookRange as AppearanceKey
+  store.beginGesture()
+})
+window.addEventListener('pointerup', endLookDrag)
+window.addEventListener('pointercancel', endLookDrag)
+
+quickSetEl.addEventListener('input', (e) => {
+  const range = (e.target as HTMLElement).closest<HTMLInputElement>('[data-look-range]')
+  if (range) {
+    const key = range.dataset.lookRange as AppearanceKey
+    writeLook(key, snapLook(key, Number(range.value)))
+  }
+})
+/* Arrow keys move a slider without a pointer ever going down, so the keyboard
+   gets its own entry rather than joining a gesture that never opened. */
+quickSetEl.addEventListener('change', (e) => {
+  const range = (e.target as HTMLElement).closest<HTMLInputElement>('[data-look-range]')
+  if (range && !lookDragKey) {
+    const key = range.dataset.lookRange as AppearanceKey
+    writeLook(key, snapLook(key, Number(range.value)))
+  }
+})
+
+/** The range each shared size may be set to, matching what a scene accepts. */
+const SIZE_RANGE: Record<ProjectSizeKey, [number, number]> = {
+  nameSize: [8, 96], playerSize: [2, 100], textSize: [8, 200],
+}
+function clampProjectSize(key: ProjectSizeKey, size: number) {
+  const [min, max] = SIZE_RANGE[key]
+  if (!Number.isFinite(size)) return PROJECT_SIZES[key].get()
+  return Math.max(min, Math.min(max, Math.round(size)))
+}
+
+quickSetEl.addEventListener('click', (e) => {
+  const nav = (e.target as HTMLElement).closest<HTMLElement>('[data-panel]')?.dataset.panel
+  if (nav === 'back') { showPanelScreen(PANEL_PARENT[panelScreen]); return }
+  if (nav === 'font') { showPanelScreen('font'); return }
+  if (nav === 'look-reset') {
+    store.apply(scene => { delete scene.appearance })
+    lookSwatchKey = null
+    renderQuickSet()
+    return
+  }
+  const lookGroupBtn = (e.target as HTMLElement).closest<HTMLElement>('[data-look-group]')
+  if (lookGroupBtn) {
+    closeAppearancePicker()
+    lookSwatchKey = null
+    lookGroup = lookGroupBtn.dataset.lookGroup as AppearanceGroup
+    renderQuickSet()
+    return
+  }
+  const lookSet = (e.target as HTMLElement).closest<HTMLElement>('[data-look-set]')
+  if (lookSet) {
+    const raw = lookSet.dataset.lookSet!
+    const at = raw.indexOf(':')
+    writeLook(raw.slice(0, at) as AppearanceKey, raw.slice(at + 1))
+    return
+  }
+  const lookEdit = (e.target as HTMLElement).closest<HTMLElement>('[data-look-edit]')
+  if (lookEdit) { editLookValue(lookEdit.dataset.lookEdit as AppearanceKey); return }
+  const lookWheel = (e.target as HTMLElement).closest<HTMLElement>('[data-look-wheel]')
+  if (lookWheel) { openLookWheel(lookWheel.dataset.lookWheel as AppearanceKey); return }
+  const lookColor = (e.target as HTMLElement).closest<HTMLElement>('[data-look-color]')
+  if (lookColor) {
+    const key = lookColor.dataset.lookColor as AppearanceKey
+    lookSwatchKey = lookSwatchKey === key ? null : key
+    renderQuickSet()
+    return
+  }
+  const step = (e.target as HTMLElement).closest<HTMLElement>('[data-size]')?.dataset.size
+  if (step) {
+    const [key, delta] = step.split(':') as [ProjectSizeKey, string]
+    setProjectSize(key, clampProjectSize(key, PROJECT_SIZES[key].get() + Number(delta) * 2))
+    renderQuickSet()
+    return
+  }
+  const key = (e.target as HTMLElement).closest<HTMLElement>('[data-quick]')?.dataset.quick
+  if (!key) return
+  if (key === 'appearance') { showPanelScreen('appearance'); return }
+  if (key === 'more') { openSettings(); return }
+  if (key === 'board-settings') { openMatchSheet(); return }
+  if (key === 'teams') { openSettings('teams'); return }
+  if (key === 'pitch') { openSettings('pitch'); return }
+  if (key === 'scoreboard') {
+    store.apply(s => { s.match = { ...emptyMatch(), ...s.match, showScoreboard: !s.match?.showScoreboard } })
+    renderQuickSet()
+    return
+  }
+  if (key === 'styles-save') savePitchDefaults()
+  if (key === 'styles-reset') resetPitchDefaults()
+})
+
+quickSetEl.addEventListener('input', (e) => {
+  const search = (e.target as HTMLElement).closest<HTMLInputElement>('[data-font-search]')
+  if (!search) return
+  clearTimeout(fontSearchTimer)
+  const value = search.value
+  fontSearchTimer = window.setTimeout(() => runFontSearch(value), 150)
+})
+
+quickSetEl.addEventListener('change', (e) => {
+  const target = e.target as HTMLInputElement
+  const key = target.dataset.sizeVal as ProjectSizeKey | undefined
+  if (!key) return
+  setProjectSize(key, clampProjectSize(key, Number(target.value)))
+  renderQuickSet()
 })
 
 /* ---------- options strip ---------- */
@@ -2182,6 +3906,7 @@ function mirrorSelection(axis: 'x' | 'y') {
         else o.y = 2 * cy - o.y
       }
     }
+    trackPlayersAtBall(store.scene.objects, objs.map(o => o.id))
   })
 }
 
@@ -2240,6 +3965,7 @@ function rotateSelection(stepDeg = 45) {
         o.rotation = (((o.rotation ?? 0) + stepDeg) % 360 + 360) % 360
       }
     }
+    trackPlayersAtBall(store.scene.objects, objs.map(o => o.id))
   })
   const turned = objs.find(o => typeof (o as any).rotation === 'number') as { rotation: number } | undefined
   flashRotation(turned ? ((Math.round(turned.rotation) % 360) + 360) % 360 : ((stepDeg % 360) + 360) % 360)
@@ -2329,15 +4055,30 @@ function renderPlayerNameSelect(sel: PlayerObj) {
 const tapVerb = () => (deskMode ? 'Click' : 'Tap')
 
 function renderOptions() {
+  // A render replaces the trigger. Close first so aria-expanded and focus do
+  // not stay attached to a button that is about to leave the document.
+  if (carryMenuOpen()) closeCarryMenu(false)
   // In Shapes the shelf is the whole panel; restyling lives one tab over. A
   // collapsed panel leaves nothing but the band, so the pitch gets the room.
   // On a wide window this strip is the bar over the board and always shows:
   // it sits beside the shelf rather than taking its turn.
   const collapsed = !panelOpen && board.interactionState !== 'node-edit'
-  const hide = !deskMode && (shelfShowing() || collapsed)
-  optionsEl.classList.toggle('hidden', hide)
-  if (hide) { optionsEl.innerHTML = ''; return }
   const sel = store.selected
+  // Carrying is a board action, and on a phone it is a cell at the end of the
+  // styles shelf rather than a chip leading every room: it was taking a whole
+  // row over the shape shelf to say what it would do to a board you were not
+  // looking at. A wide window has room for the strip, so it keeps the chip.
+  const carryHtml = deskMode ? carryStripHtml() : ''
+  // In Styles and Settings the panel below is the whole room, so the strip
+  // stands down rather than showing the tool's own controls under a list.
+  if (stylesShowing() || quickSetShowing()) { optionsEl.classList.add('hidden'); optionsEl.innerHTML = ''; closeCarryMenu(false); return }
+  const hide = !deskMode && (shelfShowing() || collapsed)
+  const keepStrip = !!sel || !!carryHtml
+  optionsEl.classList.toggle('hidden', hide && !keepStrip)
+  if (hide && !keepStrip) { optionsEl.innerHTML = ''; closeCarryMenu(false); return }
+  // over the shelf with nothing picked, the strip is the carry control alone:
+  // the tool's own settings are already on the shelf underneath it
+  if (hide && !sel) { optionsEl.innerHTML = carryHtml; return }
   let html = ''
   // node-edit mode: the nodes themselves, then the line's own settings
   if (board.interactionState === 'node-edit' && sel) {
@@ -2363,7 +4104,7 @@ function renderOptions() {
       html += `<label class="lbl">Name <input class="labelIn nameIn" data-opt="name" maxlength="24" value="${esc(sel.name)}" placeholder="Vitinha"></label>`
       html += seg([['first', 'First'], ['last', 'Last'], ['full', 'Full name']], sel.nameDisplay ?? 'last', 'namedisplay')
       html += `<label class="lbl">No. <input class="labelIn" data-opt="label" maxlength="4" value="${esc(sel.label)}"></label>`
-      html += seg([['top', 'Top'], ['bottom', 'Bottom']], sel.namePos, 'namepos')
+      html += seg([['auto', 'Auto'], ['top', 'Top'], ['bottom', 'Bottom']], sel.namePos, 'namepos')
       html += seg([['14', 'S'], ['16', 'M'], ['18', 'L']], String(sel.nameSize ?? 18), 'namesize')
       html += sw(PLAYER_PALETTE, sel.color, 'pcolor')
       html += `<label class="lbl">Hex <input class="labelIn hexIn" data-opt="hex" maxlength="7" value="${esc(sel.color)}"></label>`
@@ -2379,7 +4120,7 @@ function renderOptions() {
         if (sel.curved) html += `<button data-opt="straighten">Straighten</button>`
       }
     } else if (sel.type === 'box') {
-      html += seg([['rect', 'Box'], ['ellipse', 'Oval'], ['triangle', 'Triangle'], ['outline', 'Outline']], sel.shape, 'shape')
+      html += seg([['rect', 'Box'], ['ellipse', 'Circle'], ['triangle', 'Triangle'], ['outline', 'Outline']], sel.shape, 'shape')
       if (sel.shape === 'outline') {
         html += `<label class="lbl">Text <input class="labelIn nameIn" data-opt="box-label" maxlength="24" value="${esc(sel.label || '')}" placeholder="Label"></label>`
         html += seg([['top', 'Top'], ['right', 'Right'], ['bottom', 'Bottom'], ['left', 'Left']], sel.labelPos || 'top', 'box-label-pos')
@@ -2420,7 +4161,7 @@ function renderOptions() {
       html += sw(ARROW_COLORS, defaults.arrow.color, 'd-color')
       html += seg(sceneArrowWidths(), String(defaults.arrow.width), 'd-width')
     } else if (t === 'box') {
-      if (!shelfShowing()) html += seg([['rect', 'Box'], ['ellipse', 'Oval'], ['triangle', 'Triangle'], ['outline', 'Outline']], defaults.box.shape, 'd-shape')
+      if (!shelfShowing()) html += seg([['rect', 'Box'], ['ellipse', 'Circle'], ['triangle', 'Triangle'], ['outline', 'Outline']], defaults.box.shape, 'd-shape')
       html += sw(BOX_FILLS, defaults.box.fill, 'd-fill')
       if (defaults.box.shape !== 'outline') html += seg([['0.25', '25%'], ['0.45', '45%'], ['0.65', '65%']], String(defaults.box.opacity), 'd-opacity')
     } else if (t === 'text') {
@@ -2454,33 +4195,44 @@ function renderOptions() {
       ? `<span class="hint">Nothing to change on this one.</span>`
       : `<span class="hint">Pick something on the board, or set how the next shape looks.</span>`
   }
-  optionsEl.innerHTML = html
+  optionsEl.innerHTML = carryHtml + html
+  // A ball or a cone has nothing to change, so the strip has nothing to draw.
+  // Keeping it up for the sake of the selection left a band of empty panel
+  // under the shelf, which read as something failing to load.
+  if (!deskMode && !carryHtml && !html.trim()) optionsEl.classList.add('hidden')
+  if (!carryHtml) closeCarryMenu(false)
+}
+
+/**
+ * Carry forward and its disclosure. One click carries what is picked, or the
+ * whole board when nothing is, onto every board after this one; the small
+ * button beside it opens the rest. Nothing to carry means no control at all,
+ * and nowhere to carry to leaves it in place but unavailable, so the strip
+ * does not jump as boards are added.
+ */
+function carryStripHtml() {
+  if (!library?.projects?.length) return ''
+  const source = currentBoard()
+  const objects = store.scene.objects.length
+  if (!source || !objects || board.interactionState === 'node-edit') return ''
+  const project = currentProject(library)
+  const index = project.boards.findIndex(item => item.id === source.id)
+  const ready = index >= 0 && index < project.boards.length - 1
+  const picked = selectedObjects().length
+  const what = picked ? `${picked} selected` : `all ${objects} object${objects === 1 ? '' : 's'}`
+  const title = ready ? `Carry ${what} to every later board` : 'Add a board after this one to carry onto'
+  return `<span class="carrySplit">`
+    + `<button class="addChip carryNow" data-carry-forward title="${esc(title)}"${ready ? '' : ' disabled'}>Carry forward</button>`
+    + `<button class="addChip carryMore" data-carry-trigger aria-haspopup="menu" aria-expanded="false" aria-controls="carryMenu" aria-label="Other boards to carry to" title="Other boards to carry to"${ready ? '' : ' disabled'}>${icon('chevron-down')}</button>`
+    + `</span><span class="hint carryHint">${esc(what)}</span><span class="trayDiv"></span>`
 }
 
 let lastTeamChipTap: { name: string; time: number } | null = null
-optionsEl.addEventListener('click', (e) => {
-  const btn = (e.target as HTMLElement).closest('[data-opt]') as HTMLElement | null
-  if (!btn || btn.tagName === 'INPUT' || btn.tagName === 'SELECT') return
-  const key = btn.dataset.opt!
-  const v = btn.dataset.v
-  const sel = store.selected
-
-  // tool defaults
-  if (key.startsWith('d-')) {
-    applyDefaultOption(key, v)
-    return
-  }
-
-  if (!sel) return
-  if (key === 'node-curve' && v) { board.setSelectedNodeCurve(v as NodeCurve); board.addNodeArmed = false; renderOptions(); return }
-  if (key === 'node-add') { board.addNodeArmed = !board.addNodeArmed; renderOptions(); return }
-  if (key === 'node-remove') { board.removeSelectedNode(); renderOptions(); return }
-  if (key === 'editText' && sel.type === 'text') { openTextEditor(sel.id, { x: sel.x, y: sel.y }); return }
-  if (key === 'straighten' && sel.type === 'arrow') {
-    store.apply(() => { sel.curved = false; sel.mx = (sel.x1 + sel.x2) / 2; sel.my = (sel.y1 + sel.y2) / 2 })
-    return
-  }
-
+/**
+ * One setting written onto whatever is picked. Both the options strip and the
+ * styles shelf go through here, so a control means the same thing in either.
+ */
+function applySelectionOption(key: string, v: string | undefined, sel: SceneObj) {
   store.apply(() => {
     const o: any = sel
     if (key === 'pcolor') o.color = v
@@ -2513,6 +4265,43 @@ optionsEl.addEventListener('click', (e) => {
     else if (key === 'tcolor') o.color = v
     else if (key === 'goal-variant') o.variant = v
   })
+}
+
+optionsEl.addEventListener('click', (e) => {
+  const forward = (e.target as HTMLElement).closest<HTMLElement>('[data-carry-forward]')
+  if (forward) {
+    if (!forward.hasAttribute('disabled')) carryForward()
+    return
+  }
+  const trigger = (e.target as HTMLElement).closest<HTMLElement>('[data-carry-trigger]')
+  if (trigger && !trigger.hasAttribute('disabled')) {
+    if (carryMenuOpen()) closeCarryMenu()
+    else openCarryMenu(trigger)
+    return
+  }
+  const btn = (e.target as HTMLElement).closest('[data-opt]') as HTMLElement | null
+  if (!btn || btn.tagName === 'INPUT' || btn.tagName === 'SELECT') return
+  const key = btn.dataset.opt!
+  const v = btn.dataset.v
+  const sel = store.selected
+
+  // tool defaults
+  if (key.startsWith('d-')) {
+    applyDefaultOption(key, v)
+    return
+  }
+
+  if (!sel) return
+  if (key === 'node-curve' && v) { board.setSelectedNodeCurve(v as NodeCurve); board.addNodeArmed = false; renderOptions(); return }
+  if (key === 'node-add') { board.addNodeArmed = !board.addNodeArmed; renderOptions(); return }
+  if (key === 'node-remove') { board.removeSelectedNode(); renderOptions(); return }
+  if (key === 'editText' && sel.type === 'text') { openTextEditor(sel.id, { x: sel.x, y: sel.y }); return }
+  if (key === 'straighten' && sel.type === 'arrow') {
+    store.apply(() => { sel.curved = false; sel.mx = (sel.x1 + sel.x2) / 2; sel.my = (sel.y1 + sel.y2) / 2 })
+    return
+  }
+
+  applySelectionOption(key, v, sel)
 })
 optionsEl.addEventListener('change', (e) => {
   const target = e.target as HTMLInputElement | HTMLSelectElement
@@ -2654,6 +4443,7 @@ function nudgeSelected(dx: number, dy: number) {
   if (!ids.length) return
   store.apply(() => {
     for (const sel of ids.map(id => store.obj(id)).filter(Boolean)) moveObject(sel as SceneObj, dx, dy)
+    trackPlayersAtBall(store.scene.objects, ids)
   })
 }
 
@@ -2714,6 +4504,64 @@ function dropdownCloseMs() {
   return value.endsWith('ms') ? amount : amount * 1000
 }
 
+const carryMenuEl = document.querySelector<HTMLElement>('#carryMenu')!
+let carryMenuCloseTimer = 0
+let carryMenuTrigger: HTMLElement | null = null
+
+function carryMenuOpen() { return carryMenuEl.classList.contains('is-open') }
+
+function positionCarryMenu(trigger: HTMLElement) {
+  const r = trigger.getBoundingClientRect()
+  const w = carryMenuEl.offsetWidth || 196
+  const h = carryMenuEl.offsetHeight || 150
+  const desktop = deskMode
+  const left = Math.round(Math.max(8, Math.min(r.left, window.innerWidth - w - 8)))
+  const top = desktop
+    ? Math.round(Math.max(8, Math.min(window.innerHeight - h - 8, r.bottom + 8)))
+    : Math.round(Math.max(8, r.top - h - 8))
+  carryMenuEl.dataset.origin = desktop ? 'top-left' : 'bottom-left'
+  carryMenuEl.style.left = `${left}px`
+  carryMenuEl.style.top = `${top}px`
+}
+
+function closeCarryMenu(restoreFocus = true) {
+  if (!carryMenuOpen()) return
+  carryMenuEl.classList.remove('is-open')
+  carryMenuEl.classList.add('is-closing')
+  window.clearTimeout(carryMenuCloseTimer)
+  carryMenuCloseTimer = window.setTimeout(() => carryMenuEl.classList.remove('is-closing'), dropdownCloseMs())
+  const trigger = carryMenuTrigger
+  carryMenuTrigger = null
+  trigger?.setAttribute('aria-expanded', 'false')
+  if (restoreFocus && trigger?.isConnected) trigger.focus()
+}
+
+function openCarryMenu(trigger: HTMLElement) {
+  carryMenuTrigger = trigger
+  const project = currentProject(library)
+  const current = currentBoard()
+  const index = current ? project.boards.findIndex(board => board.id === current.id) : -1
+  const hasNext = index >= 0 && index < project.boards.length - 1
+  carryMenuEl.querySelectorAll<HTMLButtonElement>('[data-carry="next"]').forEach(item => {
+    item.disabled = !hasNext
+    item.setAttribute('aria-disabled', String(!hasNext))
+  })
+  const picked = selectedObjects().length
+  carryMenuEl.setAttribute('aria-label', picked ? `Carry ${picked} selected objects to` : 'Carry every object on this board to')
+  window.clearTimeout(carryMenuCloseTimer)
+  carryMenuEl.classList.remove('is-closing')
+  positionCarryMenu(trigger)
+  carryMenuEl.classList.add('is-open')
+  trigger.setAttribute('aria-expanded', 'true')
+  carryMenuEl.querySelector<HTMLElement>(hasNext ? '[data-carry="next"]' : '[data-carry="choose"]')?.focus()
+}
+
+document.addEventListener('pointerdown', e => {
+  if (carryMenuOpen() && !(e.target as HTMLElement).closest('#carryMenu, [data-carry-trigger]')) closeCarryMenu(false)
+}, true)
+window.addEventListener('resize', () => {
+  if (carryMenuOpen() && carryMenuTrigger) positionCarryMenu(carryMenuTrigger)
+})
 
 const linkMenuEl = document.querySelector<HTMLElement>('#linkMenu')!
 let linkMenuCloseTimer = 0
@@ -2946,6 +4794,7 @@ function openTextEditor(id: string | null, boardPos: { x: number; y: number }) {
   ed.focus()
 }
 board.onRequestTextEdit = openTextEditor
+board.onPointPlayerAtBall = pointPlayerAtBall
 board.onInteractionStateChange = () => {
   if (board.interactionState === 'node-edit') { room = 'styles'; panelOpen = true }
   renderFabs()
@@ -3028,14 +4877,196 @@ const officialExtensions = new OfficialExtensions({
     is3D: () => board.is3D(),
     reset3DCamera: () => board.reset3DCamera(),
   },
-  toolbar: document.querySelector<HTMLElement>('[data-ext-toolbar]')!,
+  // Extensions start before the Settings sheet is built, so this asks the
+  // document whether Tool settings is on screen rather than the screen variable.
+  onToolbarChange: () => { renderTopBar(); refreshToolsScreen() },
 })
+
+/* ---------- the bar above the board ----------
+   Which controls are up there, and in what order, is the reader's to set in
+   Tool settings. The buttons themselves are in the markup and stay there: the
+   bar reorders by moving the nodes it already has, so everything holding a
+   reference to one keeps it. */
+
+/** Built-in controls, in shipping order. `group` is only where the wider gap
+    falls: consecutive controls from the same group sit close together. */
+const TOP_BAR_BUTTONS: readonly { id: string; label: string; group: number }[] = [
+  { id: 'snap', label: 'Snap to grid', group: 0 },
+  { id: 'export', label: 'Share and export', group: 0 },
+  { id: 'previous-board', label: 'Previous board', group: 0 },
+  { id: 'undo', label: 'Undo', group: 1 },
+  { id: 'redo', label: 'Redo', group: 1 },
+  { id: 'boards', label: 'Boards in this project', group: 2 },
+  { id: 'more', label: 'More', group: 2 },
+  { id: 'note', label: "This board's note", group: 2 },
+  { id: 'match', label: 'Board settings', group: 2 },
+]
+
+const actionRowEl = document.querySelector<HTMLElement>('#actionRow')!
+const barMenuEl = document.querySelector<HTMLElement>('#barMenu')!
+const barMoreBtn = document.querySelector<HTMLButtonElement>('#barMoreBtn')!
+
+type TopBarEntry = { id: string; label: string; note?: string }
+
+/** Everything Tool settings can list: the built-ins, then extension controls. */
+function topBarEntries(): TopBarEntry[] {
+  return [
+    ...TOP_BAR_BUTTONS.map(({ id, label }) => ({ id, label })),
+    ...officialExtensions.toolbarEntries().map(entry => ({
+      id: entry.key,
+      label: entry.label,
+      // An extension whose one control is named after it says so once.
+      ...(entry.extensionName.toLowerCase() === entry.label.toLowerCase() ? {} : { note: entry.extensionName }),
+    })),
+  ]
+}
+function topBarKnownIds(): string[] { return topBarEntries().map(entry => entry.id) }
+
+let topBar = loadTopBarState(topBarKnownIds())
+
+function saveTopBar(next: TopBarState) {
+  topBar = normalizeTopBarState(next, topBarKnownIds())
+  saveTopBarState(topBar, topBarKnownIds())
+  renderTopBar()
+  refreshToolsScreen()
+}
+
+/** Redraw Tool settings only when it is the screen someone is looking at. */
+function refreshToolsScreen() {
+  const pane = document.querySelector('[data-pane="tools"]')
+  if (pane && !pane.classList.contains('hidden')) renderToolsScreen()
+}
+
+function builtInBarButton(id: string): HTMLElement | null {
+  return actionRowEl.querySelector<HTMLElement>(`:scope > button[data-top="${CSS.escape(id)}"]`)
+}
+
+function renderTopBar() {
+  for (const el of Array.from(actionRowEl.querySelectorAll('[data-ext-action]'))) el.remove()
+  const shown = new Set<string>()
+  let previousGroup: number | null = null
+  for (const id of visibleTopBar(topBar)) {
+    const builtIn = builtInBarButton(id)
+    const el = builtIn || officialExtensions.createToolbarButton(id)
+    // An extension that is switched off keeps its place in the order but has
+    // no control to put there yet.
+    if (!el) continue
+    const group = TOP_BAR_BUTTONS.find(button => button.id === id)?.group ?? 3
+    el.classList.toggle('barGap', previousGroup !== null && group !== previousGroup)
+    el.classList.remove('hidden')
+    previousGroup = group
+    shown.add(id)
+    actionRowEl.appendChild(el)
+  }
+  for (const { id } of TOP_BAR_BUTTONS) if (!shown.has(id)) builtInBarButton(id)?.classList.add('hidden')
+  // The live screenshot button is the board's to show, not the reader's to
+  // place, so it is not in the order and only ever sits at the end.
+  const liveShot = builtInBarButton('live-shot')
+  if (liveShot) actionRowEl.appendChild(liveShot)
+  actionRowEl.appendChild(barMenuEl)
+  renderBarMenu()
+}
+
+/**
+ * The mark a control wears on the bar, so a list of them is read the way the
+ * bar is read. A built-in lends its own; an extension's comes from the button
+ * it would mount, and falls back to the extension mark when it is switched off.
+ */
+function barIconMarkup(id: string): string {
+  const builtIn = builtInBarButton(id)
+  if (builtIn) return builtIn.innerHTML
+  return officialExtensions.createToolbarButton(id)?.innerHTML ?? icon('puzzle')
+}
+
+/**
+ * Taking a control off the bar puts it in the menu, so nothing is ever switched
+ * off into nowhere: the bar is what you reach for, the menu is where the rest
+ * waits. A built-in row clicks the real button, which is still in the row and
+ * only hidden, so every control behaves the same in both places.
+ */
+function renderBarMenu() {
+  const host = barMenuEl.querySelector<HTMLElement>('[data-bar-overflow]')
+  if (!host) return
+  host.textContent = ''
+  const entries = topBarEntries()
+  for (const id of topBar.order) {
+    if (isTopBarVisible(topBar, id)) continue
+    const entry = entries.find(item => item.id === id)
+    if (!entry) continue
+    const source = builtInBarButton(id)
+    if (source) {
+      const row = document.createElement('button')
+      row.type = 'button'
+      row.setAttribute('role', 'menuitem')
+      row.dataset.barOverflow = id
+      row.innerHTML = `${barIconMarkup(id)}<span>${esc(entry.label)}</span>`
+      // A control the board has stood down stays stood down in the menu.
+      row.disabled = (source as HTMLButtonElement).disabled
+      host.appendChild(row)
+    } else {
+      // An extension control is its own button, so it comes into the menu as
+      // itself, wearing the menu's clothes.
+      const el = officialExtensions.createToolbarButton(id)
+      if (!el) continue
+      el.className = 'barMenuItem'
+      el.setAttribute('role', 'menuitem')
+      el.insertAdjacentHTML('beforeend', `<span>${esc(entry.label)}</span>`)
+      host.appendChild(el)
+    }
+  }
+}
+
+let barMenuOpen = false
+function setBarMenu(open: boolean) {
+  if (open === barMenuOpen) return
+  barMenuOpen = open
+  barMoreBtn.setAttribute('aria-expanded', String(open))
+  if (open) {
+    barMenuEl.hidden = false
+    // Under the button, and never off the near edge of a narrow phone.
+    const button = barMoreBtn.getBoundingClientRect()
+    const row = actionRowEl.getBoundingClientRect()
+    const width = barMenuEl.offsetWidth
+    const left = Math.min(Math.max(8, button.left + button.width / 2 - width / 2 - row.left), row.width - width - 8)
+    barMenuEl.style.left = `${Math.max(8, left)}px`
+    requestAnimationFrame(() => barMenuEl.classList.add('is-open'))
+  } else {
+    barMenuEl.classList.remove('is-open')
+    barMenuEl.hidden = true
+  }
+}
+const closeBarMenu = () => setBarMenu(false)
+
+barMenuEl.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement
+  const overflow = target.closest<HTMLElement>('[data-bar-overflow]:not([data-bar-overflow=""])')
+  if (overflow?.dataset.barOverflow) {
+    closeBarMenu()
+    builtInBarButton(overflow.dataset.barOverflow)?.click()
+    return
+  }
+  // An extension control in the menu runs its own click; the menu just shuts.
+  if (target.closest('.barMenuItem')) { closeBarMenu(); return }
+  const btn = target.closest<HTMLElement>('[data-bar-menu]')
+  if (!btn) return
+  closeBarMenu()
+  openSettings(btn.dataset.barMenu === 'extensions' ? 'skills' : 'tools')
+})
+document.addEventListener('pointerdown', (e) => {
+  if (!barMenuOpen) return
+  const target = e.target as HTMLElement
+  if (barMenuEl.contains(target) || target.closest('#barMoreBtn')) return
+  closeBarMenu()
+}, true)
+
 officialExtensions.start()
 
 document.querySelector('.actionRow')!.addEventListener('click', (e) => {
   const btn = (e.target as HTMLElement).closest('button')
   if (!btn) return
   const k = btn.dataset.top
+  if (k !== 'more' && !btn.closest('#barMenu')) closeBarMenu()
+  if (k === 'more') { setBarMenu(!barMenuOpen); return }
   if (k === 'undo') store.undo()
   else if (k === 'redo') store.redo()
   else if (k === 'snap') {
@@ -3043,7 +5074,7 @@ document.querySelector('.actionRow')!.addEventListener('click', (e) => {
     document.querySelector('#snapBtn')!.classList.toggle('active', board.snapEnabled)
   }
   else if (k === 'export') toggleShareMenu()
-  else if (k === 'fit') board.resetView()
+  else if (k === 'previous-board') togglePreviousBoard()
   else if (k === 'boards') boardsView.toggleBoards()
   else if (k === 'note') editBoardNote()
   else if (k === 'match') openMatchSheet()
@@ -3066,34 +5097,65 @@ if (!library.projects.length) {
 let freshStarter = loadedProjectLibrary ? null : { id: library.currentId, updated: currentProject(library).updated }
 /** Board the editor is holding. */
 let editingBoard = Math.max(0, storedBoardIndex(library, currentProject(library)))
+/** A viewing aid only. It is deliberately not persisted with a Project. */
+let previousBoardEnabled = false
 /** True while a scene is being swapped in, so the write-back stays quiet. */
 let swappingScene = false
 let projectAutosaveTimer = 0
 
 function scheduleProjectAutosave() {
   window.clearTimeout(projectAutosaveTimer)
-  projectAutosaveTimer = window.setTimeout(() => { saves.autosaveCurrent(true) }, 900)
+  projectAutosaveTimer = window.setTimeout(() => {
+    if (saves.autosaveCurrent(true)) saveLibrary(library)
+  }, 900)
 }
 
 function saveProjectChanges(project: Project = currentProject(library)) {
   documentChangeGeneration += 1
   saveLibrary(library)
   boardsView.refresh()
+  syncPreviousBoard()
   // The editor autosaves the open Project through its document adapter. A
   // rename in the Projects screen can affect another Project, so write that
   // one directly instead of accidentally saving the open one.
   if (project.id === library.currentId) scheduleProjectAutosave()
-  else saves.persistProjectDocuments([project])
+  else if (saves.persistProjectDocuments([project])) saveLibrary(library)
+}
+
+let proposalCounts: Record<string, number> = {}
+
+function projectActionsFor(projectIds: readonly string[]): Map<string, ProjectActions> {
+  if (!Object.keys(proposalCounts).length) {
+    return new Map(projectIds.map(projectId => [projectId, { history: false, proposals: false, waiting: 0 }]))
+  }
+  const actions = saves.projectActionsFor(projectIds)
+  return new Map(projectIds.map(projectId => {
+    const action = actions.get(projectId)
+    const waiting = action?.target ? proposalCounts[action.target.id] || 0 : 0
+    return [projectId, {
+      history: action?.history ?? false,
+      proposals: action?.proposals ?? false,
+      waiting,
+    }] as const
+  }))
 }
 
 const boardsView = new BoardsView(document.querySelector<HTMLElement>('#libRoot')!, {
   changed: saveProjectChanges,
+  carryObjects: (sourceBoardId, targetBoardIds, scope) => {
+    carrySelectionToBoards(sourceBoardId, targetBoardIds, scope)
+  },
   deleteProject: (id) => { saves.removeDocument(id) },
   blankScene: () => emptyScene(store.scene.pitch),
+  blankProjectScene: () => {
+    teams.resetTeams([])
+    return emptyScene(store.scene.pitch)
+  },
   blankSceneOn: (pitchId) => blankSceneOnPitch(pitchId),
   addBoardChoices: (changed) => newBoardChoices(changed),
   uploadBackground: () => pickBackgroundForNewBoard(),
   currentIndex: () => editingBoard,
+  stashBoard: () => stashEditedBoard(false),
   paid: () => entitlements.hasPaidBoardAccess(),
   openPro: () => openSettings('pro'),
   // A shared Project's backgrounds come off the server through its own scope;
@@ -3103,22 +5165,19 @@ const boardsView = new BoardsView(document.querySelector<HTMLElement>('#libRoot'
       ? sharedBackgroundScope(id)
       : backgrounds.image(id)
   ),
-  openBoard: (index) => {
+  openBoard: (index, options) => {
     const project = currentProject(library)
     const board = project.boards[index]
     if (!board) return
-    stashEditedBoard()
+    if (options?.stash !== false) stashEditedBoard()
     editingBoard = index
     rememberBoard(library, project.id, board.id)
     saveLibrary(library)
     loadBoardIntoEditor(board.scene)
   },
   openProject: openLibraryProject,
-  projectActions: (projectId) => {
-    const actions = saves.projectActions(projectId)
-    const waiting = actions.target ? proposalCounts[actions.target.id] || 0 : 0
-    return { history: actions.history, proposals: actions.proposals, waiting }
-  },
+  projectActions: (projectId) => projectActionsFor([projectId]).get(projectId)!,
+  projectActionsFor,
   openProjectHistory: (projectId) => openProjectScreen(projectId, 'history'),
   openProjectProposals: (projectId) => openProjectScreen(projectId, 'proposals'),
 })
@@ -3130,8 +5189,6 @@ boardsView.setLibrary(library)
  * something is waiting without a request of its own. An account that cannot
  * have proposals never asks, and a failed read simply says nothing.
  */
-let proposalCounts: Record<string, number> = {}
-
 async function refreshProposalCounts(): Promise<void> {
   if (BOARD_SELF_HOSTED || !authenticated || !entitlements.isPro() || !accountBinding) {
     proposalCounts = {}
@@ -3358,6 +5415,7 @@ function openLibraryProject(id: string, preferredBoardId?: string) {
   }
   rememberBoard(library, library.currentId, currentProject(library).boards[editingBoard]?.id)
   saveLibrary(library)
+  syncPreviousBoard()
 }
 
 // a board saved without anyone naming it takes the name it already has here
@@ -3425,6 +5483,7 @@ function loadBoardIntoEditor(scene: Scene) {
   store.loadScene(migrate(JSON.parse(JSON.stringify(scene))))
   swappingScene = false
   renderBoardNote()
+  syncPreviousBoard()
   collaborationBoardChanged()
 }
 
@@ -3473,9 +5532,11 @@ function reconcileLibraryProjectDocuments(options: {
   if (result.persist.length) saves.persistProjectDocuments(result.persist)
   if (result.library !== library) {
     library = result.library
-    saveLibrary(library)
     boardsView.setLibrary(library)
   }
+  // Migrate old duplicate-heavy library values even when reconciliation made
+  // no visible change. Unsaved Projects remain inline if their durable write failed.
+  saveLibrary(library)
 }
 
 /** The one way into Projects, so every entry point shows the same screen. */
@@ -3507,7 +5568,14 @@ store.subscribe(() => {
   const project = currentProject(library)
   const board = project.boards[editingBoard]
   if (!board) return
-  board.scene = migrate(JSON.parse(JSON.stringify(store.scene)))
+  const nextScene = migrate(JSON.parse(JSON.stringify(store.scene)))
+  /* the view is written in board coordinates and a new background changes how
+     many of those there are, so the view moves with the scene: the old scene
+     is still on the board here, so a board that was showing the whole of its
+     background keeps showing the whole of it, and a camera the user framed on
+     purpose is kept as it was */
+  board.view = viewAfterScene(board, nextScene)
+  board.scene = nextScene
   touch(project)
   window.clearTimeout(writeBackTimer)
   writeBackTimer = window.setTimeout(() => {
@@ -3523,15 +5591,19 @@ store.subscribe(() => {
 })
 
 /** Bank what the editor holds back into the board it is holding. */
-function stashEditedBoard() {
+function stashEditedBoard(persist = true) {
   const project = currentProject(library)
   const board = project.boards[editingBoard]
   if (!board) return
-  board.scene = migrate(JSON.parse(JSON.stringify(store.scene)))
+  const nextScene = migrate(JSON.parse(JSON.stringify(store.scene)))
+  board.view = viewAfterScene(board, nextScene)
+  board.scene = nextScene
   touch(project)
-  documentChangeGeneration += 1
-  saveLibrary(library)
-  scheduleProjectAutosave()
+  if (persist) {
+    documentChangeGeneration += 1
+    saveLibrary(library)
+    scheduleProjectAutosave()
+  }
 }
 
 /* ---------- the board's note ----------
@@ -3541,6 +5613,35 @@ function stashEditedBoard() {
 
 function currentBoard() {
   return currentProject(library).boards[editingBoard]
+}
+
+function previousBoardScene(): Scene | null {
+  return editingBoard > 0 ? currentProject(library).boards[editingBoard - 1]?.scene ?? null : null
+}
+
+function syncPreviousBoardButton() {
+  const button = document.querySelector<HTMLButtonElement>('[data-top="previous-board"]')
+  if (!button) return
+  const available = !!previousBoardScene()
+  const active = available && previousBoardEnabled
+  const label = active ? 'Hide previous board' : 'Show previous board'
+  button.disabled = !available
+  button.classList.toggle('active', active)
+  button.setAttribute('aria-pressed', String(active))
+  button.setAttribute('aria-label', available ? label : 'Previous board unavailable')
+  button.title = available ? label : 'Previous board unavailable on the first board'
+}
+
+function syncPreviousBoard() {
+  const previous = previousBoardScene()
+  board.setPreviousBoard(previousBoardEnabled && previous ? previous : null)
+  syncPreviousBoardButton()
+}
+
+function togglePreviousBoard() {
+  if (!previousBoardScene()) return
+  previousBoardEnabled = !previousBoardEnabled
+  syncPreviousBoard()
 }
 
 function renderBoardNote() {
@@ -3588,6 +5689,27 @@ type ShareEntry = {
   run: () => void
 }
 
+/* The Community row reads as the state the board is in rather than asking the
+   same question twice: a board with a post says when it was posted, and the
+   step behind the row updates that post instead of making a second one. */
+function communityRowLabel(): string {
+  const record = currentCommunityPost()
+  return record ? `Posted ${postedAgo(record.at)}` : 'Post to Community'
+}
+
+function communityRowNote(): string {
+  return currentCommunityPost()
+    ? 'Update the post with this board'
+    : 'Share this board as a normal Community post'
+}
+
+function currentCommunityPost() {
+  const project = currentProject(library)
+  const source = currentBoard()
+  if (!project || !source) return null
+  return communityPostFor(boardPostKey(project.id, source.id))
+}
+
 function shareEntries(): ShareEntry[] {
   if (BOARD_SELF_HOSTED) return [
     { key: 'export', label: 'Export\u2026', note: 'This board or the project as images, a GIF, or a video', ic: 'download', run: openExportSheet },
@@ -3602,6 +5724,16 @@ function shareEntries(): ShareEntry[] {
       note: 'A copy of this board, or of the whole project',
       run: () => shareStep('Copy link', (body) => {
         makeCopyLink(body)
+        return true
+      }),
+    },
+    {
+      key: 'community', label: communityRowLabel(), ic: 'users',
+      // Not a Pro row: whether an account may post is the Community's answer
+      // to give, and the endpoint gives it.
+      note: communityRowNote(),
+      run: () => shareStep('Post to Community', (body) => {
+        makeCommunityPost(body)
         return true
       }),
     },
@@ -3787,7 +5919,133 @@ function makeCopyLink(body: HTMLElement) {
       status.textContent = 'The link is selected. Copy it with your keyboard.'
     }
   })
+  appendCommunityHint(body)
   void generate('board')
+}
+
+/* The one-time line that tells a member boards can go to Community.
+   It appears under a copy link or an export, after that action has done its
+   own job, and it never blocks either. Posting a board, or dismissing it,
+   retires it for good. */
+function appendCommunityHint(body: HTMLElement) {
+  if (BOARD_SELF_HOSTED || !communityHintDue()) return
+  const hint = document.createElement('div')
+  hint.className = 'communityHint'
+  hint.innerHTML = `<span>Boards can go to Community too.</span>
+    <button type="button" data-community-hint-open>Post this board</button>
+    <button type="button" class="communityHint__close" data-community-hint-dismiss aria-label="Dismiss">&times;</button>`
+  body.appendChild(hint)
+  hint.querySelector('[data-community-hint-dismiss]')!.addEventListener('click', () => {
+    retireCommunityHint()
+    hint.remove()
+  })
+  hint.querySelector('[data-community-hint-open]')!.addEventListener('click', () => {
+    retireCommunityHint()
+    shareStep('Post to Community', (stepBody) => { makeCommunityPost(stepBody); return true })
+  })
+}
+
+/* Posting is the same board a copy link carries, with a caption in front of
+   it. The post is the board, so the caption may be empty, and the sheet says
+   what happened without leaving the editor. */
+function makeCommunityPost(body: HTMLElement) {
+  const project = currentProject(library)
+  const source = currentBoard()
+  if (!source) {
+    body.innerHTML = '<p class="shareStatus">This board could not be posted.</p>'
+    return
+  }
+  const boardTitle = boardName(project, editingBoard)
+  const postName = (project.name === 'Untitled project' ? boardTitle : `${project.name} — ${boardTitle}`).slice(0, 40)
+  // What this device knows about the board already having a post. The server
+  // is the authority: a stale record is corrected by the answer it gives.
+  const key = boardPostKey(project.id, source.id)
+  const existing = communityPostFor(key)
+
+  // The picture the post will carry, shown before anything is sent so the
+  // member confirms the board rather than the board's name.
+  let preview = ''
+  try { preview = boardLinkPreview() } catch { preview = '' }
+
+  body.innerHTML = `<form class="shareForm" data-community-form>
+      ${preview ? `<img class="communityPreview" src="${esc(preview)}" alt="">` : ''}
+      <label for="communityCaption">Caption (optional)
+        <textarea id="communityCaption" rows="3" maxlength="${MAX_COMMUNITY_POST_CAPTION_CHARS}" data-community-caption
+          placeholder="Say something about this board"></textarea>
+      </label>
+      <p class="shareStatus" data-community-status role="status" aria-live="polite">${existing
+        ? `Posted ${esc(postedAgo(existing.at))}. Posting again replaces the board on that post.`
+        : `Posts “${esc(boardTitle)}” to Community. The post is this board.`}</p>
+      <div class="shareActions">
+        <button type="submit" data-community-submit>${existing ? 'Update the post' : 'Post'}</button>
+        ${existing ? `<a class="communityPostLink" href="${esc(existing.communityUrl)}" target="_blank" rel="noopener noreferrer">View post</a>` : ''}
+      </div>
+    </form>`
+
+  const form = body.querySelector<HTMLFormElement>('[data-community-form]')!
+  const caption = body.querySelector<HTMLTextAreaElement>('[data-community-caption]')!
+  const status = body.querySelector<HTMLElement>('[data-community-status]')!
+  const submit = body.querySelector<HTMLButtonElement>('[data-community-submit]')!
+  let working = false
+  let posted = false
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    // one board, one post: a second click while the first is in flight, or
+    // after it landed, would publish the same board twice
+    if (working || posted) return
+    working = true
+    submit.disabled = true
+    status.textContent = existing ? 'Updating the post…' : 'Posting to Community…'
+    try {
+      stashEditedBoard()
+      const current = currentBoard()
+      if (!current) throw new Error('This board could not be posted.')
+      await board.imagesReady()
+      const result = await postBoardToCommunity(
+        postName,
+        newProjectFromBoard(current, postName),
+        boardLinkPreview(),
+        caption.value,
+        window.location.origin,
+        fetch,
+        existing ? existing.shareId : null,
+      )
+      posted = true
+      caption.readOnly = true
+      // The board's own copy id, which a later update rewrites in place.
+      const shareId = new URL(result.boardUrl).searchParams.get('community') || ''
+      if (shareId) {
+        rememberCommunityPost(key, {
+          shareId,
+          postId: result.postId,
+          communityUrl: result.communityUrl,
+          at: new Date().toISOString(),
+        })
+      }
+      // A member who has posted a board does not need to be told they can.
+      retireCommunityHint()
+      submit.textContent = result.moderationPending ? 'Sent' : (existing ? 'Updated' : 'Posted')
+      status.textContent = result.moderationPending ? result.message : (existing ? 'Post updated.' : 'Posted to Community.')
+      if (!result.moderationPending && !existing) {
+        const link = document.createElement('a')
+        link.className = 'communityPostLink'
+        link.href = result.communityUrl
+        link.target = '_blank'
+        link.rel = 'noopener noreferrer'
+        link.textContent = 'View post'
+        status.after(link)
+        link.focus()
+      }
+    } catch (error) {
+      submit.disabled = false
+      status.textContent = error instanceof Error ? error.message : 'This board could not be posted. Try again.'
+    } finally {
+      working = false
+    }
+  })
+
+  caption.focus()
 }
 
 /**
@@ -3902,7 +6160,7 @@ shareMenu.addEventListener('click', (e) => {
   // they did not ask to be
   if (entry.locked) { showToast(entry.locked.toast); return }
   // a step stays in the sheet; anything else is finished with it
-  if (entry.key !== 'username' && entry.key !== 'board-link' && entry.key !== 'agent') closeShareMenu()
+  if (entry.key !== 'username' && entry.key !== 'board-link' && entry.key !== 'agent' && entry.key !== 'community') closeShareMenu()
   entry.run()
 })
 
@@ -4126,13 +6384,159 @@ async function applyLiveShot(img: HTMLImageElement, name: string): Promise<boole
 }
 
 /** A blank board showing one broadcast still, at the size its image makes. */
-function broadcastShotScene(meta: BackgroundMeta): Scene {
+function broadcastShotScene(meta: BackgroundMeta, match = store.scene.match): Scene {
   const style = pitchById(meta.id)
   const scene = emptyScene(style.id)
   scene.board = { ...scene.board, h: meta.boardH }
-  // a still carries the match the project is already showing, like a pitch change does
-  if (style.live) scene.match = { ...emptyMatch(), ...store.scene.match, showTeams: false }
+  // a still carries the match the source board is showing, like a pitch change does
+  if (style.live) scene.match = { ...emptyMatch(), ...match, showTeams: false }
   return scene
+}
+
+/** What a confirmed batch import does, decided once in the sheet. */
+type BroadcastImportRun = {
+  include: boolean
+  scope: CarrySelection
+  projectId: string
+  boardId: string
+}
+type BroadcastImportSheetState = {
+  modal: HTMLElement
+  files: readonly File[]
+  previews: readonly string[]
+  include: boolean
+  /** Read when the sheet opened: the selection, or the whole board. */
+  scope: CarrySelection
+  hasObjects: boolean
+  projectId: string
+  sourceBoardId: string
+  restoreFocus: HTMLElement | null
+  busy: boolean
+}
+let broadcastImportSheet: BroadcastImportSheetState | null = null
+
+function revokeBroadcastPreviews(state: BroadcastImportSheetState) {
+  state.previews.forEach(url => URL.revokeObjectURL(url))
+}
+
+function closeBroadcastImportSheet(
+  restoreFocus = true,
+  force = false,
+  expected?: BroadcastImportSheetState,
+) {
+  const state = broadcastImportSheet
+  // A finished older import must not close a newer sheet that opened while it
+  // was decoding. The older sheet was already cleaned up when it was replaced.
+  if (!state || (expected && state !== expected) || (state.busy && !force)) return
+  broadcastImportSheet = null
+  state.modal.classList.add('hidden')
+  window.setTimeout(() => {
+    revokeBroadcastPreviews(state)
+    state.modal.remove()
+  }, reducedMotion() ? 0 : 400)
+  // Import results are announced while the sheet still owns the bottom inset.
+  // Release that inset as soon as the sheet leaves.
+  if (toastEl.classList.contains('is-open')) toastBandEl.style.bottom = ''
+  if (restoreFocus && state.restoreFocus?.isConnected) state.restoreFocus.focus()
+}
+
+function syncBroadcastImportSheet() {
+  const state = broadcastImportSheet
+  if (!state) return
+  const toggle = state.modal.querySelector<HTMLButtonElement>('[data-import-include]')
+  if (toggle) {
+    const on = state.include && state.hasObjects
+    toggle.setAttribute('aria-checked', String(on))
+    toggle.disabled = state.busy || !state.hasObjects
+    toggle.querySelector<HTMLElement>('.mTrack')?.setAttribute('data-on', String(on))
+  }
+  state.modal.querySelector<HTMLElement>('.broadcastImportSheet')?.setAttribute('aria-busy', String(state.busy))
+  state.modal.querySelectorAll<HTMLButtonElement>('[data-import="cancel"]').forEach(item => { item.disabled = state.busy })
+  const submit = state.modal.querySelector<HTMLButtonElement>('[data-import="go"]')
+  if (submit) { submit.disabled = state.busy; submit.textContent = state.busy ? 'Importing...' : 'Import' }
+}
+
+function openBroadcastImportSheet(files: readonly File[]) {
+  closeBroadcastImportSheet(false, true)
+  const previews = files.map(file => URL.createObjectURL(file))
+  const selected = selectedObjects().map(object => object.id)
+  const objectCount = store.scene.objects.length
+  const hasObjects = objectCount > 0
+  // what would be carried is settled here and not asked about again
+  const scope: CarrySelection = selected.length ? selected : 'all'
+  const carryCount = selected.length || objectCount
+  const state: BroadcastImportSheetState = {
+    modal: document.createElement('div'),
+    files: [...files],
+    previews,
+    include: hasObjects,
+    scope,
+    hasObjects,
+    projectId: currentProject(library).id,
+    sourceBoardId: currentBoard()?.id ?? '',
+    restoreFocus: document.querySelector<HTMLElement>('[data-top="live-shot"]'),
+    busy: false,
+  }
+  state.modal.className = 'modal broadcastImportModal'
+  state.modal.innerHTML = `
+    <div class="sheet broadcastImportSheet" role="dialog" aria-modal="true" aria-label="Import ${files.length} boards">
+      <div class="sheetHead">
+        <strong>Import ${files.length} boards</strong>
+        <span class="sheetBtns"><button data-import="cancel">Cancel</button><button class="active" data-import="go">Import</button></span>
+      </div>
+      <div class="carryImportPreviews" aria-label="Selected images">${files.map((file, i) => `<span><img src="${previews[i]}" alt="${esc(file.name)}"></span>`).join('')}</div>
+      <div class="setGroup"><button class="setItem carryImportSwitch" role="switch" aria-checked="${hasObjects}" data-import-include${hasObjects ? '' : ' disabled'}>
+        <span class="setItemLabel">Include current objects on imported boards<span class="setItemNote">${hasObjects
+          ? `${selected.length ? `The ${carryCount} selected object${carryCount === 1 ? '' : 's'}` : `All ${carryCount} object${carryCount === 1 ? '' : 's'} on this board`} land on every imported board. They stay here too.`
+          : 'This board has no objects to include.'}</span></span>
+        <span class="mTrack t-toggle" data-on="${hasObjects}"><span class="mThumb t-toggle-thumb"></span></span>
+      </button></div>
+    </div>`
+  broadcastImportSheet = state
+  document.body.appendChild(state.modal)
+  syncBroadcastImportSheet()
+  state.modal.addEventListener('click', e => {
+    const target = e.target as HTMLElement
+    if (state.busy) return
+    if (target === state.modal || target.closest('[data-import="cancel"]')) {
+      closeBroadcastImportSheet()
+      return
+    }
+    const includeToggle = target.closest<HTMLElement>('[data-import-include]')
+    if (includeToggle && !includeToggle.hasAttribute('disabled')) {
+      // the thumb only animates once the switch has been used, as in Match
+      includeToggle.querySelector<HTMLElement>('.mTrack')?.classList.add('is-init')
+      state.include = !state.include
+      syncBroadcastImportSheet()
+      return
+    }
+    if (target.closest('[data-import="go"]')) {
+      state.busy = true
+      syncBroadcastImportSheet()
+      void importLiveShots(state.files, {
+        include: state.include && state.hasObjects,
+        scope: state.scope,
+        projectId: state.projectId,
+        boardId: state.sourceBoardId,
+      }).finally(() => closeBroadcastImportSheet(false, true, state))
+    }
+  })
+  state.modal.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      closeBroadcastImportSheet()
+      return
+    }
+    if (e.key !== 'Tab') return
+    const stops = Array.from(state.modal.querySelectorAll<HTMLElement>('button:not([disabled])'))
+    if (!stops.length) return
+    const edge = e.shiftKey ? stops[0] : stops[stops.length - 1]
+    if (document.activeElement !== edge) return
+    e.preventDefault()
+    ;(e.shiftKey ? stops[stops.length - 1] : stops[0]).focus()
+  })
+  state.modal.querySelector<HTMLElement>('[data-import="go"]')?.focus()
 }
 
 /**
@@ -4140,29 +6544,60 @@ function broadcastShotScene(meta: BackgroundMeta): Scene {
  * added after the board being edited. The editor lands on the first of them,
  * which is the one the user is looking for.
  */
-async function importLiveShots(files: readonly File[]): Promise<boolean> {
+async function importLiveShots(files: readonly File[], run?: BroadcastImportRun): Promise<boolean> {
+  if (!run) {
+    openBroadcastImportSheet(files)
+    return false
+  }
+  const scope = run.scope
+  const ref = { projectId: run.projectId, boardId: run.boardId }
+  if (library.currentId === ref.projectId && currentBoard()?.id === ref.boardId) stashEditedBoard(false)
+  let carried: CarryResult = { boards: 0, objects: 0, skipped: 0, added: [] }
+  let carriedCount = 0
   const result = await importBroadcastShots(files, {
     decode: file => decodeImageFile(file, liveShotDecoder),
     save: (img, name) => addBackgroundFromImage(img, name, 'broadcast'),
     name: file => nameFromFile(file.name),
   })
   if (result.saved.length) {
-    stashEditedBoard()
-    const project = currentProject(library)
-    const first = editingBoard + 1
-    let at = editingBoard
+    const project = library.projects.find(item => item.id === ref.projectId)
+    const sourceIndex = project?.boards.findIndex(board => board.id === ref.boardId) ?? -1
+    const sourceBoard = sourceIndex >= 0 ? project!.boards[sourceIndex] : undefined
+    if (!project || !sourceBoard) {
+      showToast(`${result.saved.length} image${result.saved.length === 1 ? '' : 's'} saved to backgrounds, but the source board is no longer available.`)
+      return
+    }
+    carriedCount = scope === 'all'
+      ? sourceBoard.scene.objects.length
+      : sourceBoard.scene.objects.filter(object => scope.includes(object.id)).length
+    const first = sourceIndex + 1
+    let at = sourceIndex
+    const importedIds: string[] = []
     for (const shot of result.saved) {
-      addBoard(project, at, false, broadcastShotScene(shot.meta)).title = shot.name
+      addBoard(project, at, false, broadcastShotScene(shot.meta, sourceBoard.scene.match)).title = shot.name
+      const imported = project.boards[at + 1]
+      if (imported) importedIds.push(imported.id)
       at += 1
     }
-    editingBoard = first
-    const opened = project.boards[editingBoard]
+    // one switch, one meaning: the objects land on every board that arrived
+    if (run.include) carried = carryObjects(project, sourceBoard.id, importedIds, scope)
     touch(project)
-    rememberBoard(library, project.id, opened.id)
-    saveProjectChanges(project)
-    loadBoardIntoEditor(opened.scene)
+    if (library.currentId === project.id) {
+      editingBoard = first
+      const opened = project.boards[editingBoard]
+      rememberBoard(library, project.id, opened.id)
+      saveProjectChanges(project)
+      loadBoardIntoEditor(opened.scene)
+    } else {
+      saveProjectChanges(project)
+    }
   }
-  showToast(shotImportMessage(result))
+  const carryNote = carried.objects
+    ? ` Carried ${carriedCount} object${carriedCount === 1 ? '' : 's'} to ${carried.boards} board${carried.boards === 1 ? '' : 's'}. They stay on the source board too.`
+    : ''
+  // Undo takes the copies back off the new boards; the boards themselves are
+  // the import and stay where they are.
+  showToast(`${shotImportMessage(result)}${carryNote}`, undoCarryAction(ref.projectId, carried.added))
   return result.saved.length > 0
 }
 
@@ -4186,11 +6621,13 @@ document.querySelector('[data-live-file]')!.addEventListener('change', (e) => {
 /* ---------- match settings (cog): scoreboard + team codes overlay ---------- */
 
 const matchEl = document.createElement('div')
-matchEl.className = 'modal hidden'
+// Settings is one of the ways into this sheet now, so it has to sit above it
+// rather than behind: it is a step further in, not a second sheet beside it.
+matchEl.className = 'modal matchModal hidden'
 matchEl.innerHTML = `
   <div class="sheet matchSheet">
     <div class="sheetHead">
-      <strong>Match</strong>
+      <strong>Board settings</strong>
       <button data-match="close">Close</button>
     </div>
     <label class="mField">
@@ -4230,6 +6667,9 @@ matchEl.innerHTML = `
     </div>
   </div>`
 document.body.appendChild(matchEl)
+
+
+
 
 // coalesce match-field typing into one undo entry per editing session
 matchEl.addEventListener('focusin', (e) => {
@@ -4350,7 +6790,15 @@ matchEl.addEventListener('input', (e) => {
 
 // The managed service uses the Tactics Journal account header. A self-host
 // build stays local and does not contact or advertise the hosted account API.
-const tjHeader = BOARD_SELF_HOSTED ? null : initTjHeader()
+const tjHeader = BOARD_SELF_HOSTED ? null : initTjHeader({
+  onChangelogClose: () => { markChangelogSeen(changelog); clearChangelogBadge() },
+})
+
+/** Reading the entries is what marks them read, so the dots go together. */
+function clearChangelogBadge() {
+  document.querySelector('.site-menu-badge')?.remove()
+  document.querySelectorAll('.site-changelog-entry.is-unread').forEach(entry => entry.classList.remove('is-unread'))
+}
 const closeSiteMenu = () => tjHeader?.closeMenu()
 if (!BOARD_SELF_HOSTED) initTjSearch()
 
@@ -4378,6 +6826,12 @@ settingsEl.innerHTML = `
     <div class="setPane" data-pane="root">
       <div class="setGroupHead">Board</div>
       <div class="setGroup">
+        <button class="setItem" data-set="board-settings">
+          ${icon('settings')}
+          <span class="setItemLabel">Board settings</span>
+          <span class="setItemValue" data-match-summary></span>
+          ${icon('chevron-right', 'ic setChev')}
+        </button>
         <button class="setItem" data-goto="teams" data-side-row="home">
           <span class="setDot" data-side-dot="home"></span>
           <span class="setItemLabel">Home</span>
@@ -4411,6 +6865,16 @@ settingsEl.innerHTML = `
             <button data-set="theme-dark" aria-pressed="false">Dark</button>
           </span>
         </div>
+      </div>
+
+      <div class="setGroupHead">Editor</div>
+      <div class="setGroup">
+        <button class="setItem" data-goto="tools">
+          ${icon('adjustments')}
+          <span class="setItemLabel">Tool settings</span>
+          <span class="setItemValue" data-tools-summary></span>
+          ${icon('chevron-right', 'ic setChev')}
+        </button>
       </div>
 
       <div class="setGroupHead">Projects</div>
@@ -4531,7 +6995,63 @@ settingsEl.innerHTML = `
         <p><b>Data sources.</b> Team search and kit colors use TheSportsDB public API. Squad names, shirt numbers and positions are read from current squad sections on Wikipedia through the Wikipedia API. Third-party data may be incomplete, delayed or inaccurate; verify it before publishing.</p>
         <p><b>Copyright.</b> Except for identified third-party materials, the software and bundled assets are available under the MIT license. Club names, player names, colors and other source data remain the property of their respective owners and data providers. Tactics Journal and Tactics Board names and logos are reserved trademarks.</p>
         <p><b>Interface icons.</b> The icons in Settings and the menus are <a href="https://tabler.io/icons" target="_blank" rel="noopener">Tabler Icons</a>, copyright Paweł Kuna, used under the MIT license. The full license text is served at <a href="/LICENSE-icons" target="_blank" rel="noopener">/LICENSE-icons</a>.</p>
-        ${BOARD_SELF_HOSTED ? '<p><b>Self-hosting.</b> This installation is operated by its owner, not Tactics Journal. See the repository license and trademark policy for the terms that apply.</p>' : '<p><b>Hosted service.</b> You may use exported board images for editorial, educational, social, internal and commercial work. Where an export uses Tactics Journal pitch artwork, the Tactics Journal watermark must remain visible. An export built on your own uploaded background or imported screenshot carries no Tactics Journal branding and no such condition. Use of the official hosted service is subject to the <a href="https://tacticsjournal.com/terms/" target="_blank" rel="noopener">Terms of Service</a>, <a href="https://tacticsjournal.com/privacy/" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://tacticsjournal.com/cookies/" target="_blank" rel="noopener">Cookie Policy</a>.</p>'}
+        ${BOARD_SELF_HOSTED ? '<p><b>Self-hosting.</b> This installation is operated by its owner, not Tactics Journal. See the repository license and trademark policy for the terms that apply.</p>' : '<p><b>Hosted service.</b> You may use exported board images for editorial, educational, social, internal and commercial work. Where an export uses Tactics Journal pitch artwork, the Tactics Journal watermark must remain visible. An export built on your own uploaded background or imported screenshot adds no branding to the image itself. If you add the Tactics Journal scoreboard, that scoreboard includes its logo and domain. Use of the official hosted service is subject to the <a href="https://tacticsjournal.com/terms/" target="_blank" rel="noopener">Terms of Service</a>, <a href="https://tacticsjournal.com/privacy/" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://tacticsjournal.com/cookies/" target="_blank" rel="noopener">Cookie Policy</a>.</p>'}
+      </div>
+    </div>
+    <div class="setPane hidden" data-pane="self-host">
+      <div class="selfHostSection">
+        <h3 class="skillsHeading">Run Board yourself</h3>
+        <p class="skillsIntro">Board is open source. Except for identified third-party materials, the software and bundled non-trademark assets are MIT licensed, so you can build the board and serve it from your own machine or domain.</p>
+      </div>
+
+      <div class="setGroupHead">Build it</div>
+      <div class="setGroup">
+        <div class="setItem setItemStatic selfHostCode">
+          <code class="setCode setCodeBlock" data-self-host-command>${SELF_HOST_COMMANDS}</code>
+          <button class="setItemAction setCopy" data-self-host-copy aria-label="Copy the self-host commands">${icon('copy')}Copy</button>
+        </div>
+      </div>
+      <p class="setNote">Then serve the <code>dist</code> folder on localhost or your own HTTPS domain. To work on the board with Vite instead, run <code>BOARD_SELF_HOSTED=true npm run dev</code>.</p>
+      ${BOARD_SELF_HOSTED ? '<p class="setNote setNoteStrong">This installation is already a self-host build.</p>' : ''}
+
+      <div class="setGroupHead">What self-hosting changes</div>
+      <div class="setGroup">
+        <div class="setItem setItemStatic selfHostFact">
+          ${icon('check')}
+          <span class="setItemLabel">Local editing and export features are free on hosted and self-hosted Board.</span>
+        </div>
+        <div class="setItem setItemStatic selfHostFact">
+          ${icon('puzzle')}
+          <span class="setItemLabel">Extensions you place in <code>public/extensions</code> run in your build. The official hosted board does not run third-party extensions.</span>
+        </div>
+        <div class="setItem setItemStatic selfHostFact">
+          ${icon('lock')}
+          <span class="setItemLabel">Cloud sync, collaboration and agent links need Tactics Journal-operated services, so a self-host build does not provide them.</span>
+        </div>
+        <div class="setItem setItemStatic selfHostFact">
+          ${icon('copyright')}
+          <span class="setItemLabel">The installation is operated by whoever runs it, not by Tactics Journal. The Tactics Journal and Tactics Board names and logos stay reserved.</span>
+        </div>
+      </div>
+
+      <div class="setGroupHead">Project</div>
+      <div class="setGroup">
+        <a class="setItem selfHostLink" href="${SELF_HOST_REPO}" target="_blank" rel="noopener">
+          <span class="setItemLabel">Source code and README</span>${icon('external-link')}
+        </a>
+        <a class="setItem selfHostLink" href="${SELF_HOST_REPO}/blob/main/LICENSE" target="_blank" rel="noopener">
+          <span class="setItemLabel">MIT license</span>${icon('external-link')}
+        </a>
+        <a class="setItem selfHostLink" href="${SELF_HOST_REPO}/blob/main/TRADEMARKS.md" target="_blank" rel="noopener">
+          <span class="setItemLabel">Trademark policy</span>${icon('external-link')}
+        </a>
+      </div>
+
+      <div class="setGroup selfHostBack">
+        <button class="setItem" data-goto="root">
+          ${icon('chevron-left', 'ic setChev')}
+          <span class="setItemLabel">Back to Settings</span>
+        </button>
       </div>
     </div>
     <div class="setPane hidden" data-pane="self-host">
@@ -4711,6 +7231,18 @@ settingsEl.innerHTML = `
         <button class="setStatusUndo" data-set="pitch-undo" aria-label="Undo the pitch change" hidden>Undo</button>
       </div>
       <p class="setNote">Every pitch style, screenshot import, cone, goal, and custom background is free.</p>
+      <div class="setGroupHead">Styles on this pitch</div>
+      <div class="setGroup">
+        <button class="setItem" data-set="styles-save">
+          ${icon('check')}
+          <span class="setItemLabel">Save these styles as the default</span>
+        </button>
+        <button class="setItem" data-set="styles-reset">
+          ${icon('arrows-exchange')}
+          <span class="setItemLabel">Reset to the original</span>
+        </button>
+      </div>
+      <p class="setNote">Colours, thicknesses and sizes are remembered per pitch, so a broadcast board can start white while a drawn pitch starts dark. New boards on this pitch start here; the ones you have drawn stay as they are.</p>
       <div class="setGroupHead">Your backgrounds<span class="setGroupCount" data-bg-usage></span></div>
       <div class="pitchGrid" data-bg-grid></div>
       <p class="setNote" data-bg-note></p>
@@ -4743,6 +7275,15 @@ settingsEl.innerHTML = `
     </div>
     <div class="setPane hidden" data-pane="proposals">
       <div data-proposals-host></div>
+    </div>
+    <div class="setPane hidden" data-pane="tools">
+      <p class="setNote setToolsIntro">The controls above the board, in the order they appear there. Anything switched off moves into the menu rather than away, and the menu itself stays put.</p>
+      <div class="setGroup" data-tools-list></div>
+      <div class="setGroup">
+        <button class="setItem" data-set="tools-reset">
+          <span class="setItemLabel">Reset to the default bar</span>
+        </button>
+      </div>
     </div>
     <div class="impStatus" data-set-note role="status" aria-live="polite"></div>
   </div>`
@@ -4794,7 +7335,7 @@ const boardProposals = new BoardProposalsPanel({
 settingsEl.querySelector('[data-proposals-host]')!.appendChild(boardProposals.el)
 
 /** Settings is one list plus push screens; every screen but root has a back arrow. */
-type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'history' | 'proposals' | 'pro' | 'agents' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets' | 'self-host'
+type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'history' | 'proposals' | 'tools' | 'pro' | 'agents' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets' | 'self-host'
 
 const SCREEN_TITLES: Record<SetScreen, string> = {
   root: 'Settings',
@@ -4803,6 +7344,7 @@ const SCREEN_TITLES: Record<SetScreen, string> = {
   boards: 'Move to another device',
   history: 'Version history',
   proposals: 'Proposals',
+  tools: 'Tool settings',
   assets: 'My assets',
   pro: 'Plans',
   agents: 'Claude and ChatGPT',
@@ -4815,6 +7357,8 @@ const SCREEN_TITLES: Record<SetScreen, string> = {
   feedback: 'Feedback',
   'self-host': 'Self-host',
 }
+
+function screenTitle(next: SetScreen): string { return SCREEN_TITLES[next] }
 
 let screen: SetScreen = 'root'
 let pitchUndoDepth: number | null = null
@@ -4845,6 +7389,375 @@ function renderSkillsScreen(): void {
     paths.innerHTML = available.length ? `<p class="skillsIntro">Available on this deployment</p>${available.map(path => `<button class="setItem" data-extension-path="${esc(path)}"><span class="setItemLabel">${esc(path)}</span>${icon('chevron-right', 'ic setChev')}</button>`).join('')}` : '<div class="skillsEmpty">No extension directories in this build.</div>'
   }
   void pullCurrentSkills().then(changed => { if (changed && screen === 'skills') renderSkillsScreen() })
+}
+
+/* ---------- appearance ----------
+   How the open board is drawn. Every property the board has, divided by the
+   piece it belongs to, over the board it is being done to.
+
+   Free, like every local edit. Pro is what carries a styled board to another
+   device, and it does that already: the appearance rides on the scene. */
+
+/** What the board is wearing, filled in. */
+function boardLook(): ResolvedAppearance { return resolveAppearance(store.scene.appearance) }
+
+/** Write one appearance property onto the open board. */
+function setBoardAppearance(key: AppearanceKey, value: string | number) {
+  store.apply(scene => { scene.appearance = withAppearance(scene.appearance, key, value) })
+}
+
+/* ---------- the editor ---------- */
+
+const LOOK_GROUPS: readonly { id: AppearanceGroup; label: string }[] = [
+  { id: 'type', label: 'Font' },
+  { id: 'player', label: 'Players' },
+  { id: 'arrow', label: 'Arrows' },
+  { id: 'zone', label: 'Zones' },
+  { id: 'text', label: 'Labels' },
+  { id: 'marker', label: 'Markers' },
+]
+
+const LOOK_LABELS: Record<string, string> = {
+  'font': 'Family', 'tracking': 'Tracking',
+  'player.outline': 'Ring', 'player.outlineColor': 'Ring color',
+  'player.shadow': 'Shadow', 'player.shadowColor': 'Shadow color', 'player.shadowAngle': 'Shadow angle',
+  'player.numberColor': 'Number', 'player.nameColor': 'Name', 'player.nameWeight': 'Name weight',
+  'player.nameHalo': 'Name halo', 'player.nameHaloColor': 'Halo color',
+  'marker.nameColor': 'Name', 'marker.nameHalo': 'Name halo', 'marker.nameHaloColor': 'Halo color',
+  'arrow.shadow': 'Shadow', 'arrow.head': 'Head size', 'arrow.opacity': 'Opacity',
+  'zone.border': 'Border', 'zone.borderStyle': 'Border style', 'zone.borderColor': 'Border color', 'zone.labelColor': 'Label',
+  'text.halo': 'Halo', 'text.haloColor': 'Halo color',
+}
+
+const ENUM_LABELS: Record<string, string> = {
+  normal: 'Regular', bold: 'Bold', solid: 'Solid', dashed: 'Dashed',
+}
+
+/** How a number reads. Percentages where the value is a share of something. */
+function lookValueText(key: AppearanceKey, value: string | number): string {
+  if (typeof value !== 'number') return String(value)
+  if (key === 'player.outline') return value ? `${Math.round(value * 100)}%` : 'None'
+  if (key === 'arrow.head' || key === 'arrow.opacity') return `${Math.round(value * 100)}%`
+  if (key === 'player.shadowAngle') return `${Math.round(value)}\u00b0`
+  if (key === 'player.shadow' || key === 'arrow.shadow') return value ? String(value) : 'None'
+  // Zero tracking is normal spacing, not the absence of any.
+  if (key === 'tracking') return `${value}px`
+  return value ? `${value}px` : 'None'
+}
+
+let lookGroup: AppearanceGroup = 'player'
+
+/* Six of the colours a board is usually drawn in, so the common answer is one
+   tap and the wheel is only for the uncommon one. */
+const LOOK_SWATCHES = ['#0b0b0e', '#ffffff', '#e02020', '#f2c744', '#1e2f6f', '#16a34a'] as const
+
+function targetAppearance(): BoardAppearance | undefined { return store.scene.appearance }
+function readLook(key: AppearanceKey): string | number { return resolveAppearance(targetAppearance())[key] }
+
+/**
+ * Write one property and repaint what changed. The board behind the panel is
+ * the preview, so it redraws itself; what is left here is the row. A slider
+ * writes on every pointer move, so rebuilding the list would tear the control
+ * out from under the finger, and only a change of shape rebuilds it.
+ */
+function writeLook(key: AppearanceKey, value: string | number) {
+  const spec = appearanceSpec(key)
+  const was = readLook(key)
+  setBoardAppearance(key, value)
+  const now = readLook(key)
+  if (now === was) return
+  // A choice row moves its mark, and a colour crossing into or out of
+  // automatic brings its reset row with it. Everything else is one row.
+  if (spec.kind === 'font') { refreshFontChoice(); return }
+  if (spec.kind === 'enum' || (was === AUTO) !== (now === AUTO)) { renderQuickSet(); return }
+  refreshLookRow(key)
+}
+
+/**
+ * The chosen family marked in whichever screen is showing. Rebuilding the font
+ * screen would take the search field and the scroll position with it, and
+ * choosing a face to look at it is exactly when someone is still scrolling.
+ */
+function refreshFontChoice(): void {
+  const value = String(readLook('font'))
+  for (const el of quickSetEl.querySelectorAll<HTMLElement>('[data-font-preview]')) {
+    const on = el.dataset.fontPreview === value
+    if (el.getAttribute('aria-pressed') === String(on)) continue
+    el.setAttribute('aria-pressed', String(on))
+    const mark = el.lastElementChild
+    if (mark) mark.outerHTML = on ? icon('check', 'ic setChev') : '<span class="setItemValue lookEg">Aa 6</span>'
+  }
+  const row = quickSetEl.querySelector<HTMLElement>('[data-panel="font"] .setItemValue')
+  if (row) { row.textContent = fontLabel(value); row.style.fontFamily = fontStack(value) }
+}
+
+/** One row's value, slider and swatch brought back in step with the board. */
+function refreshLookRow(key: AppearanceKey): void {
+  const row = quickSetEl.querySelector<HTMLElement>(`[data-look-row="${CSS.escape(key)}"]`)
+  if (!row) return
+  const value = readLook(key)
+  const out = row.querySelector<HTMLElement>('[data-look-value]')
+  if (out) out.textContent = lookValueText(key, value)
+  const range = row.querySelector<HTMLInputElement>('[data-look-range]')
+  if (range && Number(range.value) !== Number(value)) range.value = String(value)
+  const dot = row.querySelector<HTMLElement>('.setDot')
+  if (dot && value !== AUTO) dot.style.background = String(value)
+}
+
+/**
+ * Appearance as a panel screen. There is no preview and no paragraph: the
+ * board is behind the panel at full size, drawn by the renderer rather than
+ * by a second copy of it, so what a slider does is visible on the thing it
+ * is being done to.
+ */
+/**
+ * A scrolling strip rather than a fixed track: six tabs already clipped the
+ * last of them, and the pieces a board has are still being added to. It stays
+ * with the nav, so changing group never means scrolling back for the strip.
+ */
+function panelGroupChips(): string {
+  return `<div class="panelChips" role="tablist" aria-label="Piece">${LOOK_GROUPS.map(group =>
+    `<button role="tab" data-look-group="${group.id}" aria-selected="${group.id === lookGroup}">${esc(group.label)}<i>${keysInGroup(group.id).length}</i></button>`).join('')}</div>`
+}
+
+function panelAppearanceHtml(): string {
+  return `<div class="setGroup panelList">${keysInGroup(lookGroup).map(lookRow).join('')}</div>`
+}
+
+/* ---------- the font screen ---------- */
+
+/**
+ * Type is a screen of its own rather than a row in a list, because the choice
+ * is two thousand long. Twenty-one of them are here without a network - five
+ * stacks every device already has and sixteen families we ship - and the rest
+ * of Google's library is behind the search field, one file fetched on the tap
+ * that chooses it and kept from then on.
+ */
+let fontQuery = ''
+let fontResults: FontChoice[] = []
+let fontSearchTimer = 0
+
+function fontSearchHtml(): string {
+  if (!FONT_SEARCH_AVAILABLE) return ''
+  return `<div class="fontSearch">
+    <input type="search" data-font-search placeholder="Search Google Fonts" aria-label="Search Google Fonts"
+      autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(fontQuery)}">
+  </div>`
+}
+
+/** One row, set in the family it offers: a name says less about a face than the face does. */
+function fontItem(id: string, label: string): string {
+  const on = readLook('font') === id
+  return `<button class="setItem fontItem" data-look-set="font:${esc(id)}" data-font-preview="${esc(id)}"
+    aria-pressed="${on}" style="font-family:${esc(fontStack(id))}">
+    <span class="setItemLabel">${esc(label)}</span>
+    ${on ? icon('check', 'ic setChev') : '<span class="setItemValue lookEg">Aa 6</span>'}
+  </button>`
+}
+
+function fontSection(title: string, rows: string): string {
+  return `<div class="setGroup panelList"><p class="setNote">${esc(title)}</p>${rows}</div>`
+}
+
+function fontListHtml(): string {
+  if (fontQuery.trim()) {
+    if (!fontResults.length) return fontSection('Search', '<p class="setNote">No family by that name.</p>')
+    return fontSection('Google Fonts', fontResults.map(font => fontItem(font.id, font.family)).join(''))
+  }
+  return fontSection('On this device', SYSTEM_FONTS.map(font => fontItem(font.id, font.label)).join(''))
+    + fontSection('Included', BUNDLED_FONTS.map(font => fontItem(font.id, font.family)).join(''))
+}
+
+/**
+ * Fetch a family's file ahead of its row, so a face is there when the row
+ * arrives rather than after it has gone by. A search returns sixty families
+ * and a file is a round trip: loading a row as it crosses the edge of the
+ * screen means every row reads in the fallback, which is the one thing this
+ * screen must not do - a list of names all set in the same face is a list
+ * that says nothing.
+ *
+ * So the margin is most of a screen ahead rather than a hair, and what is
+ * saved is the long tail: the fifty rows below, and the second weight, which
+ * no row here draws. Choosing a family is what fetches its bold.
+ */
+let fontWatcher: IntersectionObserver | null = null
+function watchFontPreviews(): void {
+  if (typeof IntersectionObserver === 'undefined') return
+  fontWatcher?.disconnect()
+  const root = quickSetEl.querySelector<HTMLElement>('.panelScroll')
+  if (!root) return
+  fontWatcher = new IntersectionObserver((entries, observer) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue
+      const el = entry.target as HTMLElement
+      const id = el.dataset.fontPreview!
+      observer.unobserve(el)
+      ensureFont(id, { preview: true }).then(ok => { if (ok && el.isConnected) el.style.fontFamily = fontStack(id) })
+    }
+  }, { root, rootMargin: '600px' })
+  for (const el of quickSetEl.querySelectorAll<HTMLElement>('[data-font-preview]')) fontWatcher.observe(el)
+}
+
+/** Only the list is rebuilt, so what has been typed keeps the caret and focus. */
+function refreshFontList(): void {
+  const scroll = quickSetEl.querySelector<HTMLElement>('.panelScroll')
+  if (!scroll) return
+  scroll.innerHTML = fontListHtml()
+  scroll.scrollTo(0, 0)
+  watchFontPreviews()
+}
+
+function runFontSearch(query: string): void {
+  fontQuery = query
+  const asked = query
+  if (!query.trim()) { fontResults = []; refreshFontList(); return }
+  searchFonts(query).then(rows => {
+    if (fontQuery !== asked) return
+    fontResults = rows
+    refreshFontList()
+  })
+}
+
+function lookRow(key: AppearanceKey): string {
+  const spec = appearanceSpec(key)
+  const value = readLook(key)
+  const label = LOOK_LABELS[key] ?? key
+  if (spec.kind === 'font') {
+    return `<button class="setItem" data-panel="font" aria-label="Family">
+      <span class="setItemLabel">Family</span>
+      <span class="setItemValue" style="font-family:${esc(fontStack(String(value)))}">${esc(fontLabel(String(value)))}</span>
+      ${icon('chevron-right', 'ic setChev')}
+    </button>`
+  }
+  if (spec.kind === 'enum') {
+    const options = spec.values.map(v => [v, ENUM_LABELS[v] ?? v] as const)
+    return `<div class="setItem setItemStatic"><span class="setItemLabel">${esc(label)}</span>
+      <span class="setSeg" role="group" aria-label="${esc(label)}">${options.map(([id, text]) =>
+        `<button class="${id === value ? 'active' : ''}" data-look-set="${esc(key)}:${esc(id)}" aria-pressed="${id === value}">${esc(text)}</button>`).join('')}</span></div>`
+  }
+  if (spec.kind === 'color' || spec.kind === 'autoColor') {
+    const auto = value === AUTO
+    const open = lookSwatchKey === key
+    const row = `<button class="setItem${open ? ' isOpen' : ''}" data-look-color="${esc(key)}" data-look-row="${esc(key)}" aria-expanded="${open}">
+      <span class="setItemLabel">${esc(label)}</span>
+      ${auto ? '' : `<span class="setDot" style="background:${esc(String(value))}"></span>`}
+      <span class="setItemValue">${auto ? 'Automatic' : esc(String(value).toUpperCase())}</span>
+    </button>`
+    if (!open) return row
+    /* Six swatches under the row rather than a colour wheel wedged into the
+       list. The wheel is one tap further, in the dock it already lives in. */
+    const swatches = LOOK_SWATCHES.map(hex =>
+      `<button class="lookSwatch${String(value).toLowerCase() === hex ? ' on' : ''}" style="background:${hex}"
+        data-look-set="${esc(key)}:${hex}" aria-label="${hex}"></button>`).join('')
+    const auto_row = spec.kind === 'autoColor'
+      ? `<button class="lookSwatchAuto${auto ? ' on' : ''}" data-look-set="${esc(key)}:${AUTO}">Automatic</button>` : ''
+    return row + `<div class="lookSwatches">${swatches}${auto_row}
+      <button class="lookMore" data-look-wheel="${esc(key)}">More${icon('chevron-right', 'ic setChev')}</button></div>`
+  }
+  /* The whole row is the control. A stepper next to a type-in box left four
+     targets in a phone's width and none of them big enough; a slider takes the
+     width it needs, and the value is a button that becomes a box when a number
+     has to be exact. Arrow keys still nudge it by one step. */
+  return `<div class="setItem setItemStatic lookRow" data-look-row="${esc(key)}">
+    <span class="lookRowHead">
+      <span class="setItemLabel">${esc(label)}</span>
+      <button type="button" class="lookValue" data-look-edit="${esc(key)}" data-look-value
+        aria-label="Type a value for ${esc(label.toLowerCase())}">${lookValueText(key, value)}</button>
+    </span>
+    <input type="range" class="lookRange" data-look-range="${esc(key)}"
+      min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${value}" aria-label="${esc(label)}">
+  </div>`
+}
+
+/** The value read as a box, for the times a number has to be exact. */
+function editLookValue(key: AppearanceKey): void {
+  const row = quickSetEl.querySelector<HTMLElement>(`[data-look-row="${CSS.escape(key)}"]`)
+  const button = row?.querySelector<HTMLElement>('[data-look-edit]')
+  if (!row || !button) return
+  const input = document.createElement('input')
+  input.className = 'labelIn lookNum'
+  input.dataset.lookNum = key
+  input.value = String(readLook(key))
+  input.inputMode = 'decimal'
+  input.setAttribute('aria-label', `${LOOK_LABELS[key] ?? key} value`)
+  const done = () => {
+    const typed = Number(input.value)
+    input.replaceWith(button)
+    // Typed is typed: the property's range still holds, but nothing else does.
+    if (Number.isFinite(typed)) writeLook(key, typed)
+    refreshLookRow(key)
+  }
+  input.addEventListener('blur', done)
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur() }
+    if (e.key === 'Escape') { e.preventDefault(); input.replaceWith(button) }
+  })
+  button.replaceWith(input)
+  input.focus()
+  input.select()
+}
+
+/** A dragged slider lands on the property's own step, not on a raw pixel. */
+function snapLook(key: AppearanceKey, raw: number): number {
+  const spec = appearanceSpec(key)
+  if (spec.kind !== 'number') return raw
+  const stepped = Math.round(raw / spec.step) * spec.step
+  return Math.round(Math.min(spec.max, Math.max(spec.min, stepped)) * 1000) / 1000
+}
+
+/** Which colour row has its swatches open. One at a time, or none. */
+let lookSwatchKey: AppearanceKey | null = null
+
+/**
+ * The board's own colour picker, for a colour none of the six swatches has.
+ * It opens where it always opens - the dock - and the panel steps aside for
+ * it the way the styles shelf already does.
+ */
+let lookPickerKey: AppearanceKey | null = null
+function closeAppearancePicker() {
+  if (!lookPickerKey) return
+  lookPickerKey = null
+  pickerOverride = null
+  setPickerOpen(false, false)
+}
+function openLookWheel(key: AppearanceKey) {
+  lookPickerKey = key
+  pickerOverride = {
+    // An automatic colour has to show as something while you pick it.
+    get: () => { const v = readLook(key); return v === AUTO ? '#111827' : String(v) },
+    set: color => { writeLook(key, color) },
+  }
+  setPickerOpen(true)
+}
+
+/**
+ * Tool settings: the bar as a list, in bar order. Arrows move a control one
+ * place; the switch takes it off the bar without forgetting where it sat, so
+ * turning it back on puts it where it was.
+ */
+function renderToolsScreen(): void {
+  const host = settingsEl.querySelector<HTMLElement>('[data-tools-list]')
+  if (!host) return
+  const entries = topBarEntries()
+  const order = topBar.order.filter(id => entries.some(entry => entry.id === id))
+  host.innerHTML = order.map((id, i) => {
+    const entry = entries.find(item => item.id === id)!
+    const on = isTopBarVisible(topBar, id)
+    const fixed = FIXED_TOP_BAR.includes(id)
+    return `<div class="setItem setToolRow${on ? '' : ' isOff'}">
+      <span class="setToolMove">
+        <button type="button" data-tools-move="${esc(id)} up" aria-label="Move ${esc(entry.label)} earlier"${i === 0 ? ' disabled' : ''}>${icon('chevron-up')}</button>
+        <button type="button" data-tools-move="${esc(id)} down" aria-label="Move ${esc(entry.label)} later"${i === order.length - 1 ? ' disabled' : ''}>${icon('chevron-down')}</button>
+      </span>
+      <span class="setToolIcon" aria-hidden="true">${barIconMarkup(id)}</span>
+      <span class="setItemLabel">${esc(entry.label)}${entry.note ? `<span class="setToolNote">${esc(entry.note)}</span>` : ''}</span>
+      ${fixed
+        ? '<span class="setItemValue">Always on</span>'
+        : `<button type="button" class="setToolSwitch" data-tools-show="${esc(id)}" role="switch" aria-checked="${on}" aria-label="Show ${esc(entry.label)} on the bar"><span class="mTrack t-toggle" data-on="${on}"><span class="mThumb t-toggle-thumb"></span></span></button>`}
+    </div>`
+  }).join('')
+  const summary = settingsEl.querySelector<HTMLElement>('[data-tools-summary]')
+  if (summary) summary.textContent = `${visibleTopBar(topBar).length} of ${order.length}`
 }
 
 function renderOfficialList(): void {
@@ -5023,6 +7936,7 @@ async function flushSkillsForAgentLink(boardId: string): Promise<void> {
 }
 
 function showScreen(next: SetScreen) {
+  closeAppearancePicker()
   const prev = screen
   screen = next
   if (next === 'pro' && prev !== 'pro') void recordProductEvent('pricing_opened')
@@ -5047,18 +7961,19 @@ function showScreen(next: SetScreen) {
     window.setTimeout(() => {
       /* a faster tap may have moved on already; that navigation owns the title */
       if (screen !== next) return
-      titleEl.textContent = SCREEN_TITLES[next]
+      titleEl.textContent = screenTitle(next)
       titleEl.classList.remove('setTitleSwap')
     }, 100)
   } else {
     /* also clears a swap left mid-flight by closing the sheet during one */
     titleEl.classList.remove('setTitleSwap')
-    titleEl.textContent = SCREEN_TITLES[next]
+    titleEl.textContent = screenTitle(next)
   }
 
   ;(settingsEl.querySelector('.setBack') as HTMLElement).hidden = next === 'root'
   settingsEl.querySelector<HTMLElement>('.setSheet')!.scrollTop = 0
   if (next === 'boards') saves.refresh()
+  if (next === 'tools') renderToolsScreen()
   if (next === 'pitch') { renderPitchSeg(); syncLockTags() }
   if (next === 'root') {
     renderRootValues()
@@ -5156,6 +8071,13 @@ function renderRootValues() {
     backupButton.disabled = entitlements.isPro()
     backupLabel.textContent = entitlements.isPro() ? 'All projects sync with Pro' : 'Back up one project free'
     backupValue.textContent = entitlements.isPro() ? 'Active' : backedUp ? backedUp.name : authenticated ? 'Choose current' : 'Sign in'
+  }
+  const toolsSummary = settingsEl.querySelector<HTMLElement>('[data-tools-summary]')
+  if (toolsSummary) toolsSummary.textContent = `${visibleTopBar(topBar).length} of ${topBar.order.length}`
+  const matchSummary = settingsEl.querySelector<HTMLElement>('[data-match-summary]')
+  if (matchSummary) {
+    const m = store.scene.match
+    matchSummary.textContent = m?.showScoreboard ? 'Scoreboard on' : m?.showTeams ? 'Team names on' : 'Off'
   }
   renderAccountRow()
   renderProjectsSummary()
@@ -5479,6 +8401,7 @@ function openSettings(target: SetScreen = 'root') {
   if (target === 'root') startProjectsSummaryTimer()
 }
 function closeSettings() {
+  closeAppearancePicker()
   stopProjectsSummaryTimer()
   disposeExtensionRuntime()
   settingsEl.classList.add('hidden')
@@ -6117,6 +9040,7 @@ function exportBoardsFile() {
   setNote('Boards exported. On your other device, open Settings, then Move to another device, and tap Import from a file.')
 }
 
+
 settingsEl.addEventListener('click', (e) => {
   if (e.target === settingsEl) { closeSettings(); return }
   const gotoBtn = (e.target as HTMLElement).closest('[data-goto]') as HTMLElement | null
@@ -6238,10 +9162,26 @@ settingsEl.addEventListener('click', (e) => {
   if (agentCopy) { void copyAgentMcpUrl(agentCopy); return }
   const providerLink = (e.target as HTMLElement).closest<HTMLAnchorElement>('[data-agent-provider]')
   if (providerLink) { void copyAgentMcpForProvider(providerLink); return }
+  const toolsMove = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-tools-move]')
+  if (toolsMove) {
+    const [id, direction] = toolsMove.dataset.toolsMove!.split(' ')
+    saveTopBar(moveTopBarItem(topBar, id, direction === 'up' ? -1 : 1))
+    settingsEl.querySelector<HTMLButtonElement>(`[data-tools-move="${CSS.escape(id)} ${direction}"]`)?.focus()
+    return
+  }
+  const toolsShow = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-tools-show]')
+  if (toolsShow) {
+    const id = toolsShow.dataset.toolsShow!
+    saveTopBar(setTopBarVisible(topBar, id, !isTopBarVisible(topBar, id)))
+    settingsEl.querySelector<HTMLButtonElement>(`[data-tools-show="${CSS.escape(id)}"]`)?.focus()
+    return
+  }
   const btn = (e.target as HTMLElement).closest('[data-set]') as HTMLElement | null
   if (!btn) return
   const k = btn.dataset.set
   if (k === 'close') closeSettings()
+  else if (k === 'board-settings') openMatchSheet()
+  else if (k === 'tools-reset') saveTopBar(defaultTopBarState())
   else if (k === 'back') {
     setNote('')
     disposeExtensionRuntime()
@@ -6253,6 +9193,8 @@ settingsEl.addEventListener('click', (e) => {
   else if (k === 'theme-light') applyTheme(false)
   else if (k === 'theme-dark') applyTheme(true)
   else if (k === 'pitch-undo') undoPitchChange()
+  else if (k === 'styles-save') savePitchDefaults()
+  else if (k === 'styles-reset') resetPitchDefaults()
   else if (k === 'boards-export') exportBoardsFile()
   else if (k === 'projects') openProjectsScreen()
   else if (k === 'free-backup') void requestFreeBackup('settings')
@@ -6347,6 +9289,7 @@ window.addEventListener('keydown', (e) => {
   if (inField) return
   const openSheet = document.querySelector<HTMLElement>('.modal:not(.hidden)')
   if (e.key === 'Escape') {
+    if (carryMenuOpen()) { e.preventDefault(); closeCarryMenu(); return }
     // same path as tapping the backdrop: the sheet's own click handler closes it
     if (openSheet) { openSheet.dispatchEvent(new MouseEvent('click', { bubbles: true })); return }
     closeSiteMenu()
@@ -6402,8 +9345,7 @@ window.addEventListener('keydown', (e) => {
 function syncTop() {
   ;(document.querySelector('[data-top="undo"]') as HTMLButtonElement).disabled = !store.canUndo
   ;(document.querySelector('[data-top="redo"]') as HTMLButtonElement).disabled = !store.canRedo
-  // nothing to fit when the board is already sitting where it started
-  ;(document.querySelector('[data-top="fit"]') as HTMLButtonElement).disabled = board.isFitView()
+  syncPreviousBoard()
 }
 board.onViewChange = syncTop
 store.subscribe(() => {
@@ -6459,30 +9401,64 @@ function hideBanner() {
   appBanner.innerHTML = ''
 }
 
-/* A toast: one line, no buttons, gone on its own. For telling someone what
-   just happened or where to go, when interrupting them with a banner they have
-   to dismiss would be too much. */
+/* A toast: one line, gone on its own. For telling someone what just happened
+   or where to go, when interrupting them with a banner they have to dismiss
+   would be too much. It can carry one action, for the thing that undoes what
+   the line just reported; without one it takes no pointer at all. */
 const toastBandEl = document.createElement('div')
 toastBandEl.className = 'toastBand'
 const toastEl = document.createElement('div')
 toastEl.className = 'toast t-toast'
 toastEl.setAttribute('role', 'status')
 toastEl.setAttribute('aria-live', 'polite')
+const toastTextEl = document.createElement('span')
+toastTextEl.className = 'toastText'
+const toastActionEl = document.createElement('button')
+toastActionEl.type = 'button'
+toastActionEl.className = 'toastAction'
+toastActionEl.hidden = true
+toastEl.append(toastTextEl, toastActionEl)
 toastBandEl.appendChild(toastEl)
 document.body.appendChild(toastBandEl)
 let toastTimer = 0
+let toastRun: (() => void) | null = null
 
-function showToast(message: string) {
-  toastEl.textContent = message
-  // a sheet owns the bottom of the screen while it is open, so stand above it
-  const sheet = document.querySelector<HTMLElement>('.modal:not(.hidden) > .sheet')
+type ToastAction = { label: string; run: () => void }
+
+/** One button, so it is reachable by keyboard and gone when the toast is. */
+toastActionEl.addEventListener('click', () => {
+  const run = toastRun
+  if (!run) return
+  hideToast()
+  run()
+})
+
+function hideToast() {
+  window.clearTimeout(toastTimer)
+  toastRun = null
+  toastActionEl.hidden = true
+  toastBandEl.style.bottom = ''
+  toastEl.classList.remove('is-open', 'toast--action')
+}
+
+function showToast(message: string, action?: ToastAction) {
+  toastTextEl.textContent = message
+  toastRun = action?.run ?? null
+  toastActionEl.hidden = !action
+  toastActionEl.textContent = action?.label ?? ''
+  toastEl.classList.toggle('toast--action', !!action)
+  // A sheet owns the bottom of the screen while it is open, so a toast down
+  // there stands above it. On a phone the toast is at the top and a sheet can
+  // never reach it, so the band is left where its own rule puts it.
+  const sheet = deskMode ? document.querySelector<HTMLElement>('.modal:not(.hidden) > .sheet') : null
   const clear = sheet ? Math.round(sheet.getBoundingClientRect().height) + 12 : 0
   toastBandEl.style.bottom = clear ? `${clear}px` : ''
   // A second message while one is up keeps the toast where it is and only
   // resets the clock; the class is idempotent, so nothing replays.
   toastEl.classList.add('is-open')
   window.clearTimeout(toastTimer)
-  toastTimer = window.setTimeout(() => toastEl.classList.remove('is-open'), 3200)
+  // an action needs long enough to be read and reached for
+  toastTimer = window.setTimeout(hideToast, action ? 7000 : 3200)
 }
 
 /* The angle a turn is passing through, held at the top of the board for as
@@ -6536,6 +9512,24 @@ appBanner.addEventListener('click', (e) => {
     void requestFreeBackup('fourth_save')
   }
 })
+
+/* A major entry anywhere in the unread run raises the announcement, so it
+   survives a busy week of smaller changes landing on top of it. The toast
+   floats over the board rather than displacing it, so news about a feature
+   never costs the pitch a strip of height the way a warning does, and it names
+   nothing: the panel is one tap away and tells the whole story.
+
+   Showing it is what marks it read: a toast can time out unread, and returning
+   it on the next load would make the announcement a thing to get past. The dot
+   on the menu is the durable half of this and stays until the panel is read. */
+const changelogAnnouncement = BOARD_SELF_HOSTED ? undefined : changelogUnread.some(entry => entry.major)
+if (changelogAnnouncement) {
+  markChangelogSeen(changelog)
+  showToast('New updates', {
+    label: "See what's new",
+    run: () => { tjHeader?.openChangelog() },
+  })
+}
 
 saves.onFreeLimit = () => {
   if (BOARD_SELF_HOSTED || entitlements.isPro()) return
@@ -6615,7 +9609,7 @@ window.addEventListener('tacticsjournal:auth-changed', ((event: CustomEvent) => 
   renderAccountRow()
   // fills blanks only, so a session landing later never clobbers an edit
   prefillFeedback()
-  entitlements.setServerEntitlement(serverPro, serverLicense, serverBoardAdmin)
+  entitlements.setServerEntitlement(serverPro, serverLicense)
   if (authenticated && !previousAuthenticated) {
     const intent = takeFreeBackupIntent(sessionStorage)
     if (intent) queueMicrotask(() => { void requestFreeBackup(intent.source, intent.boardId) })
@@ -7264,10 +10258,60 @@ window.addEventListener('online', () => {
   }
 })
 
-function addSharedProject(draft: AgentImportDraft, projectId: string | null): BoardImportResult {
+/**
+ * Point the editor at the copy that replaced the open project.
+ * openLibraryProject cannot do this: it
+ * stashes the live board into the project it opens, which would push the board
+ * being discarded back into the imported copy.
+ */
+function openReplacedProject(project: Project) {
+  window.clearTimeout(projectAutosaveTimer)
+  disposeExtensionRuntime()
+  library.currentId = project.id
+  editingBoard = 0
+  documentChangeGeneration += 1
+  rememberBoard(library, project.id, project.boards[0].id)
+  saveLibrary(library)
+  if (!saves.activateDocument(project.id)) {
+    loadBoardIntoEditor(project.boards[0].scene)
+    saves.registerNew()
+  }
+  syncPreviousBoard()
+}
+
+/**
+ * Delete one project to make room for the copy. The copy is stored first, so a
+ * device that cannot save it loses nothing.
+ */
+function replaceSharedProject(create: () => Project, projectId: string, scope: 'project' | 'board'): BoardImportResult {
+  const index = library.projects.findIndex(project => project.id === projectId)
+  if (index < 0) return { status: 'failed', message: 'That project is no longer available.' }
+  const removed = library.projects[index]
+  const project = create()
+  if (!saves.persistProjectDocuments([project])) {
+    return { status: 'failed', message: `The ${scope} could not be saved on this device. Nothing was deleted.` }
+  }
+  if (!saves.removeDocument(removed.id)) {
+    // The copy was written before the delete was attempted, so take it back
+    // out rather than leaving a spare row behind.
+    saves.removeDocument(project.id)
+    return { status: 'failed', message: `“${removed.name}” could not be removed on this device. Nothing was deleted.` }
+  }
+  library.projects.splice(index, 1)
+  library.projects.push(project)
+  saveLibrary(library)
+  boardsView.setLibrary(library)
+  if (library.currentId === removed.id) openReplacedProject(project)
+  return { status: 'added', projectId: project.id, projectName: project.name, boardId: project.boards[0].id }
+}
+
+function addSharedProject(draft: AgentImportDraft, projectId: string | null, mode: BoardImportMode = 'append'): BoardImportResult {
   const source = migrateProject(draft.document)
   if (!source) return { status: 'failed', message: 'This project link is invalid.' }
 
+  if (projectId && mode === 'replace') {
+    return replaceSharedProject(() => newProjectFromProjectCopy(source, draft.name), projectId, 'project')
+  }
   if (projectId) {
     const index = library.projects.findIndex(project => project.id === projectId)
     if (index < 0) return { status: 'failed', message: 'That project is no longer available.' }
@@ -7293,11 +10337,14 @@ function addSharedProject(draft: AgentImportDraft, projectId: string | null): Bo
   return { status: 'added', projectId: project.id, projectName: project.name, boardId: project.boards[0].id }
 }
 
-function addSharedBoard(draft: AgentImportDraft, projectId: string | null): BoardImportResult {
+function addSharedBoard(draft: AgentImportDraft, projectId: string | null, mode: BoardImportMode = 'append'): BoardImportResult {
   const imported = migrateProject(draft.document)
   if (!imported || imported.boards.length !== 1) return { status: 'failed', message: 'This board link is invalid.' }
   const source = imported.boards[0]
 
+  if (projectId && mode === 'replace') {
+    return replaceSharedProject(() => newProjectFromBoard(source, draft.name), projectId, 'board')
+  }
   if (projectId) {
     const index = library.projects.findIndex(project => project.id === projectId)
     if (index < 0) return { status: 'failed', message: 'That project is no longer available.' }
@@ -7341,6 +10388,37 @@ if (!BOARD_SELF_HOSTED) startAgentImport({
   addBoard: addSharedBoard,
   addProject: addSharedProject,
   openProject: openLibraryProject,
+})
+
+registerWebMcp({
+  snapshot: () => {
+    const project = JSON.parse(JSON.stringify(currentProject(library))) as Project
+    const board = project.boards[editingBoard]
+    if (board) board.scene = migrate(JSON.parse(JSON.stringify(store.scene)))
+    return project
+  },
+  revision: () => `${library.currentId}:${documentChangeGeneration}:${currentBoard()?.id ?? ''}`,
+  editable: () => (BOARD_SELF_HOSTED || entitlements.isPro()) && !saves.isCurrentReadOnly(),
+  activeBoard: () => currentBoard()?.id ?? '',
+  blankScene: () => emptyScene(store.scene.pitch),
+  commit: (project, expectedRevision, activeBoardId) => {
+    if (`${library.currentId}:${documentChangeGeneration}:${currentBoard()?.id ?? ''}` !== expectedRevision) {
+      throw new Error('WebMCP: The project changed before the edit could be committed.')
+    }
+    if ((!BOARD_SELF_HOSTED && !entitlements.isPro()) || saves.isCurrentReadOnly()) {
+      throw new Error('WebMCP: This project is read-only or WebMCP writes require Pro.')
+    }
+    const current = currentProject(library)
+    if (project.id !== current.id) throw new Error('WebMCP: The current project changed before the edit could be committed.')
+    const index = library.projects.findIndex(item => item.id === project.id)
+    if (index < 0) throw new Error('WebMCP: The current project is no longer available.')
+    library.projects[index] = project
+    const nextIndex = project.boards.findIndex(board => board.id === activeBoardId)
+    editingBoard = nextIndex >= 0 ? nextIndex : Math.min(editingBoard, project.boards.length - 1)
+    rememberBoard(library, project.id, project.boards[editingBoard]?.id)
+    saveProjectChanges(project)
+    loadBoardIntoEditor(project.boards[editingBoard].scene)
+  },
 })
 
 if (!BOARD_SELF_HOSTED) void recordProductEvent('editor_opened')

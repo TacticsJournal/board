@@ -1,9 +1,45 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { stripTypeScriptTypes } from 'node:module'
 import test from 'node:test'
+
+import { attackAngle as attackAngleFor, formationSlotPoint, pitchLayout } from '../src/pitch-map.ts'
+import { normalizeHex } from '../src/types.ts'
 
 const main = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8')
 const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8')
+
+// The shelf lives in a module that expects a browser, so the lineup maths is
+// lifted straight out of it and run against stand-ins for the board around it.
+// It is the shipped code, not a copy of it: the slices come from main.ts.
+const cut = (from: string, to: string) => main.slice(main.indexOf(from), main.indexOf(to))
+const lineupSource = stripTypeScriptTypes(
+  cut('type TeamFormationRole', 'function addTeamFromPlayerMenu') +
+  cut('const AWAY_FALLBACK', 'function shelfCategories'),
+)
+const lineupFactory = new Function('deps', `
+  const { BOARD_W, boardH, store, teams, defaults, uid, normalizeHex, pitchLayout, formationSlotPoint, attackAngleFor } = deps
+  ${lineupSource}
+  return buildLineupObjects
+`) as (deps: Record<string, unknown>) => (teamName: string, sideHint?: 'home' | 'away') => any[]
+
+const BOARD_H = 618
+const DEFAULTS = { playerColor: '#e02020', playerSize: 14, nameSize: 12, showNumbers: true, showFacing: true, showArms: true }
+const buildLineup = (loaded: any[] = []) => {
+  let n = 0
+  return lineupFactory({
+    BOARD_W: 800,
+    boardH: () => BOARD_H,
+    store: { scene: { pitch: 'pitch', objects: [] } },
+    teams: {
+      getTeam: (name: string) => loaded.find(t => t.name === name),
+      getTeamForSide: (side: string) => loaded.find(t => t.side === side),
+    },
+    defaults: { ...DEFAULTS },
+    uid: () => `p${++n}`,
+    normalizeHex, pitchLayout, formationSlotPoint, attackAngleFor,
+  })
+}
 
 test('the shelf renders every category in one continuous track with section rules', () => {
   assert.match(main, /class="shelfScroll" data-shelf-scroll><div class="shelfTrack">/)
@@ -83,4 +119,61 @@ test('project switches rebuild the shelf when pitch and broadcast shapes differ'
   // Background metadata can arrive after the first paint, including for a
   // project restored directly onto an uploaded broadcast still.
   assert.match(main, /backgrounds\.subscribe\(\(\) => \{ renderRootValues\(\); syncPanelPitchMode\(\) \}\)/)
+})
+
+test('the full-lineup cell reads as three player tokens', () => {
+  const eleven = main.slice(main.indexOf('eleven: (color: string)'), main.indexOf('teamPick: (color: string'))
+  // Three tokens, not a formation: eight dots speckled at this size.
+  assert.equal((eleven.match(/\$\{dot\(/g) ?? []).length, 3)
+  assert.match(eleven, /\$\{dot\(17, 10\)\}\$\{dot\(9, 24\)\}\$\{dot\(25, 24\)\}/)
+  // Still the board's token: the team's colour under the same near-black ring.
+  assert.match(eleven, /r="5" fill="\$\{color\}" stroke="#0b0b0e" stroke-width="1\.9"/)
+  assert.match(eleven, /viewBox="0 0 34 34"/)
+  // Only the picture changed - the cell still names and places a whole eleven.
+  assert.match(main, /title: `\$\{team\.name\} eleven`/)
+  assert.match(main, /art: shelfArt\.eleven\(team\.color\)/)
+})
+
+test('both sides keep their full-lineup cell before any team is picked', () => {
+  const xi = main.slice(main.indexOf("// A whole eleven, on each side's row"), main.indexOf('const equipment: ShelfItem[]'))
+  // The row is no longer held back until a team exists, and no side is left
+  // holding an empty space where its eleven should be.
+  assert.doesNotMatch(xi, /if \(home \|\| away\)/)
+  assert.doesNotMatch(xi, /spacer: true/)
+  // With no team it is still that side's eleven, in that side's fallback kit.
+  assert.match(xi, /title: `\$\{side === 'home' \? 'Home' : 'Away'\} eleven`/)
+  assert.match(xi, /art: shelfArt\.eleven\(sidePlayerColor\(side\)\)/)
+  // and it places on that side without inventing a team to place for
+  assert.match(xi, /run: \(\) => addTeamFromPlayerMenu\('', side\)/)
+})
+
+test('an eleven with no team behind it lines up on its own half, in its own kit', () => {
+  const build = buildLineup()
+  for (const [side, isAway] of [['home', false], ['away', true]] as const) {
+    const xi = build('', side)
+    assert.equal(xi.length, 11, side)
+    // nobody is handed a team that was never picked
+    assert.ok(xi.every(p => p.team === undefined), JSON.stringify(xi.map(p => p.team)))
+    // and the whole eleven stands on its own half of the board
+    assert.ok(xi.every(p => (p.x < 400) !== isAway), JSON.stringify(xi.map(p => p.x)))
+    assert.ok(xi.every(p => p.facing === (isAway ? 180 : 0)), JSON.stringify(xi.map(p => p.facing)))
+    // the kit is the side's fallback: home in the current colour, away apart
+    // from it, with the keeper standing out from both.
+    assert.equal(xi[0].color, isAway ? '#d1d5db' : '#6b7280')
+    assert.ok(xi.slice(1).every(p => p.color === (isAway ? '#1e2f6f' : DEFAULTS.playerColor)), JSON.stringify(xi.map(p => p.color)))
+  }
+})
+
+test('an eleven with a team behind it is placed exactly as it was', () => {
+  const away = { name: 'Rovers', side: 'away', color: '#00a1ff' }
+  const build = buildLineup([away])
+  const named = build('Rovers')
+  const bySide = build('Rovers', 'home')
+  assert.equal(named.length, 11)
+  assert.ok(named.every(p => p.team === 'Rovers'))
+  // the team's own side wins over the row it was reached from
+  assert.deepEqual(named.map(p => p.x), bySide.map(p => p.x))
+  assert.ok(named.every(p => p.x > 400), JSON.stringify(named.map(p => p.x)))
+  assert.equal(named[0].color, '#d1d5db')
+  assert.ok(named.slice(1).every(p => p.color === away.color))
 })

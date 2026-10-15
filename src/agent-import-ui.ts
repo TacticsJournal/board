@@ -1,4 +1,8 @@
-import { agentImportFile, agentImportSource, boardImportReadyRows, decodeAgentImport, fetchAgentImport, projectImportReadyRows, STORED_PROJECT_IMPORT_LIMITS, type AgentImportDraft, type BoardImportReadyRow } from './agent-import.ts'
+import {
+  agentImportFile, agentImportSource, boardImportReadyRows, decodeAgentImport, fetchAgentImport, projectImportReadyRows,
+  projectLimitChoiceRows, projectLimitConfirmRows, STORED_PROJECT_IMPORT_LIMITS,
+  type AgentImportDraft, type BoardImportMode, type BoardImportReadyRow,
+} from './agent-import.ts'
 import { previewSvg } from './saves.ts'
 
 type ImportSaves = {
@@ -23,13 +27,18 @@ type Options = {
   openProjects: () => void
   boardDestinations: () => BoardImportDestination[]
   canCreateProject: () => boolean
-  addBoard: (draft: AgentImportDraft, projectId: string | null) => BoardImportResult
-  addProject: (draft: AgentImportDraft, projectId: string | null) => BoardImportResult
+  addBoard: (draft: AgentImportDraft, projectId: string | null, mode: BoardImportMode) => BoardImportResult
+  addProject: (draft: AgentImportDraft, projectId: string | null, mode: BoardImportMode) => BoardImportResult
   openProject: (id: string, boardId?: string) => void
 }
 
 type Access = 'checking' | 'signed-out' | 'locked' | 'ready'
 type Result = 'added' | 'existing' | 'failed' | null
+/**
+ * The copy dialog is one screen deep at a time: the offer, the choices a
+ * capped free account has, a project picker, and a destructive confirmation.
+ */
+type Stage = 'ready' | 'limit' | 'pick' | 'confirm'
 
 /** Start the add prompt only for a generated project or shared-copy URL. */
 export function startAgentImport(options: Options): boolean {
@@ -89,7 +98,9 @@ export function startAgentImport(options: Options): boolean {
   let access: Access = copyLink ? 'ready' : options.isPro() ? 'ready' : 'checking'
   let result: Result = null
   let adding = false
-  let picking = false
+  let stage: Stage = 'ready'
+  let pickMode: Exclude<BoardImportMode, 'new'> = 'append'
+  let pending: BoardImportDestination | null = null
   let suspended = false
   let addedProjectId = ''
   let addedProjectName = ''
@@ -117,7 +128,7 @@ export function startAgentImport(options: Options): boolean {
   const boardRow = (item: BoardImportReadyRow) => {
     const element = document.createElement('button')
     element.type = 'button'
-    element.className = `agentImportRow${item.primary ? ' agentImportRowPrimary' : ''}`
+    element.className = `agentImportRow${item.primary ? ' agentImportRowPrimary' : ''}${item.destructive ? ' agentImportRowDanger' : ''}`
     element.dataset.agentImport = item.action
     const text = document.createElement('span')
     text.className = 'agentImportRowText'
@@ -155,7 +166,7 @@ export function startAgentImport(options: Options): boolean {
     hideRows()
     hideProjects()
     back!.hidden = true
-    preview.hidden = !!error || picking
+    preview.hidden = !!error || stage === 'pick'
     if (draft && !error && !preview.hasChildNodes()) preview.innerHTML = previewSvg(draft.previewScene)
 
     if (error) {
@@ -173,12 +184,23 @@ export function startAgentImport(options: Options): boolean {
       focusHeading()
       return
     }
-    if (picking) {
+    if (stage === 'limit' && !adding && !result) {
+      dialog.dataset.agentImportState = 'limit'
+      back!.hidden = false
+      title.textContent = 'Your projects are full'
+      copy.textContent = `Free keeps three projects. Choose how to make room for “${draft.name}”.`
+      setRows(...projectLimitChoiceRows(options.boardDestinations().length))
+      focusHeading()
+      return
+    }
+    if (stage === 'pick' && !adding && !result) {
       dialog.dataset.agentImportState = 'picking'
       preview.hidden = true
       back!.hidden = false
-      title.textContent = `Add “${draft.name}” to…`
-      copy.textContent = ''
+      title.textContent = pickMode === 'append' ? `Add “${draft.name}” to…` : 'Remove which project?'
+      copy.textContent = pickMode === 'append'
+        ? ''
+        : 'The project and its boards are deleted, then this copy is added.'
       projects.hidden = false
       projects.replaceChildren(...options.boardDestinations().map(item => {
         const element = document.createElement('button')
@@ -191,6 +213,16 @@ export function startAgentImport(options: Options): boolean {
         element.append(label, detail)
         return element
       }))
+      focusHeading()
+      return
+    }
+    if (stage === 'confirm' && pending && pickMode !== 'append' && !adding && !result) {
+      dialog.dataset.agentImportState = 'confirm'
+      back!.hidden = false
+      title.textContent = `Delete “${pending.name}”?`
+      const boards = `${pending.boardCount} board${pending.boardCount === 1 ? '' : 's'}`
+      copy.textContent = `“${pending.name}” and its ${boards} are deleted to make room for “${draft.name}”. This cannot be undone.`
+      setRows(...projectLimitConfirmRows(pending.name, pending.boardCount))
       focusHeading()
       return
     }
@@ -311,15 +343,16 @@ export function startAgentImport(options: Options): boolean {
     if (!dialog.open) dialog.showModal()
   }
 
-  function addCopy(projectId: string | null) {
+  function addCopy(projectId: string | null, mode: BoardImportMode) {
     if (!draft || adding) return
     adding = true
-    picking = false
     result = null
     failureMessage = ''
     render()
-    const outcome = projectCopyLink ? options.addProject(draft, projectId) : options.addBoard(draft, projectId)
+    const outcome = projectCopyLink ? options.addProject(draft, projectId, mode) : options.addBoard(draft, projectId, mode)
     adding = false
+    // A failure keeps the screen it came from, so Back still leads home.
+    if (outcome.status === 'added') { stage = 'ready'; pending = null }
     result = outcome.status
     addedProjectId = outcome.projectId ?? ''
     addedProjectName = outcome.projectName ?? 'Projects'
@@ -332,7 +365,15 @@ export function startAgentImport(options: Options): boolean {
   dialog.addEventListener('cancel', () => { destroy() })
   dialog.addEventListener('click', (event) => {
     const projectId = (event.target as HTMLElement).closest<HTMLElement>('[data-agent-import-project]')?.dataset.agentImportProject
-    if (projectId && copyLink) { addCopy(projectId); return }
+    if (projectId && copyLink && !adding) {
+      if (pickMode === 'append') { addCopy(projectId, 'append'); return }
+      // Never delete straight off a list tap: confirm by name first.
+      pending = options.boardDestinations().find(item => item.id === projectId) ?? null
+      if (!pending) return
+      stage = 'confirm'
+      render()
+      return
+    }
     const action = (event.target as HTMLElement).closest<HTMLElement>('[data-agent-import]')?.dataset.agentImport
     if (!action || adding) return
     if (action === 'close') { dialog.close(); return }
@@ -340,9 +381,21 @@ export function startAgentImport(options: Options): boolean {
     if (action === 'open-project' && addedProjectId) { dialog.close(); options.openProject(addedProjectId, addedBoardId); return }
     if (action === 'pro') { dialog.close(); options.openPro(); return }
     if (action === 'signin') { closeTemporarily(); options.openSignIn(); return }
-    if (copyLink && action === 'new-project') { addCopy(null); return }
-    if (copyLink && action === 'existing') { picking = true; render(); return }
-    if (copyLink && action === 'destination-back') { picking = false; result = null; render(); return }
+    if (copyLink && action === 'new-project') { addCopy(null, 'new'); return }
+    if (copyLink && action === 'existing') { pickMode = 'append'; stage = 'pick'; render(); return }
+    if (copyLink && action === 'project-limit') { stage = 'limit'; render(); return }
+    if (copyLink && action === 'remove-project') { pickMode = 'replace'; stage = 'pick'; render(); return }
+    if (copyLink && action === 'confirm' && pending && pickMode !== 'append') { addCopy(pending.id, pickMode); return }
+    if (copyLink && action === 'destination-back') {
+      // A failed attempt returns to the screen it was made from; otherwise
+      // step back one screen: confirm → picker → limit choices → the offer.
+      if (result) result = null
+      else if (stage === 'confirm') { pending = null; stage = 'pick' }
+      else if (stage === 'pick') stage = pickMode === 'append' ? 'ready' : 'limit'
+      else stage = 'ready'
+      render()
+      return
+    }
     if (action !== 'add' || !draft || access !== 'ready') return
     adding = true
     result = null

@@ -21,7 +21,9 @@ test('an angle round-trips through the scene and into every renderer', () => {
 
   assert.equal(board.match(/rotation: o\.rotation \?\? 0/g)?.length, 6, 'player, marker, ball, cone, goal and a user asset all draw at their angle')
   assert.match(saves, /function spin\(o: any\): string/)
-  for (const shape of ['<ellipse${spin(o)}', '<rect${spin(o)}']) {
+  // the marker's name turns with the marker without being mirrored by it, the
+  // way the board's text rides the group its flipped picture sits in
+  for (const shape of ['<text${spin(o)}', '<rect${spin(o)}']) {
     assert.ok(saves.includes(shape), `${shape} is exported at its angle`)
   }
   // the pieces drawn from the board's own art turn and flip about their centre
@@ -32,14 +34,17 @@ test('an angle round-trips through the scene and into every renderer', () => {
   assert.ok(saves.includes('<use${turn(o)}'), 'and pointed at at its angle')
 })
 
-// Press and hold the resize node, then drag: the same node that scales an
-// object turns it, for whatever is selected.
-test('hold-then-drag on the resize node turns any object', () => {
-  assert.match(board, /let mode: 'scale' \| 'rotate' = 'scale'/)
-  assert.match(board, /holdTimer = window\.setTimeout\([\s\S]{0,200}mode = 'rotate'/)
-  // a drag that starts before the hold lands still scales
-  assert.match(board, /a\.on\('dragstart', \(\) => \{ clearHold\(\); this\.store\.beginGesture\(\) \}\)/)
+// Dragging the top-right node turns every object that displays it. There is no
+// resize mode or hold delay before arrows, zones, or other objects start turning.
+test('the top-right node immediately rotates every supported object', () => {
+  assert.match(board, /a\.on\('dragstart', \(\) => \{ this\.store\.beginGesture\(\) \}\)/)
+  assert.match(board, /a\.on\('dragmove',[\s\S]{0,250}const angle = Math\.atan2/)
+  assert.match(board, /if \(this\.snapEnabled && Math\.abs\(deg - near\) < 5\) deg = near/)
+  assert.doesNotMatch(board, /let mode: 'scale' \| 'rotate'/)
+  assert.doesNotMatch(board, /holdTimer = window\.setTimeout\([\s\S]{0,200}mode = 'rotate'/)
+  assert.doesNotMatch(board, /private scaleObject\(/)
   assert.match(board, /private rotateObject\(sel: SceneObj, deg: number, center: Pt\)/)
+  assert.match(board, /if \(snap\.points\) sel\.points = JSON\.parse\(JSON\.stringify\(snap\.points\)\)/)
   // arrows and free-form boxes turn their points, not an angle field
   assert.match(board, /private rotateObject[\s\S]{0,700}sel\.type === 'arrow'[\s\S]{0,300}sel\.x1 = p1\.x/)
   assert.match(board, /private rotateObject[\s\S]{0,1200}sel\.type === 'box' && sel\.corners/)

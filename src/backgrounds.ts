@@ -178,29 +178,69 @@ export function memoryDriver(seed: StoredBackground[] = []): BackgroundDriver {
 const DB_NAME = 'tbm-backgrounds'
 const DB_STORE = 'items'
 
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1)
-    request.onupgradeneeded = () => {
-      const db = request.result
-      if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'id' })
-    }
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error ?? new Error('indexeddb open failed'))
-    request.onblocked = () => reject(new Error('indexeddb blocked'))
-  })
-}
+/**
+ * IndexedDB, where the browser gives us one.
+ *
+ * Keep one connection for the driver. The background grid asks for every
+ * thumbnail together; opening a database once per tile can leave mobile Safari
+ * with a row of pending opens, after which reads, adds and deletes all wait on
+ * the same jammed queue.
+ */
+export function browserDriver(factory: IDBFactory = indexedDB): BackgroundDriver {
+  let connection: Promise<IDBDatabase> | null = null
 
-function tx<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  return openDb().then(db => new Promise<T>((resolve, reject) => {
-    const request = run(db.transaction(DB_STORE, mode).objectStore(DB_STORE))
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error ?? new Error('indexeddb write failed'))
-  }))
-}
+  function openDb(): Promise<IDBDatabase> {
+    if (connection) return connection
+    const opening = new Promise<IDBDatabase>((resolve, reject) => {
+      const request = factory.open(DB_NAME, 1)
+      request.onupgradeneeded = () => {
+        const db = request.result
+        if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'id' })
+      }
+      request.onsuccess = () => {
+        const db = request.result
+        // A blocked open can later succeed after this promise has already
+        // failed. Do not leave that late connection hanging around.
+        if (connection !== opening) { db.close(); return }
+        db.onversionchange = () => {
+          db.close()
+          if (connection === opening) connection = null
+        }
+        resolve(db)
+      }
+      request.onerror = () => reject(request.error ?? new Error('indexeddb open failed'))
+      // `blocked` means an older connection is still closing. Keep this one
+      // pending; IndexedDB will call success or error when it can continue.
+      request.onblocked = () => {}
+    })
+    connection = opening
+    // `IDBFactory.open` may itself throw in restricted browsing modes. Clear a
+    // rejected opener so a later attempt is allowed to recover.
+    void opening.catch(() => { if (connection === opening) connection = null })
+    return opening
+  }
 
-/** IndexedDB, where the browser gives us one. */
-export function browserDriver(): BackgroundDriver {
+  function tx<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+    return openDb().then(db => new Promise<T>((resolve, reject) => {
+      let transaction: IDBTransaction
+      let request: IDBRequest<T>
+      try {
+        transaction = db.transaction(DB_STORE, mode)
+        request = run(transaction.objectStore(DB_STORE))
+      } catch (error) {
+        db.close()
+        connection = null
+        reject(error)
+        return
+      }
+      let result: T
+      request.onsuccess = () => { result = request.result }
+      transaction.oncomplete = () => resolve(result)
+      transaction.onerror = () => reject(transaction.error ?? request.error ?? new Error('indexeddb transaction failed'))
+      transaction.onabort = () => reject(transaction.error ?? request.error ?? new Error('indexeddb transaction aborted'))
+    }))
+  }
+
   return {
     async list() {
       const rows = await tx<unknown[]>('readonly', s => s.getAll() as IDBRequest<unknown[]>)

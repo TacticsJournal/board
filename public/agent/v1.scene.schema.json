@@ -150,7 +150,7 @@
         "color": { "$ref": "#/$defs/color" },
         "label": { "type": "string", "maxLength": 20 },
         "name": { "type": "string", "maxLength": 120 },
-        "namePos": { "enum": ["top", "bottom"] },
+        "namePos": { "enum": ["auto", "top", "bottom"] },
         "nameSize": { "type": "number", "minimum": 8, "maximum": 96 },
         "nameDisplay": { "enum": ["first", "last", "full"] },
         "team": { "type": "string", "maxLength": 100 },
