@@ -87,7 +87,7 @@ test('Add board opens a chooser sheet, not the old two-row menu', () => {
 test('the chooser closes on Escape, on an outside click and on leaving the list', () => {
   assert.match(view, /if \(e\.key === 'Escape'\) \{ e\.preventDefault\(\); this\.closeAddSheet\(\); return \}/)
   assert.match(view, /if \(e\.target === sheet\) \{ this\.closeAddSheet\(\); return \}/)
-  assert.match(view, /open\(screen: Screen \| null\) \{\s*\n\s*this\.closeAddSheet\(false\)/)
+  assert.match(view, /open\(screen: Screen \| null\) \{(?:\s*\n\s*this\.previewWork\.invalidate\(\))?\s*\n\s*this\.closeAddSheet\(false\)/)
   assert.match(view, /if \(restoreFocus && trigger\?\.isConnected\) trigger\.focus\(\)/)
 })
 
