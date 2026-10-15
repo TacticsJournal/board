@@ -272,8 +272,11 @@ test('a zone, an arrow and a label are styled a tab at a time', () => {
 test('the round zone is a circle, and stays one', () => {
   // the drag is the diameter, not a box to squash an oval into
   assert.match(board, /if \(c\.obj\.shape === 'ellipse'\) \{[\s\S]{0,300}?const d = Math\.hypot\(dx, dy\)\s*\n\s*c\.obj\.w = d; c\.obj\.h = d/)
-  // and the node scales both sides by the one factor, so it cannot go oval
-  assert.match(board, /\} else if \(sel\.type === 'box'\) \{[\s\S]{0,300}?sel\.w = Math\.max\(8, sel\.w \* scale\)\s*\n\s*sel\.h = Math\.max\(8, sel\.h \* scale\)/)
+  // and a selected zone gets no stretching handles: only text is ever put on
+  // the transformer, and a zone's corner node rotates rather than resizes
+  assert.equal(board.match(/this\.transformer\.nodes\(\[[^\]]/g)?.length, 1)
+  assert.match(board, /if \(sel\.type === 'text'\) \{[\s\S]{0,600}?this\.transformer\.nodes\(\[node as any\]\)/)
+  assert.match(board, /Every zone\s*\n[\s\S]{0,200}?this\.transformer\.nodes\(\[\]\)\s*\n\s*this\.addSelectionOutline\(sel\)\s*\n\s*this\.addRotationNode\(sel\)/)
   // pulling it into another shape is what the edit nodes are for
   assert.match(main, /title: 'Circle'/)
   assert.doesNotMatch(main, /title: 'Oval'/)
