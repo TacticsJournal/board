@@ -1318,6 +1318,9 @@ html[data-theme-resolved="dark"] .seg button.active { box-shadow: 0 1px 2px rgba
   flex: none;
 }
 .sw.active { box-shadow: 0 0 0 2px var(--bar), 0 0 0 4px var(--orange); }
+/* the same spacing the tray gives its pieces, so a palette in a row reads as
+   its swatches always have */
+.swRow { display: inline-flex; align-items: center; gap: 10px; flex: none; }
 
 .teamChip {
   display: inline-flex;
@@ -5271,11 +5274,37 @@ body.deskMode .shelf { flex: 1; min-height: 0; display: flex; flex-direction: co
 body.deskMode .shelfScroll { flex: 1; min-height: 0; width: 180px; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; border-top: 0; }
 body.deskMode .shelfTrack { display: flex; flex-direction: column; width: 180px; min-width: 0; }
 body.deskMode .shelfSec { width: 180px; flex: 0 0 auto; }
-body.deskMode .shelfSecRule { width: auto; height: 1px; margin: 0 12px; flex: 0 0 1px; }
-body.deskMode .shelfHead { display: block; position: sticky; top: 0; z-index: 1; padding: 12px 12px 7px; width: 180px; background: var(--panel); }
-body.deskMode .shelfGrid { width: 180px; grid-auto-flow: row; grid-template-rows: none; grid-template-columns: repeat(3, 40px); justify-content: center; align-content: start; }
-/* the two sides are a choice, not a shape: they take the row they need */
-body.deskMode .shelfGrid .cellTeam { grid-column: 1 / -1; width: 100%; }
+body.deskMode .shelfSecRule { width: auto; height: 1px; margin: 0 14px; flex: 0 0 1px; }
+body.deskMode .shelfHead {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 14px 14px 6px;
+  width: 180px;
+  background: var(--panel);
+}
+body.deskMode .shelfHead .shelfName { font-size: 12px; font-weight: 600; color: var(--ink-soft); letter-spacing: 0.01em; }
+/* The phone shelf is two rows of sides, home over away, so every column pairs
+   a token with its twin on the other side. Turned on its side for a narrow
+   panel, that is two columns: home down the left, away down the right, each
+   under the cell that names its team. Row flow over two columns is exactly the
+   transpose of column flow over two rows, so the pairs the phone makes hold
+   here without the shelf being built twice. */
+body.deskMode .shelfGrid {
+  width: 180px;
+  grid-auto-flow: row;
+  grid-template-rows: none;
+  grid-template-columns: repeat(2, 1fr);
+  justify-items: center;
+  align-content: start;
+  gap: 8px 6px;
+  padding: 4px 14px 14px;
+}
+body.deskMode .shelfGrid .cellTeam { width: 100%; min-width: 0; padding: 0 4px; }
+/* the rule that keeps flip and swap out of the token grid runs across the
+   panel here, not down it */
+body.deskMode .shelfGrid .shelfRule { grid-column: 1 / -1; grid-row: auto; width: 100%; height: 1px; margin: 2px 0; }
 body.deskMode .assetBar { flex-wrap: wrap; width: 180px; }
 body.deskMode .panelFold {
   display: flex;
@@ -5297,6 +5326,14 @@ body.deskMode .panelFold svg { width: 15px; height: 15px; }
    board grows off the side of the window */
 body.deskMode .stageWrap { order: 2; display: flex; flex-direction: column; min-width: 0; }
 body.deskMode .boardArea { position: relative; inset: auto; flex: 1; min-height: 0; }
+/* the pitch stops short of the bar and the window edge: a margin of the
+   surround on every side, so the board is set on the page rather than jammed
+   against its chrome */
+body.deskMode #stage { inset: 16px; }
+/* the margin is the same surround the stage paints around the pitch, so the
+   stage's edge is nowhere to be seen */
+body.deskMode .boardArea { background: #f5f5f7; }
+html[data-theme-resolved="dark"] body.deskMode .boardArea { background: #000; }
 /* the boards and projects lists take the whole work area, not a column of it.
    The desktop rules above set display on the pieces the lists hide, so the
    hiding has to be said again here to outrank them. */
@@ -5314,14 +5351,24 @@ body.deskMode .ctxDock {
   gap: 10px;
   flex: none;
   min-height: 56px;
-  padding-left: 12px;
+  padding-left: 14px;
   background: var(--bar);
   border-bottom: 1px solid var(--line);
 }
+/* The bar is as wide as the board and no wider, and a picked player has more
+   to say than one row of it holds. The phone's strip scrolls sideways under a
+   thumb; a mouse has no such gesture, so here the strip wraps instead and the
+   bar grows a row - the board underneath gives up the height the way it gives
+   up the panel's width. */
 body.deskMode .ctxDock .options {
   flex: 1 1 auto;
   min-width: 0;
-  padding-left: 0;
+  height: auto;
+  max-height: none;
+  flex-wrap: wrap;
+  row-gap: 8px;
+  padding: 10px 14px 10px 0;
+  overflow: visible;
   background: transparent;
   border-top: 0;
 }

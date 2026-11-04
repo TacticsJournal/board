@@ -44,7 +44,8 @@ try {
   const bar = await box('#ctxDock')
   if (!bar) fail('the context bar is missing')
   if (bar && !near(bar.x, 52, 4)) fail(`bar should start beside the rail, is at ${bar.x}`)
-  if (wideStage && !near(wideStage.y, (bar?.y ?? 0) + (bar?.h ?? 0), 3)) fail('the board is not under the bar')
+  // the board sits under the bar with a margin of surround between them
+  if (wideStage && !near(wideStage.y, (bar?.y ?? 0) + (bar?.h ?? 0) + 16, 3)) fail('the board is not under the bar')
 
   // picking a tool opens the panel; the board gives up exactly the panel's width
   await page.click('[data-rail="players"]')
