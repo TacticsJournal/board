@@ -140,3 +140,17 @@ test('the mobile sheet covers the translucent edge above the iOS keyboard', () =
   assert.match(styles, /background: var\(--settings-bg\)/)
   assert.match(styles, /--bg: var\(--settings-bg\)/)
 })
+
+test('team search uses the live free key and keeps known clubs when it fails', async () => {
+  const teams = await readFile(new URL('../src/teams.ts', import.meta.url), 'utf8')
+  // key "3" is permanently disabled and answers every search with a 403
+  assert.match(teams, /const API = 'https:\/\/www\.thesportsdb\.com\/api\/v1\/json\/123'/)
+  assert.doesNotMatch(teams, /json\/3'/)
+  assert.match(teams, /const known = this\.indexMatches\(q\)\s*if \(known\.length\)/)
+  assert.match(teams, /Too many searches in a row/)
+  const index = JSON.parse(await readFile(new URL('../public/teams-index.json', import.meta.url), 'utf8'))
+  const names = new Set(index.teams.map((t: { strTeam: string }) => t.strTeam))
+  for (const club of ['Manchester City', 'Manchester United', 'Liverpool', 'Real Madrid', 'Tottenham Hotspur']) {
+    assert.ok(names.has(club), `the shipped list is missing ${club}`)
+  }
+})

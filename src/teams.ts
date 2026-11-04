@@ -13,9 +13,10 @@ function flipNodeX(n: PathNode) {
   if (n.h2) n.h2.x = -n.h2.x
 }
 
-// TheSportsDB free/open API (test key "3", CORS-enabled) for club search
-// and kit colors; squads come from Wikipedia, which stays current
-const API = 'https://www.thesportsdb.com/api/v1/json/3'
+// TheSportsDB free API (CORS-enabled) for club search and kit colors; squads
+// come from Wikipedia, which stays current. The old free key "3" is
+// permanently disabled; "123" is the current public test key.
+const API = 'https://www.thesportsdb.com/api/v1/json/123'
 const WIKI = 'https://en.wikipedia.org/w/api.php'
 
 type TeamHit = { idTeam: string; strTeam: string; strTeamShort: string; strLeague: string; colours: string[]; loved?: number }
@@ -803,7 +804,9 @@ export class TeamPanel {
       }
       // the index answers the first letter at once; the endpoint follows
       this.showMatches(side, this.indexMatches(typed), true)
-      this.searchTimer = window.setTimeout(() => this.search(true), 200)
+      // the free key allows about 30 searches a minute, so wait for a pause in
+      // typing rather than spending one on every letter
+      this.searchTimer = window.setTimeout(() => this.search(true), 450)
     })
   }
 
@@ -963,7 +966,7 @@ export class TeamPanel {
     if (results) results.innerHTML = ''
     try {
       const res = await fetch(`${API}/searchteams.php?t=${encodeURIComponent(q)}`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) throw new Error(res.status === 429 ? 'rate-limited' : `HTTP ${res.status}`)
       const data = await res.json()
       if (seq !== this.searchSeq || side !== this.editingSide) return
       this.teams = (data.teams ?? [])
@@ -978,9 +981,22 @@ export class TeamPanel {
       this.showMatches(side, [...this.indexMatches(q), ...this.teams], false)
     } catch (err) {
       if (seq !== this.searchSeq || side !== this.editingSide) return
-      this.status(`Search failed (offline?). ${err}`)
+      // The shipped list still answers when the live search is down, so its
+      // matches stay up rather than being replaced by an error.
+      await this.ensureIndex().catch(() => {})
+      if (seq !== this.searchSeq || side !== this.editingSide) return
+      const known = this.indexMatches(q)
+      if (known.length) {
+        this.status('Showing known clubs; the full search is unavailable right now.')
+        this.showMatches(side, known, false)
+        return
+      }
+      const limited = String(err).includes('rate-limited')
+      this.status(limited ? 'Team search is busy.' : `Search failed (offline?). ${err}`)
       const results = this.resultsFor(side)
-      if (results) results.innerHTML = '<div class="tmEmpty">Could not search teams. Check your connection and try again.</div>'
+      if (results) results.innerHTML = limited
+        ? '<div class="tmEmpty">Too many searches in a row. Wait a moment and try again.</div>'
+        : '<div class="tmEmpty">Could not search teams. Check your connection and try again.</div>'
       this.revealResults(side)
     }
   }
