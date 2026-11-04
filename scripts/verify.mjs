@@ -108,7 +108,8 @@ async function addPlayer(page, color = null) {
   await clickTool(page, 'player')
   // A wide window adds from the panel; the bar holds only the tool's settings.
   if (await deskMode(page)) {
-    if (!(await page.isVisible('[data-shelf="player-home"]'))) await page.click('[data-rail="players"]')
+    // a folded panel keeps its cells mounted, so width is what says it is shut
+    if ((await page.evaluate(() => document.querySelector('#panelDock').getBoundingClientRect().width)) < 100) await page.click('[data-rail="players"]')
     await page.click('[data-shelf="player-home"]')
   } else await page.click('[data-opt="d-add-player"]')
   await page.waitForFunction(() => window.__tbm.store.selected?.type === 'player')

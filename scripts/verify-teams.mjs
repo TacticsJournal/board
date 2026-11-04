@@ -91,11 +91,15 @@ if (!right || right.x < 700 - 100 || right.y < corner.bh * 0.8) errors.push('awa
 await page.click('[data-set="close"]')
 
 // 4. a wide window keeps the sides and the add buttons in the panel, not the bar
+// a folded panel keeps its cells mounted, so width is what says it is shut
+const openPanel = async () => {
+  if ((await page.evaluate(() => document.querySelector('#panelDock').getBoundingClientRect().width)) < 100) await page.click('[data-rail="players"]')
+}
 const shelfCell = async (id) => {
-  if (!(await page.isVisible(`[data-shelf="${id}"]`))) await page.click('[data-rail="players"]')
+  await openPanel()
   await page.click(`[data-shelf="${id}"]`)
 }
-if (!(await page.isVisible('[data-shelf="team-home"]'))) await page.click('[data-rail="players"]')
+await openPanel()
 const strip = await page.evaluate(() => ({
   chips: document.querySelectorAll('#options .teamChip').length,
   adds: document.querySelectorAll('#options [data-opt="d-add-player"], #options [data-opt="d-add-xi"]').length,
