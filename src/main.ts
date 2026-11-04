@@ -4062,7 +4062,12 @@ function renderPlayerNameSelect(sel: PlayerObj) {
 /** A mouse clicks; a finger taps. The hints in the strip say which. */
 const tapVerb = () => (deskMode ? 'Click' : 'Tap')
 
+// The selection the bar's strip last showed. A new selection is a new strip, so
+// it starts from the left; a restyle of the same one keeps its place.
+let stripSelectionId: string | null = null
 function renderOptions() {
+  if (deskMode && store.selectedId !== stripSelectionId) optionsEl.scrollLeft = 0
+  stripSelectionId = store.selectedId
   // A render replaces the trigger. Close first so aria-expanded and focus do
   // not stay attached to a button that is about to leave the document.
   if (carryMenuOpen()) closeCarryMenu(false)
