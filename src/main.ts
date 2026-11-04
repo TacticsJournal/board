@@ -4154,7 +4154,10 @@ function renderOptions() {
     const t = board.tool
     const styling = room === 'styles'
     if (t === 'player') {
-      if (!styling) html += renderTeamMenu()
+      // the panel carries the sides, adding and flipping on a wide window, so
+      // the bar holds only the tool's own settings, as the iOS app's does. A
+      // live pitch has no flip on its shelf, so it keeps its chips.
+      if (!styling && (!deskMode || pitchById(store.scene.pitch).live)) html += renderTeamMenu()
       const activeTeam = pitchById(store.scene.pitch).live ? null : (teams.activeTeamName() ? teams.getTeam(teams.activeTeamName()!) : null)
       if (activeTeam) {
         const colors = Array.from(new Set([...activeTeam.colours, ...PLAYER_PALETTE]))
@@ -4208,7 +4211,8 @@ function renderOptions() {
       ? `<span class="hint">Nothing to change on this one.</span>`
       : `<span class="hint">Pick something on the board, or set how the next shape looks.</span>`
   }
-  optionsEl.innerHTML = carryHtml + html
+  // the object's own controls lead; carrying is a board action, so it sits at the end
+  optionsEl.innerHTML = html + carryHtml
   // A ball or a cone has nothing to change, so the strip has nothing to draw.
   // Keeping it up for the sake of the selection left a band of empty panel
   // under the shelf, which read as something failing to load.

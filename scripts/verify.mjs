@@ -106,7 +106,11 @@ async function clickTool(page, tool) {
 
 async function addPlayer(page, color = null) {
   await clickTool(page, 'player')
-  await page.click('[data-opt="d-add-player"]')
+  // A wide window adds from the panel; the bar holds only the tool's settings.
+  if (await deskMode(page)) {
+    if (!(await page.isVisible('[data-shelf="player-home"]'))) await page.click('[data-rail="players"]')
+    await page.click('[data-shelf="player-home"]')
+  } else await page.click('[data-opt="d-add-player"]')
   await page.waitForFunction(() => window.__tbm.store.selected?.type === 'player')
   // Colour is a Styles control now: place first, then restyle the new player.
   if (color) {

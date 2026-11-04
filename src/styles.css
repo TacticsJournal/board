@@ -5370,6 +5370,10 @@ body.deskMode .ctxDock .options {
    left, next to whatever the selection put there */
 body.deskMode .ctxDock .options > :first-child { margin-left: 0; }
 body.deskMode .ctxDock .options > :last-child { margin-right: 0; }
+/* carrying is a board action, not one of the selection's settings: it holds the
+   far end of the bar, and the rule that used to follow it has nothing to divide */
+body.deskMode .ctxDock .options > .carrySplit { margin-left: auto; }
+body.deskMode .ctxDock .options > .carryHint + .trayDiv { display: none; }
 /* the selection's six, laid along the bar instead of stacked over the pitch */
 body.deskMode .ctxDock .fabCol {
   position: static;

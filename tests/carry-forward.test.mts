@@ -10,7 +10,8 @@ const main = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8')
 const boardsView = await readFile(new URL('../src/boards-view.ts', import.meta.url), 'utf8')
 const styles = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8')
 
-test('the strip leads with one action, whether or not anything is picked', () => {
+test('the strip keeps one board action, after the object\'s own controls', () => {
+  assert.match(main, /optionsEl\.innerHTML = html \+ carryHtml/)
   assert.match(main, /data-carry-forward/)
   assert.match(main, /Carry forward<\/button>/)
   // it is drawn from the board, not from the selection

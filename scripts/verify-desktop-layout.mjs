@@ -79,8 +79,13 @@ try {
   await page.click('[data-rail="players"]')
   await page.waitForTimeout(400)
   const board = await box('#stage')
-  if (!(await page.$('[data-opt="d-add-player"]'))) await page.click('[data-rail="players"]')
-  await page.click('[data-opt="d-add-player"]')
+  if (!(await box('#shelf .cell'))) await page.click('[data-rail="players"]')
+  await page.waitForTimeout(300)
+  // the bar holds the tool's settings only: the panel adds players
+  if (await page.$('#options [data-opt="d-add-player"]')) fail('the bar repeats the panel\'s add button')
+  await page.click('#shelf .cell:not(.cellTeam):not(.cellUtil)')
+  await page.waitForTimeout(300)
+  if (!(await page.evaluate(() => window.__tbm.store.selected))) await page.mouse.click(board.x + board.w / 2, board.y + board.h / 2)
   await page.waitForFunction(() => window.__tbm.store.selected?.type === 'player')
   await page.waitForTimeout(300)
   // selecting must not move the pitch: a bar that grows a row rescales it

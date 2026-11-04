@@ -90,19 +90,23 @@ if (!left || left.x > 100 || left.y < corner.bh * 0.8) errors.push('home code no
 if (!right || right.x < 700 - 100 || right.y < corner.bh * 0.8) errors.push('away code not drawn in the bottom-right corner')
 await page.click('[data-set="close"]')
 
-// 4. player menu: two chips, + Player, + XI
+// 4. a wide window keeps the sides and the add buttons in the panel, not the bar
+const shelfCell = async (id) => {
+  if (!(await page.isVisible(`[data-shelf="${id}"]`))) await page.click('[data-rail="players"]')
+  await page.click(`[data-shelf="${id}"]`)
+}
+if (!(await page.isVisible('[data-shelf="team-home"]'))) await page.click('[data-rail="players"]')
 const strip = await page.evaluate(() => ({
-  chips: Array.from(document.querySelectorAll('#options .teamChip')).map(c => c.textContent.trim()),
-  ghosts: document.querySelectorAll('#options .teamChip.ghost').length,
-  adds: Array.from(document.querySelectorAll('#options .addChip')).map(c => c.textContent.trim()),
+  chips: document.querySelectorAll('#options .teamChip').length,
+  adds: document.querySelectorAll('#options [data-opt="d-add-player"], #options [data-opt="d-add-xi"]').length,
+  panel: ['team-home', 'team-away', 'xi-home', 'xi-away', 'player-home'].every(id => document.querySelector(`[data-shelf="${id}"]`)),
 }))
 console.log('player menu:', JSON.stringify(strip))
-if (strip.chips.length !== 2 || strip.ghosts !== 0) errors.push(`expected 2 configured chips: ${JSON.stringify(strip)}`)
-if (!strip.adds.includes('+ Player') || !strip.adds.includes('+ XI')) errors.push(`missing add buttons: ${JSON.stringify(strip.adds)}`)
+if (strip.chips !== 0 || strip.adds !== 0) errors.push(`the bar repeats the panel: ${JSON.stringify(strip)}`)
+if (!strip.panel) errors.push(`the panel is missing a side or an add button: ${JSON.stringify(strip)}`)
 
 // 5. home XI lands on the left half with names and numbers
-await page.click('#options .teamChip')
-await page.click('[data-opt="d-add-xi"]')
+await shelfCell('xi-home')
 await page.waitForTimeout(200)
 let ps = await players()
 console.log('home XI:', ps.length)
@@ -113,8 +117,7 @@ if (ps.some(p => p.label)) errors.push('XI dots should not carry shirt numbers')
 
 // 6. away XI lands on the right half
 await page.keyboard.press('Escape')
-await page.evaluate(() => { document.querySelectorAll('#options .teamChip')[1].click() })
-await page.click('[data-opt="d-add-xi"]')
+await shelfCell('xi-away')
 await page.waitForTimeout(200)
 ps = await players()
 const away = ps.slice(11)
@@ -122,7 +125,7 @@ if (away.length !== 11 || away.some(p => p.x < W / 2)) errors.push('away XI not 
 
 // 7. + Player adds a single dot in the active team color
 await page.keyboard.press('Escape')
-await page.click('[data-opt="d-add-player"]')
+await shelfCell('player-away')
 await page.waitForTimeout(150)
 ps = await players()
 if (ps.length !== 23) errors.push(`+ Player did not add one dot (${ps.length})`)
