@@ -75,6 +75,8 @@ test('the page may embed Polar and pay in it, and nothing else new', () => {
   // Scripts stay first-party: the overlay is bundled, not loaded from a CDN.
   assert.match(headers, /script-src 'self';/)
   assert.doesNotMatch(headers, /unsafe-eval/)
+  assert.match(headers, /Strict-Transport-Security: max-age=31536000; includeSubDomains; preload/)
+  assert.match(headers, /Cross-Origin-Opener-Policy: same-origin/)
   // Cross-origin isolation would refuse the checkout frame outright.
   assert.doesNotMatch(headers, /Cross-Origin-Embedder-Policy/)
 })

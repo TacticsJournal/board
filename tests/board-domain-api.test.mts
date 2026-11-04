@@ -568,3 +568,25 @@ test('MCP uses the incoming canonical board origin and never returns a capabilit
     assert.deepEqual(await called!.clone().json(), { document: {}, skills_revision: 's1' })
   } finally { globalThis.fetch = original }
 })
+
+test('the Board session keeps the account lifetime and nothing else from upstream', async () => {
+  const original = globalThis.fetch
+  const consume = async (cookie: string) => {
+    globalThis.fetch = (async () => new Response('{}', { status: 200, headers: { 'Set-Cookie': cookie } })) as typeof fetch
+    const response = await consumeSession({
+      request: request('https://board.tacticsjournal.com/api/board/session', {
+        method: 'POST',
+        headers: { Origin: 'https://board.tacticsjournal.com', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'a'.repeat(64) }),
+      }),
+    })
+    return response.headers.get('Set-Cookie')
+  }
+  const base = 'tj_session=opaque; Path=/; HttpOnly; Secure; SameSite=Lax'
+  try {
+    assert.equal(await consume('tj_session=opaque; Domain=.attacker.test; Max-Age=3600'), `${base}; Max-Age=3600`)
+    assert.equal(await consume('tj_session=opaque; Max-Age=999999999'), `${base}; Max-Age=2592000`)
+    assert.equal(await consume('tj_session=opaque; Max-Age=0'), base)
+    assert.equal(await consume('tj_session=opaque; Path=/, other=x; Max-Age=3600'), base)
+  } finally { globalThis.fetch = original }
+})

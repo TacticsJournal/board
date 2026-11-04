@@ -4,6 +4,7 @@ const MAX_BODY_BYTES = 4096;
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
 const SAFE_STATUS = new Set([200, 400, 401, 403, 409, 413, 415, 429, 500, 502, 503]);
 const CLEAR_SESSION_COOKIE = 'tj_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0';
+const MAX_SESSION_SECONDS = 30 * 24 * 60 * 60;
 const COOKIE_VALUE_PATTERN = /^[!#$%&'()*+\-./0-9:<=>?@A-Z[\\\]^_`a-z{|}~]{1,4096}$/;
 
 function statusOf(response) {
@@ -23,13 +24,18 @@ function headersFor(request, extra = {}) {
   return headers;
 }
 
-function upstreamSessionToken(response) {
+function upstreamSession(response) {
   const values = typeof response.headers.getSetCookie === 'function'
     ? response.headers.getSetCookie()
     : [response.headers.get('Set-Cookie')].filter(Boolean);
   for (const value of values) {
     const match = /(?:^|,\s*)tj_session=([^;,\s]+)/.exec(value);
-    if (match && COOKIE_VALUE_PATTERN.test(match[1])) return match[1];
+    if (!match || !COOKIE_VALUE_PATTERN.test(match[1])) continue;
+    // A combined header can carry later cookies, so read only this cookie's own
+    // attributes. The lifetime is the one attribute Board keeps, within bounds.
+    const attributes = value.slice(match.index + match[0].length).split(/,\s*[^;,\s]+=/, 1)[0];
+    const maxAge = Number(/;\s*Max-Age=(\d+)\s*(?:;|$)/i.exec(attributes)?.[1]);
+    return { token: match[1], maxAge: maxAge > 0 ? Math.min(maxAge, MAX_SESSION_SECONDS) : null };
   }
   return null;
 }
@@ -39,12 +45,15 @@ function statusResponse(response, authenticated = response.ok, includeCookie = f
     'Cache-Control': 'no-store',
     'Content-Type': 'application/json; charset=utf-8',
   });
-  // Signout always wins. Otherwise, copy only the token into a new host-only
-  // cookie. No upstream attribute is allowed to reach the Board host.
+  // Signout always wins. Otherwise, copy only the token and a bounded lifetime
+  // into a new host-only cookie. No other upstream attribute reaches the Board host.
   if (clearCookie) headers.set('Set-Cookie', CLEAR_SESSION_COOKIE);
   else if (includeCookie) {
-    const token = upstreamSessionToken(response);
-    if (token) headers.set('Set-Cookie', `tj_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+    const session = upstreamSession(response);
+    if (session) {
+      const lifetime = session.maxAge ? `; Max-Age=${session.maxAge}` : '';
+      headers.set('Set-Cookie', `tj_session=${session.token}; Path=/; HttpOnly; Secure; SameSite=Lax${lifetime}`);
+    }
   }
   const body = { authenticated: authenticated === true };
   // The Board client uses this stable account id to reject a host-only cookie

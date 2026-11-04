@@ -9,7 +9,7 @@ import { discoverExtensionPaths, extensionWrapper, isSelfHostedBuild, readExtens
 test('the build dependencies use the exact locked tool versions', () => {
   const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   const lockfile = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url), 'utf8'))
-  const expected = { typescript: '6.0.3', vite: '8.0.16' }
+  const expected = { typescript: '6.0.3', vite: '8.3.5' }
   for (const [name, version] of Object.entries(expected)) {
     assert.equal(packageJson.devDependencies[name], version)
     assert.equal(lockfile.packages[''].devDependencies[name], version)

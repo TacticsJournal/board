@@ -24,6 +24,10 @@ For extension work with the development server:
 BOARD_SELF_HOSTED=true npm run dev
 ```
 
+## Hosted deployment
+
+This repository is the only source of `board.tacticsjournal.com`. Cloudflare Pages is connected to it directly and builds `main` with `npm run build`, serving `dist` and `functions/`. Merging to `main` deploys, so CI must pass before a pull request merges.
+
 ## Optional FastAPI service
 
 `backend/main.py` is an optional experiment service. The static app does not require it or configure its URL. The service exposes:
