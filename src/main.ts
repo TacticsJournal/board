@@ -1022,6 +1022,13 @@ const stageEl = document.querySelector<HTMLDivElement>('#stage')!
 const liveEditChipEl = document.querySelector<HTMLElement>('.liveEditChip')!
 const stageWrap = document.querySelector<HTMLDivElement>('.stageWrap')!
 const optionsEl = document.querySelector<HTMLDivElement>('#options')!
+// A mouse has no sideways gesture, so on desktop its wheel moves a long strip.
+optionsEl.addEventListener('wheel', (e) => {
+  if (!document.body.classList.contains('deskMode') || optionsEl.scrollWidth <= optionsEl.clientWidth) return
+  if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
+  optionsEl.scrollLeft += e.deltaY
+  e.preventDefault()
+}, { passive: false })
 const toolbarEl = document.querySelector<HTMLDivElement>('#toolbar')!
 const shelfEl = document.querySelector<HTMLDivElement>('#shelf')!
 const stylesShelfEl = document.querySelector<HTMLDivElement>('#stylesShelf')!
@@ -4055,7 +4062,12 @@ function renderPlayerNameSelect(sel: PlayerObj) {
 /** A mouse clicks; a finger taps. The hints in the strip say which. */
 const tapVerb = () => (deskMode ? 'Click' : 'Tap')
 
+// The selection the bar's strip last showed. A new selection is a new strip, so
+// it starts from the left; a restyle of the same one keeps its place.
+let stripSelectionId: string | null = null
 function renderOptions() {
+  if (deskMode && store.selectedId !== stripSelectionId) optionsEl.scrollLeft = 0
+  stripSelectionId = store.selectedId
   // A render replaces the trigger. Close first so aria-expanded and focus do
   // not stay attached to a button that is about to leave the document.
   if (carryMenuOpen()) closeCarryMenu(false)
@@ -4142,7 +4154,10 @@ function renderOptions() {
     const t = board.tool
     const styling = room === 'styles'
     if (t === 'player') {
-      if (!styling) html += renderTeamMenu()
+      // the panel carries the sides, adding and flipping on a wide window, so
+      // the bar holds only the tool's own settings, as the iOS app's does. A
+      // live pitch has no flip on its shelf, so it keeps its chips.
+      if (!styling && (!deskMode || pitchById(store.scene.pitch).live)) html += renderTeamMenu()
       const activeTeam = pitchById(store.scene.pitch).live ? null : (teams.activeTeamName() ? teams.getTeam(teams.activeTeamName()!) : null)
       if (activeTeam) {
         const colors = Array.from(new Set([...activeTeam.colours, ...PLAYER_PALETTE]))
@@ -4196,7 +4211,8 @@ function renderOptions() {
       ? `<span class="hint">Nothing to change on this one.</span>`
       : `<span class="hint">Pick something on the board, or set how the next shape looks.</span>`
   }
-  optionsEl.innerHTML = carryHtml + html
+  // the object's own controls lead; carrying is a board action, so it sits at the end
+  optionsEl.innerHTML = html + carryHtml
   // A ball or a cone has nothing to change, so the strip has nothing to draw.
   // Keeping it up for the sake of the selection left a band of empty panel
   // under the shelf, which read as something failing to load.
