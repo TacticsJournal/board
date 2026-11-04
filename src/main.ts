@@ -1022,6 +1022,13 @@ const stageEl = document.querySelector<HTMLDivElement>('#stage')!
 const liveEditChipEl = document.querySelector<HTMLElement>('.liveEditChip')!
 const stageWrap = document.querySelector<HTMLDivElement>('.stageWrap')!
 const optionsEl = document.querySelector<HTMLDivElement>('#options')!
+// A mouse has no sideways gesture, so on desktop its wheel moves a long strip.
+optionsEl.addEventListener('wheel', (e) => {
+  if (!document.body.classList.contains('deskMode') || optionsEl.scrollWidth <= optionsEl.clientWidth) return
+  if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
+  optionsEl.scrollLeft += e.deltaY
+  e.preventDefault()
+}, { passive: false })
 const toolbarEl = document.querySelector<HTMLDivElement>('#toolbar')!
 const shelfEl = document.querySelector<HTMLDivElement>('#shelf')!
 const stylesShelfEl = document.querySelector<HTMLDivElement>('#stylesShelf')!

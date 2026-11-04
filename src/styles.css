@@ -5355,20 +5355,14 @@ body.deskMode .ctxDock {
   background: var(--bar);
   border-bottom: 1px solid var(--line);
 }
-/* The bar is as wide as the board and no wider, and a picked player has more
-   to say than one row of it holds. The phone's strip scrolls sideways under a
-   thumb; a mouse has no such gesture, so here the strip wraps instead and the
-   bar grows a row - the board underneath gives up the height the way it gives
-   up the panel's width. */
+/* The bar keeps one height whatever is selected. Selecting is the most common
+   thing the board does, so a bar that grew a row would rescale the pitch under
+   the cursor on every click. A long strip scrolls sideways instead, and a
+   mouse wheel over it moves it the same way. */
 body.deskMode .ctxDock .options {
   flex: 1 1 auto;
   min-width: 0;
-  height: auto;
-  max-height: none;
-  flex-wrap: wrap;
-  row-gap: 8px;
-  padding: 10px 14px 10px 0;
-  overflow: visible;
+  padding-left: 0;
   background: transparent;
   border-top: 0;
 }
