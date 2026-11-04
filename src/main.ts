@@ -6808,7 +6808,7 @@ const THEME_KEY = 'tbm-theme-v1'
 
 /* The build steps from the repository README, kept as one block so the copy
    button hands over exactly what the reader sees. */
-const SELF_HOST_REPO = 'https://github.com/kyleboas/board'
+const SELF_HOST_REPO = 'https://github.com/TacticsJournal/board'
 const SELF_HOST_COMMANDS = `git clone ${SELF_HOST_REPO}.git
 cd board
 npm install
@@ -6996,62 +6996,6 @@ settingsEl.innerHTML = `
         <p><b>Copyright.</b> Except for identified third-party materials, the software and bundled assets are available under the MIT license. Club names, player names, colors and other source data remain the property of their respective owners and data providers. Tactics Journal and Tactics Board names and logos are reserved trademarks.</p>
         <p><b>Interface icons.</b> The icons in Settings and the menus are <a href="https://tabler.io/icons" target="_blank" rel="noopener">Tabler Icons</a>, copyright Paweł Kuna, used under the MIT license. The full license text is served at <a href="/LICENSE-icons" target="_blank" rel="noopener">/LICENSE-icons</a>.</p>
         ${BOARD_SELF_HOSTED ? '<p><b>Self-hosting.</b> This installation is operated by its owner, not Tactics Journal. See the repository license and trademark policy for the terms that apply.</p>' : '<p><b>Hosted service.</b> You may use exported board images for editorial, educational, social, internal and commercial work. Where an export uses Tactics Journal pitch artwork, the Tactics Journal watermark must remain visible. An export built on your own uploaded background or imported screenshot adds no branding to the image itself. If you add the Tactics Journal scoreboard, that scoreboard includes its logo and domain. Use of the official hosted service is subject to the <a href="https://tacticsjournal.com/terms/" target="_blank" rel="noopener">Terms of Service</a>, <a href="https://tacticsjournal.com/privacy/" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://tacticsjournal.com/cookies/" target="_blank" rel="noopener">Cookie Policy</a>.</p>'}
-      </div>
-    </div>
-    <div class="setPane hidden" data-pane="self-host">
-      <div class="selfHostSection">
-        <h3 class="skillsHeading">Run Board yourself</h3>
-        <p class="skillsIntro">Board is open source. Except for identified third-party materials, the software and bundled non-trademark assets are MIT licensed, so you can build the board and serve it from your own machine or domain.</p>
-      </div>
-
-      <div class="setGroupHead">Build it</div>
-      <div class="setGroup">
-        <div class="setItem setItemStatic selfHostCode">
-          <code class="setCode setCodeBlock" data-self-host-command>${SELF_HOST_COMMANDS}</code>
-          <button class="setItemAction setCopy" data-self-host-copy aria-label="Copy the self-host commands">${icon('copy')}Copy</button>
-        </div>
-      </div>
-      <p class="setNote">Then serve the <code>dist</code> folder on localhost or your own HTTPS domain. To work on the board with Vite instead, run <code>BOARD_SELF_HOSTED=true npm run dev</code>.</p>
-      ${BOARD_SELF_HOSTED ? '<p class="setNote setNoteStrong">This installation is already a self-host build.</p>' : ''}
-
-      <div class="setGroupHead">What self-hosting changes</div>
-      <div class="setGroup">
-        <div class="setItem setItemStatic selfHostFact">
-          ${icon('check')}
-          <span class="setItemLabel">Local editing and export features are free on hosted and self-hosted Board.</span>
-        </div>
-        <div class="setItem setItemStatic selfHostFact">
-          ${icon('puzzle')}
-          <span class="setItemLabel">Extensions you place in <code>public/extensions</code> run in your build. The official hosted board does not run third-party extensions.</span>
-        </div>
-        <div class="setItem setItemStatic selfHostFact">
-          ${icon('lock')}
-          <span class="setItemLabel">Cloud sync, collaboration and agent links need Tactics Journal-operated services, so a self-host build does not provide them.</span>
-        </div>
-        <div class="setItem setItemStatic selfHostFact">
-          ${icon('copyright')}
-          <span class="setItemLabel">The installation is operated by whoever runs it, not by Tactics Journal. The Tactics Journal and Tactics Board names and logos stay reserved.</span>
-        </div>
-      </div>
-
-      <div class="setGroupHead">Project</div>
-      <div class="setGroup">
-        <a class="setItem selfHostLink" href="${SELF_HOST_REPO}" target="_blank" rel="noopener">
-          <span class="setItemLabel">Source code and README</span>${icon('external-link')}
-        </a>
-        <a class="setItem selfHostLink" href="${SELF_HOST_REPO}/blob/main/LICENSE" target="_blank" rel="noopener">
-          <span class="setItemLabel">MIT license</span>${icon('external-link')}
-        </a>
-        <a class="setItem selfHostLink" href="${SELF_HOST_REPO}/blob/main/TRADEMARKS.md" target="_blank" rel="noopener">
-          <span class="setItemLabel">Trademark policy</span>${icon('external-link')}
-        </a>
-      </div>
-
-      <div class="setGroup selfHostBack">
-        <button class="setItem" data-goto="root">
-          ${icon('chevron-left', 'ic setChev')}
-          <span class="setItemLabel">Back to Settings</span>
-        </button>
       </div>
     </div>
     <div class="setPane hidden" data-pane="self-host">
@@ -9609,7 +9553,7 @@ window.addEventListener('tacticsjournal:auth-changed', ((event: CustomEvent) => 
   renderAccountRow()
   // fills blanks only, so a session landing later never clobbers an edit
   prefillFeedback()
-  entitlements.setServerEntitlement(serverPro, serverLicense)
+  entitlements.setServerEntitlement(serverPro, serverLicense, serverBoardAdmin)
   if (authenticated && !previousAuthenticated) {
     const intent = takeFreeBackupIntent(sessionStorage)
     if (intent) queueMicrotask(() => { void requestFreeBackup(intent.source, intent.boardId) })
