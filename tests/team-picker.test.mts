@@ -154,3 +154,15 @@ test('team search uses the live free key and keeps known clubs when it fails', a
     assert.ok(names.has(club), `the shipped list is missing ${club}`)
   }
 })
+
+test('the shipped team list finds clubs by their other names and without accents', async () => {
+  const teams = await readFile(new URL('../src/teams.ts', import.meta.url), 'utf8')
+  assert.match(teams, /const names = \[team\.strTeam, \.\.\.\(team\.alt \?\? \[\]\), team\.strTeamShort\]/)
+  assert.match(teams, /const fold = \(s: string\) => s\.normalize\('NFD'\)/)
+  const index = JSON.parse(await readFile(new URL('../public/teams-index.json', import.meta.url), 'utf8'))
+  const byName = new Map(index.teams.map((t: { strTeam: string }) => [t.strTeam, t]))
+  for (const club of ['Nottingham Forest', 'Napoli', 'Torino', 'Rennes', 'Real Sociedad', 'Paris Saint-Germain', 'São Paulo']) {
+    assert.ok(byName.has(club), `the shipped list is missing ${club}`)
+  }
+  assert.ok((byName.get('Nottingham Forest') as { alt?: string[] }).alt?.includes('NFFC'))
+})
