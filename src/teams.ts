@@ -19,7 +19,7 @@ function flipNodeX(n: PathNode) {
 const API = 'https://www.thesportsdb.com/api/v1/json/123'
 const WIKI = 'https://en.wikipedia.org/w/api.php'
 
-type TeamHit = { idTeam: string; strTeam: string; strTeamShort: string; strLeague: string; colours: string[]; loved?: number }
+type TeamHit = { idTeam: string; strTeam: string; strTeamShort: string; strLeague: string; colours: string[]; loved?: number; alt?: string[] }
 type RosterPlayer = { name: string; number: string; position: string }
 type RosterPickItem = { team: string } & RosterPlayer
 export type TeamSide = 'home' | 'away'
@@ -70,6 +70,8 @@ const FALLBACK_COLORS = ['#e02020', '#1e2f6f', '#16a34a', '#facc15']
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 const sideLabel = (side: TeamSide) => side === 'home' ? 'Home' : 'Away'
+/** Lower case without accents, so "sao paulo" finds São Paulo. */
+const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 
 function positionRank(pos: string) {
   const p = pos.toLowerCase()
@@ -941,13 +943,15 @@ export class TeamPanel {
    * somebody might actually be drawing.
    */
   private indexMatches(q: string): TeamHit[] {
-    const needle = q.toLowerCase()
+    const needle = fold(q)
     const starts: TeamHit[] = []
     const holds: TeamHit[] = []
     for (const team of this.index) {
-      const name = team.strTeam.toLowerCase()
-      if (name.startsWith(needle)) starts.push(team)
-      else if (name.includes(needle)) holds.push(team)
+      // a club answers to its other names and its code too: "forest" and
+      // "nffc" both find Nottingham Forest, and "sao" finds São Paulo
+      const names = [team.strTeam, ...(team.alt ?? []), team.strTeamShort].filter(Boolean).map(fold)
+      if (names.some(name => name.startsWith(needle) || name.split(/[\s/-]+/).some(word => word.startsWith(needle)))) starts.push(team)
+      else if (names.some(name => name.includes(needle))) holds.push(team)
     }
     const known = (a: TeamHit, b: TeamHit) => (b.loved ?? 0) - (a.loved ?? 0) || a.strTeam.localeCompare(b.strTeam)
     return [...starts.sort(known), ...holds.sort(known)]
