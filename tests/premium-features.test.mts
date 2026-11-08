@@ -312,15 +312,13 @@ test('the board header keeps the canonical Tactics Journal links in order', () =
   const names = (block: string) =>
     [...block.matchAll(/<a[^>]*>([^<]+)<\/a>/g)].map((m) => m[1].trim())
 
+  const site = ['Home', 'Community', 'Board', 'AMA', 'About', 'Follow', 'Contact', 'Key']
   const boardNav = names(main.match(/<nav class="site-nav"[\s\S]*?<\/nav>/)?.[0] ?? '')
-  assert.deepEqual(boardNav, ['Opinion', 'Research', 'Community', 'About', 'Archive', 'Follow', 'Contact', 'Key'])
+  assert.deepEqual(boardNav, site)
 
-  // The board carries one link the site has no use for: What's new, which
-  // opens the board's own changelog panel. Every other link matches the site.
-  const boardMenu = (main.match(/site-menu-primary[\s\S]*?site-menu-theme/)?.[0] ?? '')
-    .replace(/<a[^>]*site-menu-changelog-link[\s\S]*?<\/a>/g, '')
-  const boardPanel = names(boardMenu)
-  assert.deepEqual(boardPanel, ['Opinion', 'Research', 'Community', 'About', 'AMA', 'Tactics Board', 'Search', 'Archive', 'Follow', 'Contact', 'Key'])
+  // The hamburger menu carries exactly the site's links, nothing board-only.
+  const boardPanel = names(main.match(/site-menu-primary[\s\S]*?site-menu-theme/)?.[0] ?? '')
+  assert.deepEqual(boardPanel, site)
 })
 
 test('billing is not managed anywhere that cannot manage it', () => {
