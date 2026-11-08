@@ -5330,6 +5330,11 @@ body.deskMode .boardArea { position: relative; inset: auto; flex: 1; min-height:
    surround on every side, so the board is set on the page rather than jammed
    against its chrome */
 body.deskMode #stage { inset: 16px; }
+/* a short window has no height to give to surround: the margin thins so the
+   pitch keeps what little there is */
+@media (max-height: 640px) {
+  body.deskMode #stage { inset: 8px; }
+}
 /* the margin is the same surround the stage paints around the pitch, so the
    stage's edge is nowhere to be seen */
 body.deskMode .boardArea { background: #f5f5f7; }
