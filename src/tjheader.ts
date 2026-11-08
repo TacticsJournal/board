@@ -61,9 +61,6 @@ export function initTjHeader(options: TjHeaderOptions = {}): { closeMenu: () => 
   let accountSessionPromise: Promise<any> | null = null
   let pendingEmail = ''
   const googleStartLink = q<HTMLAnchorElement>('.signin-google-button')
-  const dashboardStartLink = q<HTMLAnchorElement>('.site-account-dashboard-signin')
-
-  const DASHBOARD_START = 'https://dash.tacticsjournal.com/?signin=board'
 
   function currentGoogleStart() {
     return googleSignInUrl(TJ, window.location.href)
@@ -87,22 +84,7 @@ export function initTjHeader(options: TjHeaderOptions = {}): { closeMenu: () => 
     watchGoogleSignIn(popup)
   }
 
-  function startDashboardSignIn(event: Event) {
-    const width = 720
-    const height = 720
-    const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - width) / 2))
-    const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - height) / 2))
-    const popup = window.open(DASHBOARD_START, 'tj-dashboard-signin', `width=${width},height=${height},left=${left},top=${top}`)
-    if (!popup) return
-    event.preventDefault()
-    clearAccountError()
-    const previousSessionBinding = typeof accountSessionData?.session_binding === 'string'
-      ? accountSessionData.session_binding
-      : null
-    watchGoogleSignIn(popup, previousSessionBinding, true)
-  }
-
-  function watchGoogleSignIn(popup: Window, previousSessionBinding: string | null = null, requireNewSession = false) {
+  function watchGoogleSignIn(popup: Window) {
     const deadline = Date.now() + 5 * 60 * 1000
     let closedAt = 0
     const timer = window.setInterval(() => {
@@ -115,8 +97,6 @@ export function initTjHeader(options: TjHeaderOptions = {}): { closeMenu: () => 
       }
       refreshAccountSession().then((data) => {
         if (!data || !data.authenticated) return
-        const sessionBinding = typeof data.session_binding === 'string' ? data.session_binding : null
-        if (requireNewSession && (!sessionBinding || sessionBinding === previousSessionBinding)) return
         window.clearInterval(timer)
         try { popup.close() } catch { /* already gone */ }
       })
@@ -701,7 +681,6 @@ export function initTjHeader(options: TjHeaderOptions = {}): { closeMenu: () => 
   })
 
   if (googleStartLink) googleStartLink.addEventListener('click', startGoogleSignIn)
-  if (dashboardStartLink) dashboardStartLink.addEventListener('click', startDashboardSignIn)
 
   // main.ts asks for this after a network drop; the board also asks whenever
   // the tab is looked at again, which is when a sign-in done elsewhere is

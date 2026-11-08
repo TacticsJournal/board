@@ -728,7 +728,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
             <input type="text" name="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="6-digit code" aria-label="6-digit sign-in code" autocomplete="one-time-code" required />
             <button type="submit">Sign in</button>
           </form>
-          <a href="https://dash.tacticsjournal.com/?signin=board" class="site-account-dashboard-signin site-panel-animate">Sign in as @kyleboas via dashboard</a>
         </div>
         <div class="site-account-logged-in" hidden>
           <div class="notif-header site-panel-animate">

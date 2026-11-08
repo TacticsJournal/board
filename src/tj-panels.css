@@ -168,14 +168,6 @@ html[data-theme-resolved="dark"] .site-menu-theme {
 .site-account-start-hint {
   text-align: center;
 }
-.site-account-dashboard-signin {
-  display: block;
-  width: fit-content;
-  margin: 1rem auto 0;
-  color: var(--text-muted, #777);
-  font-size: 0.8rem;
-  text-align: center;
-}
 .signin-google {
   display: flex;
   justify-content: center;
