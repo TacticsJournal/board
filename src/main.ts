@@ -1022,13 +1022,27 @@ const stageEl = document.querySelector<HTMLDivElement>('#stage')!
 const liveEditChipEl = document.querySelector<HTMLElement>('.liveEditChip')!
 const stageWrap = document.querySelector<HTMLDivElement>('.stageWrap')!
 const optionsEl = document.querySelector<HTMLDivElement>('#options')!
-// A mouse has no sideways gesture, so on desktop its wheel moves a long strip.
-optionsEl.addEventListener('wheel', (e) => {
-  if (!document.body.classList.contains('deskMode') || optionsEl.scrollWidth <= optionsEl.clientWidth) return
-  if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
-  optionsEl.scrollLeft += e.deltaY
-  e.preventDefault()
-}, { passive: false })
+/**
+ * A mouse has no sideways gesture, so its wheel moves whichever sideways strip
+ * it is over: the shelf, the styles rows, the options strip. Without this a
+ * narrow window on a computer leaves everything past the panel's edge out of
+ * reach. A trackpad already scrolls sideways and is left alone, and a strip
+ * inside something that scrolls up and down hands the wheel to that instead.
+ */
+function wheelMovesStrips(root: HTMLElement) {
+  root.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
+    for (let el = e.target as HTMLElement | null; el && root.contains(el); el = el.parentElement) {
+      const css = getComputedStyle(el)
+      if (el.scrollHeight > el.clientHeight + 1 && /auto|scroll/.test(css.overflowY)) return
+      if (el.scrollWidth > el.clientWidth + 1 && /auto|scroll/.test(css.overflowX)) {
+        el.scrollLeft += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY
+        e.preventDefault()
+        return
+      }
+    }
+  }, { passive: false })
+}
 const toolbarEl = document.querySelector<HTMLDivElement>('#toolbar')!
 const shelfEl = document.querySelector<HTMLDivElement>('#shelf')!
 const stylesShelfEl = document.querySelector<HTMLDivElement>('#stylesShelf')!
@@ -1040,6 +1054,8 @@ const fabBLEl = document.querySelector<HTMLElement>('#fabBL')!
 const panelFoldEl = document.querySelector<HTMLButtonElement>('#panelFold')!
 const colorPickerEl = document.querySelector<HTMLElement>('#colorPicker')!
 const colorDockEl = document.querySelector<HTMLElement>('[data-color-dock]')!
+wheelMovesStrips(panelDockEl)
+wheelMovesStrips(ctxDockEl)
 
 if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
   document.addEventListener('contextmenu', (e) => {
