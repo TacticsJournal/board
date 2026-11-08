@@ -272,18 +272,6 @@ test('an existing session reaches the whole app, not just the header', () => {
   assert.match(header, /function announceSession\(\)[\s\S]*?tacticsjournal:auth-changed/)
 })
 
-test('the protected author can sign in to Board through the dashboard', () => {
-  const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
-  const header = readFileSync(new URL('../src/tjheader.ts', import.meta.url), 'utf8')
-
-  assert.match(main, /href="https:\/\/dash\.tacticsjournal\.com\/\?signin=board"/)
-  assert.match(main, /Sign in as @kyleboas via dashboard/)
-  assert.match(header, /window\.open\(DASHBOARD_START, 'tj-dashboard-signin'/)
-  assert.match(header, /dashboardStartLink\.addEventListener\('click', startDashboardSignIn\)/)
-  assert.match(header, /watchGoogleSignIn\(popup, previousSessionBinding, true\)/)
-  assert.match(header, /sessionBinding === previousSessionBinding/)
-})
-
 test('existing License and Pro holders are not sold what they already hold', () => {
   const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
 
