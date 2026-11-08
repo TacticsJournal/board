@@ -2028,7 +2028,7 @@ if ('EyeDropper' in window) colorPickerEl.querySelector('[data-picker-eye]')?.cl
  * and one bar over the board for whatever the tool or the selection can change.
  * Nothing floats over the pitch here, and nothing about the phone changes.
  */
-const DESK_QUERY = '(min-width: 1024px)'
+const DESK_QUERY = '(min-width: 1024px), (min-width: 600px) and (max-height: 640px) and (min-aspect-ratio: 3/2)'
 const DESK_PANEL_KEY = 'tbm-desk-panel-v1'
 const deskQuery = window.matchMedia(DESK_QUERY)
 let deskMode = false

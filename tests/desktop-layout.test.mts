@@ -6,7 +6,9 @@ const main = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8')
 const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8')
 
 test('the wide layout is a breakpoint, not a second app', () => {
-  assert.match(main, /const DESK_QUERY = '\(min-width: 1024px\)'/)
+  assert.match(main, /const DESK_QUERY = '\(min-width: 1024px\), \(min-width: 600px\) and \(max-height: 640px\) and \(min-aspect-ratio: 3\/2\)'/)
+  // a wide, short window (a docked pane, a landscape phone) has no height to
+  // stack a panel under the board, so it takes the side-by-side layout too
   assert.match(main, /deskQuery\.addEventListener\('change'/)
   // one set of elements, moved between the two arrangements
   assert.match(main, /ctxDockEl\.append\(fabColEl, fabBLEl, optionsEl\)/)
