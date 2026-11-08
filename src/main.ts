@@ -667,15 +667,15 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div class="appBanner hidden" id="appBanner" role="status" aria-live="polite"></div>
   <header class="site-header"${BOARD_SELF_HOSTED ? ' hidden' : ''}>
     <a href="https://tacticsjournal.com/" class="site-logo" aria-label="Tactics Journal home">
-      <img src="${tjLogoSrc}" alt="Tactics Journal" />
+      <img src="${BOARD_SELF_HOSTED ? tjLogoSrc : 'https://tacticsjournal.com/assets/IMG_5503.png'}" alt="Tactics Journal" />
     </a>
     <nav class="site-nav" aria-label="Primary">
-      <a href="https://tacticsjournal.com/opinion/">Opinion</a>
-      <a href="https://tacticsjournal.com/research/">Research</a>
+      <a href="https://tacticsjournal.com/">Home</a>
       <a href="https://tacticsjournal.com/community/">Community</a>
+      <a href="https://board.tacticsjournal.com/">Board</a>
+      <a href="https://tacticsjournal.com/ama/">AMA</a>
       <span class="site-nav-divider"></span>
       <a href="https://tacticsjournal.com/about/">About</a>
-      <a href="https://tacticsjournal.com/archive/">Archive</a>
       <a href="https://tacticsjournal.com/follow/">Follow</a>
       <a href="https://tacticsjournal.com/contact/">Contact</a>
       <a href="https://tacticsjournal.com/key/">Key</a>
@@ -821,28 +821,23 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1.5-3.5 4.1-5.25 7-5.25S17.5 16.5 19 20"/></svg>
       </a>
       <details class="site-menu">
-        <summary class="site-action site-menu-summary" aria-label="Menu">
+        <summary class="site-action" aria-label="Menu">
           <svg class="menu-icon" viewBox="0 0 24 24"><path class="menu-top" d="M4 8h16"/><path class="menu-bottom" d="M4 16h16"/></svg>
-          ${changelogUnread.length ? '<span class="site-menu-badge" aria-hidden="true"></span>' : ''}
         </summary>
         <div class="site-menu-overlay"></div>
         <div class="site-menu-panel">
           <div class="site-menu-primary">
-            <a href="https://tacticsjournal.com/opinion/">Opinion</a>
-            <a href="https://tacticsjournal.com/research/">Research</a>
+            <a href="https://tacticsjournal.com/">Home</a>
             <a href="https://tacticsjournal.com/community/">Community</a>
+            <a href="https://board.tacticsjournal.com/">Board</a>
+            <a href="https://tacticsjournal.com/ama/">AMA</a>
           </div>
           <div class="site-menu-divider" aria-hidden="true"></div>
           <div class="site-menu-secondary">
             <a href="https://tacticsjournal.com/about/">About</a>
-            <a href="https://tacticsjournal.com/ama/">AMA</a>
-            <a href="https://board.tacticsjournal.com/" class="active" aria-current="page">Tactics Board</a>
-            <a href="https://tacticsjournal.com/search/" class="site-menu-search-link">Search</a>
-            <a href="https://tacticsjournal.com/archive/">Archive</a>
             <a href="https://tacticsjournal.com/follow/">Follow</a>
             <a href="https://tacticsjournal.com/contact/">Contact</a>
             <a href="https://tacticsjournal.com/key/">Key</a>
-            ${changelog.length ? '<a href="/changelog" class="site-menu-changelog-link" data-inline-toggle="changelog" aria-expanded="false" aria-controls="site-changelog-panel">What\'s new</a>' : ''}
           </div>
           <div class="site-menu-theme">
             <div class="theme-setting" data-theme-setting>
@@ -6811,9 +6806,8 @@ const tjHeader = BOARD_SELF_HOSTED ? null : initTjHeader({
   onChangelogClose: () => { markChangelogSeen(changelog); clearChangelogBadge() },
 })
 
-/** Reading the entries is what marks them read, so the dots go together. */
+/** Reading the entries is what marks them read. */
 function clearChangelogBadge() {
-  document.querySelector('.site-menu-badge')?.remove()
   document.querySelectorAll('.site-changelog-entry.is-unread').forEach(entry => entry.classList.remove('is-unread'))
 }
 const closeSiteMenu = () => tjHeader?.closeMenu()
@@ -9481,8 +9475,7 @@ appBanner.addEventListener('click', (e) => {
    nothing: the panel is one tap away and tells the whole story.
 
    Showing it is what marks it read: a toast can time out unread, and returning
-   it on the next load would make the announcement a thing to get past. The dot
-   on the menu is the durable half of this and stays until the panel is read. */
+   it on the next load would make the announcement a thing to get past. */
 const changelogAnnouncement = BOARD_SELF_HOSTED ? undefined : changelogUnread.some(entry => entry.major)
 if (changelogAnnouncement) {
   markChangelogSeen(changelog)

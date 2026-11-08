@@ -102,12 +102,20 @@ html[data-theme-resolved="dark"] {
   --panel: #1c1c1e;
   --board-3d-space: #16181b;
 }
+/* The site header takes tacticsjournal.com's dark values, not the board's. */
 html[data-theme-resolved="dark"] header.site-header,
-html[data-theme-resolved="dark"] .site-menu-panel { background: var(--bg); }
-html[data-theme-resolved="dark"] .site-nav a,
-html[data-theme-resolved="dark"] .site-action,
-html[data-theme-resolved="dark"] .actionRow button,
-html[data-theme-resolved="dark"] .site-menu-panel a { color: var(--ink); }
+html[data-theme-resolved="dark"] .site-menu-panel { background: #1c1c1e; }
+html[data-theme-resolved="dark"] .site-header .site-nav a,
+html[data-theme-resolved="dark"] .site-header .site-action,
+html[data-theme-resolved="dark"] .site-header .site-menu-panel a { color: #fafafa; }
+html[data-theme-resolved="dark"] .site-action svg,
+html[data-theme-resolved="dark"] .site-menu summary svg { stroke: #fafafa; }
+html[data-theme-resolved="light"] .site-nav a,
+html[data-theme-resolved="light"] .site-action,
+html[data-theme-resolved="light"] .site-menu-panel a { color: #1d1d1f; }
+html[data-theme-resolved="light"] .site-action svg,
+html[data-theme-resolved="light"] .site-menu summary svg { stroke: #1d1d1f; }
+html[data-theme-resolved="dark"] .actionRow button { color: var(--ink); }
 html[data-theme-resolved="dark"] .actionRow { border-top-color: rgba(255, 255, 255, 0.12); }
 html[data-theme-resolved="dark"] .site-nav-divider { background: rgba(255, 255, 255, 0.15); }
 html[data-theme-resolved="dark"] .site-menu-overlay { background: rgba(0, 0, 0, 0.5); }
@@ -266,13 +274,13 @@ header.site-header {
 }
 .site-nav a:hover { opacity: 0.6; }
 .site-nav a.active { font-weight: 600; }
+.site-nav { display: none; }
 .site-nav-divider { display: none; }
-.site-nav .site-nav-divider ~ a { display: none; }
 @media (min-width: 768px) {
   header.site-header { justify-content: center; gap: 28px; }
   .site-actions { justify-content: flex-start; }
   .site-nav a { font-size: 1rem; }
-  .site-nav .site-nav-divider ~ a { display: inline; }
+  .site-nav { display: flex; }
   .site-menu { display: none; }
   .site-nav-divider {
     display: inline-block;
@@ -421,7 +429,7 @@ html[data-theme-resolved="dark"] .site-action-avatar {
 .site-menu-divider {
   height: 1px;
   margin: 18px 48px;
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.1);
   opacity: 0;
   transform: translateY(-8px);
   transition: opacity 0.3s ease, transform 0.3s ease;
@@ -458,10 +466,6 @@ html[data-theme-resolved="dark"] .site-action-avatar {
 .site-menu[open] .site-menu-secondary a:nth-of-type(6) { transition-delay: 0.36s; }
 .site-menu[open] .site-menu-secondary a:nth-of-type(7) { transition-delay: 0.38s; }
 .site-menu[open] .site-menu-secondary a:nth-of-type(8) { transition-delay: 0.4s; }
-.site-menu[open] .site-menu-secondary a:nth-of-type(9) { transition-delay: 0.42s; }
-
-/* Search lives in the icon row on desktop only. On mobile the icon goes and
-   the Search link in the menu carries it, same as tacticsjournal.com. */
 .site-menu[open].closing .site-menu-panel a,
 .site-menu[open].closing .site-menu-divider {
   opacity: 0;
@@ -531,6 +535,8 @@ html[data-theme-resolved="dark"] .site-action-avatar {
   padding-top: 18px;
   border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
+/* tacticsjournal.com's dark field colour for the menu's theme picker. */
+html[data-theme-resolved="dark"] .site-menu .site-menu-theme { --field-bg: #111214; }
 @media (max-width: 767px) {
   header.site-header {
     justify-content: space-between;
@@ -540,14 +546,8 @@ html[data-theme-resolved="dark"] .site-action-avatar {
   }
   .site-logo { min-height: 48px; padding-right: 10px; }
   .site-logo img { width: 24px; height: 24px; }
-  .site-nav { display: flex; gap: 16px; }
-  .site-nav a:nth-of-type(1),
-  .site-nav a:nth-of-type(2),
-  .site-nav a:nth-of-type(3) { display: inline-flex; }
-  .site-nav a:nth-of-type(n+4) { display: none; }
-  .site-nav a { font-size: 0.9rem; }
-  .site-nav .site-nav-divider,
-  .site-nav .site-nav-divider ~ a { display: none; }
+  .site-nav,
+  .site-nav-divider { display: none; }
   .site-actions {
     position: static;
     transform: none;
@@ -573,19 +573,6 @@ html[data-theme-resolved="dark"] .site-action-avatar {
 
 /* ---------- what's new ---------- */
 
-/* The hamburger is the only always-visible way in, so the unread mark rides
-   its corner. It carries no number: how many changes there are is not the
-   point, only that there are some. */
-.site-menu-badge {
-  position: absolute;
-  top: -1px;
-  right: -2px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--action);
-  pointer-events: none;
-}
 .site-changelog-panel {
   color: var(--ink);
 }
