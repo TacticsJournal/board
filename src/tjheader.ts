@@ -439,7 +439,7 @@ export function initTjHeader(options: TjHeaderOptions = {}): { closeMenu: () => 
     if (name === 'search') {
       document.body.classList.add('site-panel-open')
       lockBodyScroll()
-      const question = searchPanel ? searchPanel.querySelector<HTMLElement>('[data-search-question]') : null
+      const question = searchPanel ? searchPanel.querySelector<HTMLElement>('[data-search-input]') : null
       if (question) window.requestAnimationFrame(() => { question.focus() })
       return
     }

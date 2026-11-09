@@ -682,22 +682,20 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </nav>
     <div class="site-actions">
       <div id="site-search-panel" class="site-overlay-panel site-search-panel" hidden>
-        <div class="search-page search-chat-page site-search-content">
-          <div class="search-header site-panel-animate" data-search-initial-header>
+        <div class="search-page site-search-content" data-search>
+          <div class="search-header site-panel-animate">
             <h1 class="search-title">Search</h1>
-            <p class="search-intro">What would you like to know?</p>
-            <p class="search-disclaimer">Disclaimer: Search is in development. Things may not work properly. If you encounter an issue, contact us.</p>
+            <p class="search-intro">Search every post on Tactics Journal.</p>
           </div>
-          <div class="search-answer search-chat" data-search-answer hidden></div>
-          <div class="search-sources" data-search-sources hidden></div>
-          <div class="search-status" data-search-status role="status" aria-live="polite"></div>
-          <form class="search-form search-chat-form site-panel-animate" data-search-form>
-            <label class="sr-only">Ask a question</label>
-            <textarea class="search-question" data-search-question rows="1" placeholder="Ask Tactics Journal" required></textarea>
-            <button class="search-submit" data-search-submit type="submit" aria-label="Send">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 4L12 20M12 4L5 11M12 4L19 11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <form class="search-form search-chat-form search-simple-form site-panel-animate" data-search-form role="search">
+            <label class="sr-only" for="site-search-input">Search posts</label>
+            <input id="site-search-input" class="search-question" data-search-input type="search" name="q" placeholder="Teams, coaches, players, ideas" autocomplete="off" enterkeyhint="search">
+            <button class="search-submit" type="submit" aria-label="Search">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20L16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             </button>
           </form>
+          <div class="search-status" data-search-status role="status" aria-live="polite"></div>
+          <ul class="search-results" data-search-results hidden></ul>
         </div>
       </div>
       <div id="site-account-panel" class="site-overlay-panel site-account-panel" hidden>
