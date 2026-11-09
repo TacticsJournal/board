@@ -438,6 +438,8 @@ export class Board {
   /** Remote pitch art is shared by frames; never create an Image per preview. */
   private remotePitchImages = new Map<string, HTMLImageElement>()
   private remoteScene: Scene | null = null
+  /** Each remote object's node, so a delta replaces one node rather than the layer. */
+  private remoteNodes = new Map<string, Konva.Node>()
   private previousScene: Scene | null = null
   private previousSource: Scene | null = null
   private remoteBoardH = BOARD_H
@@ -732,11 +734,14 @@ export class Board {
     this.remoteBackgroundLayer.destroyChildren()
     this.remoteLayer.destroyChildren()
     this.remoteOverlayLayer.destroyChildren()
+    this.remoteNodes.clear()
     this.drawRemoteBackground(scene)
     this.renderingScene = scene
     for (const object of objectsInDrawOrder(scene.objects)) {
       const node = this.buildNode(object)
-      if (node) this.remoteLayer.add(node as any)
+      if (!node) continue
+      this.remoteLayer.add(node as any)
+      this.remoteNodes.set(object.id, node)
     }
     this.renderingScene = null
     this.drawOverlay(scene, this.remoteOverlayLayer, true)
@@ -762,11 +767,60 @@ export class Board {
     this.onRemotePreviewVisibilityChange(true)
   }
 
+  /**
+   * Redraw only some objects of the remote scene already on screen. `objects`
+   * may be in-between copies of the scene's own (a tween); `scene` gives the
+   * draw order and the look. The pitch, overlay and every other node stay as
+   * they are. False when there is no remote scene to patch, or its pitch
+   * height changed, so the caller draws the scene whole instead.
+   */
+  patchRemotePreview(scene: Scene, objects: readonly SceneObj[], removed: readonly string[]): boolean {
+    if (!this.remotePreviewActive || this.remoteHeight(scene) !== this.remoteBoardH) return false
+    this.remoteScene = scene
+    for (const id of removed) {
+      this.remoteNodes.get(id)?.destroy()
+      this.remoteNodes.delete(id)
+    }
+    this.renderingScene = scene
+    const added = new Map<string, SceneObj>()
+    for (const object of objects) {
+      const old = this.remoteNodes.get(object.id)
+      if (!old) { added.set(object.id, object); continue }
+      const node = this.buildNode(object)
+      const index = old.zIndex()
+      old.destroy()
+      this.remoteNodes.delete(object.id)
+      if (!node) continue
+      this.remoteLayer.add(node as any)
+      node.zIndex(index)
+      this.remoteNodes.set(object.id, node)
+    }
+    if (added.size) {
+      // A new object slots in after every drawn object below it in draw order.
+      let index = 0
+      for (const object of objectsInDrawOrder(scene.objects)) {
+        const next = added.get(object.id)
+        if (next) {
+          const node = this.buildNode(next)
+          if (!node) continue
+          this.remoteLayer.add(node as any)
+          node.zIndex(index)
+          this.remoteNodes.set(object.id, node)
+          index += 1
+        } else if (this.remoteNodes.has(object.id)) index += 1
+      }
+    }
+    this.renderingScene = null
+    this.remoteLayer.batchDraw()
+    return true
+  }
+
   /** Restore the local rendering. This never calls Store or changes selection/history. */
   clearRemotePreview() {
     if (!this.remotePreviewActive) return
     this.remotePreviewActive = false
     this.remoteScene = null
+    this.remoteNodes.clear()
     this.remoteBackgroundLayer.destroyChildren()
     this.remoteLayer.destroyChildren()
     this.remoteOverlayLayer.destroyChildren()
