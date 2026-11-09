@@ -42,6 +42,7 @@ import {
 } from './shared-backgrounds.ts'
 import * as live from './live'
 import * as collaboration from './collaboration'
+import { createTabPresence } from './tab-presence'
 import { TJ_ORIGIN, usingBillingSandbox } from './origin'
 import { boardAgentLinksUrl, boardInvitationUrl, boardPresenceUrl, boardSkillsUrl, ensureBoardSession, resetBoardSession, type AgentAccessMode } from './board-api'
 import { startCheckout, type CheckoutProduct } from './checkout'
@@ -9975,7 +9976,11 @@ function scheduleSync(delay = SYNC_DEBOUNCE, change: { shared: boolean } = { sha
 saves.onLocalChange = (change) => {
   updatePresence()
   scheduleSync(SYNC_DEBOUNCE, change ?? { shared: false })
-  queueMicrotask(() => { void updateCollaborationChannel() })
+  queueMicrotask(() => {
+    void updateCollaborationChannel()
+    // A new board only gets its id at its first save. Repeats are free.
+    announceTab()
+  })
 }
 // Asset storage has no project write to wake the normal sync path. Remote
 // applications suppress this notification, so a pull cannot schedule a loop.
@@ -10008,7 +10013,6 @@ const collaborationDevice = sync.deviceId()
 let remotePreviewTimer: number | null = null
 let remoteRenderTimer: number | null = null
 let remoteRenderScene: Scene | null = null
-let remoteRenderedAt = 0
 let localPointerActive = false
 let localPreviewEndPending = false
 let localPreviewGesture: string | null = null
@@ -10023,7 +10027,7 @@ function setLiveEditStatus(visible: boolean) {
 /** Hide paint only. Sequence/end ordering survives local control and expiry. */
 function hideRemotePreview() {
   if (remotePreviewTimer !== null) { clearTimeout(remotePreviewTimer); remotePreviewTimer = null }
-  if (remoteRenderTimer !== null) { clearTimeout(remoteRenderTimer); remoteRenderTimer = null }
+  if (remoteRenderTimer !== null) { cancelAnimationFrame(remoteRenderTimer); remoteRenderTimer = null }
   remoteRenderScene = null
   board.clearRemotePreview()
   setLiveEditStatus(false)
@@ -10035,21 +10039,21 @@ function clearRemotePreview() {
   remoteOrder.clear()
 }
 
-/** Sender and receiver are both capped at 30 visual renders per second. */
+/**
+ * Paint the newest received scene once per display frame. Frames arrive at up
+ * to 60 a second; anything that lands between two paints is replaced, never
+ * queued, so a slow device drops frames rather than falling behind.
+ */
 function renderRemotePreview(scene: Scene) {
   remoteRenderScene = scene
-  const wait = Math.max(0, collaboration.PREVIEW_INTERVAL - (Date.now() - remoteRenderedAt))
   if (remoteRenderTimer !== null) return
-  const render = () => {
+  remoteRenderTimer = requestAnimationFrame(() => {
     remoteRenderTimer = null
     const next = remoteRenderScene
     remoteRenderScene = null
     if (!next || localPointerActive) return
-    remoteRenderedAt = Date.now()
     board.renderRemotePreview(next)
-  }
-  if (wait === 0) render()
-  else remoteRenderTimer = window.setTimeout(render, wait)
+  })
 }
 
 function expireRemotePreview(phase: collaboration.PreviewPhase) {
@@ -10125,8 +10129,30 @@ async function updateCollaborationChannel(): Promise<void> {
   } else collaborationChannel.stop()
 }
 
+/* ----- the same board open in two tabs -----
+ *
+ * Tabs in one browser share a device, so the room treats them as one editor
+ * and a move in one only reaches the other once it is saved. Say so, rather
+ * than leave it looking like live editing is broken.
+ */
+const TAB_BANNER = 'other-tab'
+const tabPresence = createTabPresence({
+  tabId: `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+  onChange: (duplicate) => {
+    if (duplicate) {
+      showBanner(`<p data-banner-kind="${TAB_BANNER}">This board is also open in another tab. Moves made there only show here once they're saved. Close the other tab to keep working in one place.</p>
+        <span class="appBannerActions"><button data-banner="dismiss">Dismiss</button></span>`, 'warn')
+    } else if (appBanner.querySelector(`[data-banner-kind="${TAB_BANNER}"]`)) hideBanner()
+  },
+})
+const announceTab = () => tabPresence.setBoard(saves.currentBoardId())
+window.addEventListener('pagehide', () => tabPresence.leave())
+window.addEventListener('pageshow', (event) => { if (event.persisted) announceTab() })
+announceTab()
+
 collaborationBoardChanged = () => {
   clearRemotePreview()
+  announceTab()
   queueMicrotask(() => { void updateCollaborationChannel() })
 }
 clearCollaborationPreview = clearRemotePreview
