@@ -1,10 +1,20 @@
 import { boardCollaborationUrl } from './board-api.ts'
-import { migrate, type Scene } from './types.ts'
+import { insertByTier, migrate, sanitizeObjects, type Scene, type SceneObj } from './types.ts'
 
 /** Visual board collaboration is deliberately separate from the durable-sync nudge socket. */
-/** A 34 ms cadence stays just below the server's bounded 30 fps rate. */
+/**
+ * A 34 ms cadence sends about 30 frames a second. Receivers tween between
+ * frames, so motion still paints at the display's own refresh rate.
+ */
 export const PREVIEW_INTERVAL = 34
 export const PREVIEW_MAX_BYTES = 131_072
+/**
+ * A gesture sends its whole scene first and then only what changed. It sends
+ * the whole scene again at least this often, so a receiver that missed the
+ * start (it joined late, or it is an older client that ignores deltas)
+ * catches up within a second.
+ */
+export const PREVIEW_KEYFRAME_INTERVAL = 1_000
 
 /** Keep a dead preview socket quiet, but retry it with the same bounded ladder as live sync. */
 export const RETRY_DELAYS = [1_000, 2_000, 5_000, 10_000, 30_000]
@@ -17,17 +27,21 @@ export const AUTH_REFRESH_INTERVAL = 4 * 60 * 1_000
 const PING = JSON.stringify({ type: 'ping' })
 const MAX_PREVIEW_OBJECTS = 2_000
 const PREVIEW_TYPES = new Set(['player', 'ball', 'cone', 'goal', 'image', 'marker', 'arrow', 'box', 'text'])
+/** The ids migrate() keeps as they are. A delta is keyed by id, so it can carry no other kind. */
+const OBJECT_ID = /^[A-Za-z0-9_-]{1,100}$/
 
 export type PreviewPhase = 'update' | 'end'
-export type PreviewMessage = {
-  type: 'preview'
-  page: string
-  gesture: string
-  sequence: number
-  phase: PreviewPhase
-  scene: Scene
-  source?: string
-}
+/**
+ * What changed in a gesture since the frame named by `base`: each new or
+ * changed object whole, and the ids that went. A new object goes on top of
+ * its tier, where insertByTier puts it; a sender whose order differs from that
+ * sends the whole scene instead, so the order never has to travel.
+ */
+export type PreviewDelta = { objects: SceneObj[]; removed: string[] }
+type PreviewHeader = { type: 'preview'; page: string; gesture: string; sequence: number; source?: string }
+export type PreviewSceneMessage = PreviewHeader & { phase: PreviewPhase; scene: Scene }
+export type PreviewDeltaMessage = PreviewHeader & { phase: 'update'; base: number; delta: PreviewDelta }
+export type PreviewMessage = PreviewSceneMessage | PreviewDeltaMessage
 
 export type CollaborationControlMessage = {
   type: 'collaboration'
@@ -193,15 +207,313 @@ export function sanitizePreviewScene(value: unknown): Scene | null {
   return migrate(value)
 }
 
+/**
+ * A delta's objects take the same import sanitizer as a scene. One that it
+ * would drop or give a fresh id has no slot to land in, so the frame is refused.
+ */
+function parsePreviewDelta(value: unknown): PreviewDelta | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const raw = value as Record<string, unknown>
+  if (!exactKeys(raw, ['objects', 'removed']) || !Array.isArray(raw.objects) || !Array.isArray(raw.removed)
+    || raw.objects.length + raw.removed.length > MAX_PREVIEW_OBJECTS) return null
+  const ids = new Set<string>()
+  const fresh = (id: unknown) => {
+    if (typeof id !== 'string' || !OBJECT_ID.test(id) || ids.has(id)) return false
+    ids.add(id)
+    return true
+  }
+  if (!raw.removed.every(fresh)) return null
+  if (!raw.objects.every(item => !!item && typeof item === 'object' && !Array.isArray(item) && fresh((item as { id?: unknown }).id))) return null
+  const objects = sanitizeObjects(raw.objects)
+  if (objects.length !== raw.objects.length || objects.some((object, i) => object.id !== (raw.objects as { id: string }[])[i].id)) return null
+  return { objects, removed: raw.removed as string[] }
+}
+
 export function parsePreview(value: unknown): (PreviewMessage & { source: string }) | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const raw = value as Record<string, unknown>
   if (raw.type !== 'preview' || !safePage(raw.page) || !safeGesture(raw.gesture)
     || !Number.isSafeInteger(raw.sequence) || (raw.sequence as number) < 0
     || (raw.phase !== 'update' && raw.phase !== 'end') || !safePage(raw.source)) return null
+  const header = { type: 'preview' as const, page: raw.page, gesture: raw.gesture, sequence: raw.sequence as number, source: raw.source }
+  if (raw.delta !== undefined || raw.base !== undefined) {
+    // A delta only ever continues a moving gesture; an end is always whole.
+    if (raw.scene !== undefined || raw.phase !== 'update' || !Number.isSafeInteger(raw.base)
+      || (raw.base as number) < 0 || (raw.base as number) >= header.sequence) return null
+    const delta = parsePreviewDelta(raw.delta)
+    return delta ? { ...header, phase: 'update', base: raw.base as number, delta } : null
+  }
   const scene = sanitizePreviewScene(raw.scene)
   if (!scene) return null
-  return { type: 'preview', page: raw.page, gesture: raw.gesture, sequence: raw.sequence, phase: raw.phase, scene, source: raw.source }
+  return { ...header, phase: raw.phase, scene }
+}
+
+/**
+ * Applies a delta to an ordered list. Sender and receiver both rebuild a
+ * gesture's order with this one function, so the two cannot disagree.
+ */
+function applyPreviewDelta<T extends { id: string; type: SceneObj['type'] }>(base: readonly T[], objects: readonly T[], removed: readonly string[]): T[] {
+  const gone = new Set(removed)
+  const next = base.filter(item => !gone.has(item.id))
+  const index = new Map(next.map((item, i) => [item.id, i]))
+  const added: T[] = []
+  for (const item of objects) {
+    const at = index.get(item.id)
+    if (at === undefined) added.push(item)
+    else next[at] = item
+  }
+  // insertByTier reads only each entry's type.
+  for (const item of added) insertByTier(next as unknown as SceneObj[], item as unknown as SceneObj)
+  return next
+}
+
+function sceneHead(scene: Scene): string {
+  const { objects: _objects, ...head } = scene
+  return JSON.stringify(head)
+}
+
+function uniqueIds(objects: readonly { id: string }[]): boolean {
+  return new Set(objects.map(object => object.id)).size === objects.length
+}
+
+type SentItem = { id: string; type: SceneObj['type']; json: string }
+type SentPreview = { page: string; gesture: string; sequence: number; keyframeAt: number; head: string; items: SentItem[] }
+
+/**
+ * What changed since the frame last put on the wire. Null asks for a whole
+ * scene: the board around the objects changed, an id is duplicated or one a
+ * delta cannot carry, or the order is not the one the receiver would rebuild.
+ */
+function previewDelta(sent: SentPreview, head: string, items: SentItem[], scene: Scene): PreviewDelta | null {
+  if (head !== sent.head || !uniqueIds(items) || !uniqueIds(sent.items)) return null
+  const before = new Map(sent.items.map(item => [item.id, item.json]))
+  const now = new Set(items.map(item => item.id))
+  const changed: SentItem[] = []
+  const objects: SceneObj[] = []
+  for (let i = 0; i < items.length; i += 1) {
+    if (before.get(items[i].id) === items[i].json) continue
+    if (!OBJECT_ID.test(items[i].id)) return null
+    changed.push(items[i])
+    objects.push(scene.objects[i])
+  }
+  const removed = sent.items.filter(item => !now.has(item.id)).map(item => item.id)
+  if (removed.some(id => !OBJECT_ID.test(id))) return null
+  const rebuilt = applyPreviewDelta(sent.items, changed, removed)
+  if (rebuilt.length !== items.length || rebuilt.some((item, i) => item.id !== items[i].id)) return null
+  return { objects, removed }
+}
+
+/* ---------- receiving ---------- */
+
+/**
+ * One received frame, ready to paint. `changes` maps every id that changed
+ * or went to what it was before, or is null when the scene must be drawn
+ * whole (a first frame, or one whose board or object order changed).
+ */
+export type PreviewUpdate = {
+  key: string
+  scene: Scene
+  changes: Map<string, SceneObj | null> | null
+  /** An end frame is final, so it is shown exactly rather than tweened to. */
+  settle: boolean
+}
+
+function sceneChanges(before: Scene, after: Scene): Map<string, SceneObj | null> | null {
+  if (before.objects.length !== after.objects.length || sceneHead(before) !== sceneHead(after)) return null
+  const changes = new Map<string, SceneObj | null>()
+  for (let i = 0; i < after.objects.length; i += 1) {
+    const was = before.objects[i]
+    const now = after.objects[i]
+    if (was.id !== now.id) return null
+    if (JSON.stringify(was) !== JSON.stringify(now)) changes.set(now.id, was)
+  }
+  return changes
+}
+
+/**
+ * The scene each sender is showing, rebuilt from its frames. A delta applies
+ * only to the frame it names; without that base (this device joined late, or
+ * missed a frame) it is ignored until the sender's next whole scene.
+ */
+export function createPreviewModel(maxSources = 16) {
+  const models = new Map<string, { page: string; gesture: string; sequence: number; scene: Scene }>()
+  return {
+    apply(message: PreviewMessage & { source: string }): PreviewUpdate | null {
+      const current = models.get(message.source)
+      const same = current && current.page === message.page && current.gesture === message.gesture ? current : null
+      models.delete(message.source)
+      let scene: Scene
+      let changes: Map<string, SceneObj | null> | null
+      if ('delta' in message) {
+        if (!same || same.sequence !== message.base) return null
+        const before = new Map(same.scene.objects.map(object => [object.id, object]))
+        changes = new Map()
+        for (const id of message.delta.removed) if (before.has(id)) changes.set(id, before.get(id)!)
+        for (const object of message.delta.objects) changes.set(object.id, before.get(object.id) ?? null)
+        scene = { ...same.scene, objects: applyPreviewDelta(same.scene.objects, message.delta.objects, message.delta.removed) }
+      } else {
+        scene = message.scene
+        changes = same ? sceneChanges(same.scene, scene) : null
+      }
+      // A scene with a repeated id has no single slot per id: never patch it.
+      if (uniqueIds(scene.objects)) {
+        models.set(message.source, { page: message.page, gesture: message.gesture, sequence: message.sequence, scene })
+        while (models.size > maxSources) models.delete(models.keys().next().value!)
+      } else changes = null
+      return { key: `${message.source} ${message.gesture}`, scene, changes, settle: message.phase === 'end' }
+    },
+    clear() { models.clear() },
+    get size() { return models.size },
+  }
+}
+
+const TWEEN_FIELDS = new Set(['x', 'y', 'x1', 'y1', 'mx', 'my', 'x2', 'y2', 'w', 'h', 'r', 'size'])
+const TWEEN_NODES = new Set(['points', 'corners'])
+
+function tweenNodes(from: unknown[], to: unknown[], k: number): unknown[] | null {
+  const out: unknown[] = []
+  for (let i = 0; i < to.length; i += 1) {
+    const a = from[i] as Record<string, unknown> | null
+    const b = to[i] as Record<string, unknown> | null
+    if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return null
+    const { x: ax, y: ay, ...aRest } = a
+    const { x: bx, y: by, ...bRest } = b
+    if (typeof ax !== 'number' || typeof ay !== 'number' || typeof bx !== 'number' || typeof by !== 'number'
+      || JSON.stringify(aRest) !== JSON.stringify(bRest)) return null
+    out.push({ ...b, x: ax + (bx - ax) * k, y: ay + (by - ay) * k })
+  }
+  return out
+}
+
+/**
+ * The object part way (k, 0..1) from one frame to the next, or null when
+ * the two differ in anything but position and size. Those snap, and so does
+ * an object that did not change at all.
+ */
+export function interpolatePreviewObject(from: SceneObj, to: SceneObj, k: number): SceneObj | null {
+  if (from.id !== to.id || from.type !== to.type) return null
+  const a = from as Record<string, unknown>
+  const b = to as Record<string, unknown>
+  const out: Record<string, unknown> = { ...b }
+  let moved = false
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const was = a[key]
+    const now = b[key]
+    if (was === now) continue
+    if (TWEEN_FIELDS.has(key) && typeof was === 'number' && typeof now === 'number') {
+      out[key] = was + (now - was) * k
+      moved = true
+    } else if (TWEEN_NODES.has(key) && Array.isArray(was) && Array.isArray(now) && was.length === now.length) {
+      const nodes = tweenNodes(was, now, k)
+      if (!nodes) return null
+      out[key] = nodes
+      moved = true
+    } else if (JSON.stringify(was) !== JSON.stringify(now)) return null
+  }
+  return moved ? out as SceneObj : null
+}
+
+export type PreviewTarget = {
+  /** Draw a scene whole, replacing whatever remote scene is on screen. */
+  render(scene: Scene): void
+  /**
+   * Redraw only these objects, which may be in-between copies of the
+   * scene's, and drop these ids. False when no remote scene is on screen.
+   */
+  patch(scene: Scene, objects: SceneObj[], removed: string[]): boolean
+}
+
+export type PreviewPainterOptions = {
+  target: PreviewTarget
+  frame?: (paint: () => void) => number
+  cancel?: (handle: number) => void
+  now?: () => number
+}
+
+/**
+ * Paints received frames at most once per display frame. Only what changed
+ * is redrawn, and a moved object glides to its new place over one send
+ * interval, so a 30 fps stream reads as continuous motion. The loop runs
+ * only while a frame is queued or an object is still gliding.
+ */
+export function createPreviewPainter(options: PreviewPainterOptions) {
+  const frame = options.frame ?? ((paint: () => void) => requestAnimationFrame(() => paint()))
+  const cancel = options.cancel ?? ((handle: number) => cancelAnimationFrame(handle))
+  const now = options.now ?? (() => performance.now())
+  type Tween = { from: SceneObj; to: SceneObj; start: number }
+  let handle: number | null = null
+  let shown: { key: string; scene: Scene } | null = null
+  let queued: { key: string; scene: Scene; whole: boolean; settle: boolean; changes: Map<string, SceneObj | null> } | null = null
+  const tweens = new Map<string, Tween>()
+
+  const at = (tween: Tween, time: number) => interpolatePreviewObject(tween.from, tween.to, Math.min(1, Math.max(0, (time - tween.start) / PREVIEW_INTERVAL))) ?? tween.to
+  const schedule = () => { if (handle === null) handle = frame(paint) }
+  const paint = () => {
+    handle = null
+    const time = now()
+    const next = queued
+    queued = null
+    const objects: SceneObj[] = []
+    const removed: string[] = []
+    if (next) {
+      if (next.whole || !shown || shown.key !== next.key) {
+        tweens.clear()
+        shown = { key: next.key, scene: next.scene }
+        options.target.render(next.scene)
+        return
+      }
+      shown = { key: next.key, scene: next.scene }
+      const byId = new Map(next.scene.objects.map(object => [object.id, object]))
+      for (const [id, before] of next.changes) {
+        const to = byId.get(id)
+        const tween = tweens.get(id)
+        tweens.delete(id)
+        if (!to) { removed.push(id); continue }
+        const from = tween ? at(tween, time) : before
+        if (from && !next.settle && interpolatePreviewObject(from, to, 0)) tweens.set(id, { from, to, start: time })
+        else objects.push(to)
+      }
+    }
+    if (!shown) { tweens.clear(); return }
+    for (const [id, tween] of tweens) {
+      if (next?.settle || time - tween.start >= PREVIEW_INTERVAL) {
+        objects.push(tween.to)
+        tweens.delete(id)
+      } else objects.push(at(tween, time))
+    }
+    if ((objects.length || removed.length) && !options.target.patch(shown.scene, objects, removed)) {
+      // The board dropped the remote scene without saying so: draw it again.
+      tweens.clear()
+      options.target.render(shown.scene)
+      return
+    }
+    if (tweens.size) schedule()
+  }
+
+  return {
+    /** Queue a frame. Frames that land between two paints merge, never queue. */
+    paint(update: PreviewUpdate) {
+      if (!queued || queued.key !== update.key || !update.changes) {
+        const whole = !update.changes || (!!queued && queued.key !== update.key) || !!queued?.whole
+        queued = { key: update.key, scene: update.scene, whole, settle: update.settle, changes: new Map(update.changes ?? []) }
+      } else {
+        queued.scene = update.scene
+        queued.settle ||= update.settle
+        // Keep the first "before" for an id: that is what is on screen.
+        for (const [id, before] of update.changes) if (!queued.changes.has(id)) queued.changes.set(id, before)
+      }
+      schedule()
+    },
+    /** Nothing remote is on screen any more: stop, and start whole next time. */
+    reset() {
+      if (handle !== null) cancel(handle)
+      handle = null
+      queued = null
+      shown = null
+      tweens.clear()
+    },
+    get busy() { return handle !== null },
+  }
 }
 
 function validIsoDate(value: unknown): value is string {
@@ -244,6 +556,19 @@ export function parseCollaborationControl(value: unknown): CollaborationControlM
     reason: 'weekly_limit',
     resets_at: raw.resets_at as string,
   }
+}
+
+/**
+ * What this socket's relay accepts beyond whole-scene frames. Unlike the
+ * control message, unknown fields are ignored: a relay that learns something
+ * new must not switch off what an older client already uses. Anything other
+ * than an explicit true means no, which is also what a relay that never sends
+ * this message means.
+ */
+export function previewCapabilities(value: unknown): { delta: boolean } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { delta: false }
+  const raw = value as Record<string, unknown>
+  return { delta: raw.type === 'capabilities' && raw.delta === true }
 }
 
 /** Sequence state is scoped to the sender and gesture, not just the sender. */
@@ -289,6 +614,11 @@ export function createCollaborationChannel(options: CollaborationOptions): Colla
   let sequence = 0
   let previewTimer: number | null = null
   let pending: { page: string; gesture: string; phase: PreviewPhase; scene: () => Scene } | null = null
+  // Deltas are sent only once this socket's server has said it relays them:
+  // an older relay closes the socket on any frame shape it does not know.
+  let deltas = false
+  // The last frame actually put on the wire, which the next delta builds on.
+  let lastSent: SentPreview | null = null
 
   const clear = (timer: number | null): null => {
     if (timer !== null) clearTimer(timer)
@@ -307,6 +637,8 @@ export function createCollaborationChannel(options: CollaborationOptions): Colla
     pingTimer = clear(pingTimer)
     pongTimer = clear(pongTimer)
     authTimer = clear(authTimer)
+    deltas = false
+    lastSent = null
     setActive(false)
     if (socket) {
       socket.onopen = socket.onclose = socket.onerror = socket.onmessage = null
@@ -344,12 +676,28 @@ export function createCollaborationChannel(options: CollaborationOptions): Colla
     let scene: Scene
     try { scene = next.scene() } catch { return }
     if (!isPreviewScene(scene)) return
+    const at = now()
     let text: string
-    try { text = JSON.stringify({ type: 'preview', page: next.page, gesture: next.gesture, sequence: sequence++, phase: next.phase, scene }) } catch { return }
+    let sent: SentPreview
+    try {
+      // The editor moves objects in place, so the base is kept as text.
+      const head = sceneHead(scene)
+      const items = scene.objects.map(object => ({ id: object.id, type: object.type, json: JSON.stringify(object) }))
+      const base = deltas && next.phase === 'update' && lastSent && lastSent.page === next.page && lastSent.gesture === next.gesture
+        && at - lastSent.keyframeAt < PREVIEW_KEYFRAME_INTERVAL ? lastSent : null
+      const delta = base ? previewDelta(base, head, items, scene) : null
+      const frame = base && delta
+        ? { type: 'preview', page: next.page, gesture: next.gesture, sequence, phase: 'update', base: base.sequence, delta }
+        : { type: 'preview', page: next.page, gesture: next.gesture, sequence, phase: next.phase, scene }
+      text = JSON.stringify(frame)
+      sent = { page: next.page, gesture: next.gesture, sequence, keyframeAt: base && delta ? base.keyframeAt : at, head, items }
+      sequence += 1
+    } catch { return }
     if (new TextEncoder().encode(text).byteLength > PREVIEW_MAX_BYTES) return
     try {
       socket.send(text)
       lastPreviewAt = now()
+      lastSent = sent
     } catch { dropped() }
   }
   const connect = () => {
@@ -383,7 +731,15 @@ export function createCollaborationChannel(options: CollaborationOptions): Colla
         }
         if (value && typeof value === 'object' && (value as { type?: unknown }).type === 'collaboration') {
           const control = parseCollaborationControl(value)
-          if (control) setActive(control.active)
+          if (control) {
+            setActive(control.active)
+            // The room changed. Whoever just arrived has no base for a delta.
+            lastSent = null
+          }
+          return
+        }
+        if (value && typeof value === 'object' && (value as { type?: unknown }).type === 'capabilities') {
+          deltas = previewCapabilities(value).delta
           return
         }
         message = parsePreview(value)
@@ -424,6 +780,8 @@ export function createCollaborationChannel(options: CollaborationOptions): Colla
       // End and discrete frames share the same cadence as movement updates.
       // Replacing the pending frame keeps the newest complete scene while
       // preventing quick gesture finishes or key repeat from exceeding 30 fps.
+      // A replaced frame was never sent, so flush diffs against the last
+      // frame that was, not against the one it replaced.
       pending = { page, gesture, phase, scene }
       const wait = Math.max(0, PREVIEW_INTERVAL - (now() - lastPreviewAt))
       if (previewTimer === null) {

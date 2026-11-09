@@ -10017,12 +10017,24 @@ const liveChannel = live.createLiveChannel({
  */
 const collaborationDevice = sync.deviceId()
 let remotePreviewTimer: number | null = null
-let remoteRenderTimer: number | null = null
-let remoteRenderScene: Scene | null = null
 let localPointerActive = false
 let localPreviewEndPending = false
 let localPreviewGesture: string | null = null
 const remoteOrder = collaboration.createPreviewOrder()
+// Every accepted frame updates its sender's scene here, painted or not, so a
+// delta always has the frame it builds on.
+const remoteModel = collaboration.createPreviewModel()
+/*
+ * Paints at most once per display frame. Frames that land between two paints
+ * merge rather than queue, so a slow device drops frames instead of falling
+ * behind; a delta redraws only the objects it names, and those glide.
+ */
+const remotePainter = collaboration.createPreviewPainter({
+  target: {
+    render: (scene) => board.renderRemotePreview(scene),
+    patch: (scene, objects, removed) => board.patchRemotePreview(scene, objects, removed),
+  },
+})
 
 function setLiveEditStatus(visible: boolean) {
   if (liveEditChipEl.classList.contains('isVisible') === visible) return
@@ -10033,8 +10045,7 @@ function setLiveEditStatus(visible: boolean) {
 /** Hide paint only. Sequence/end ordering survives local control and expiry. */
 function hideRemotePreview() {
   if (remotePreviewTimer !== null) { clearTimeout(remotePreviewTimer); remotePreviewTimer = null }
-  if (remoteRenderTimer !== null) { cancelAnimationFrame(remoteRenderTimer); remoteRenderTimer = null }
-  remoteRenderScene = null
+  remotePainter.reset()
   board.clearRemotePreview()
   setLiveEditStatus(false)
 }
@@ -10043,23 +10054,7 @@ function hideRemotePreview() {
 function clearRemotePreview() {
   hideRemotePreview()
   remoteOrder.clear()
-}
-
-/**
- * Paint the newest received scene once per display frame. Frames arrive at up
- * to 60 a second; anything that lands between two paints is replaced, never
- * queued, so a slow device drops frames rather than falling behind.
- */
-function renderRemotePreview(scene: Scene) {
-  remoteRenderScene = scene
-  if (remoteRenderTimer !== null) return
-  remoteRenderTimer = requestAnimationFrame(() => {
-    remoteRenderTimer = null
-    const next = remoteRenderScene
-    remoteRenderScene = null
-    if (!next || localPointerActive) return
-    board.renderRemotePreview(next)
-  })
+  remoteModel.clear()
 }
 
 function expireRemotePreview(phase: collaboration.PreviewPhase) {
@@ -10081,9 +10076,12 @@ const collaborationChannel = collaboration.createCollaborationChannel({
     // one source's gesture. The order helper also suppresses ended gestures
     // and bounds both maps, including frames ignored during local control.
     if (!remoteOrder.accept(message)) return
+    // Null is a delta with no base here: show nothing until a whole scene.
+    const update = remoteModel.apply(message)
+    if (!update) return
     expireRemotePreview(message.phase)
     if (localPointerActive) return
-    renderRemotePreview(message.scene)
+    remotePainter.paint(update)
   },
 })
 
@@ -10091,7 +10089,12 @@ board.onPointerActivity = (active) => {
   localPointerActive = active
   if (active) hideRemotePreview()
 }
-board.onRemotePreviewVisibilityChange = setLiveEditStatus
+board.onRemotePreviewVisibilityChange = (visible) => {
+  setLiveEditStatus(visible)
+  // The board clears itself on zoom, wheel and capture: stop any glide, and
+  // draw the next frame whole.
+  if (!visible) remotePainter.reset()
+}
 board.onLivePreview = (phase, scene) => {
   if (saves.isCurrentReadOnly()) return
   const page = currentBoard()?.id
