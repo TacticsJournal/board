@@ -2,8 +2,12 @@ import { boardCollaborationUrl } from './board-api.ts'
 import { migrate, type Scene } from './types.ts'
 
 /** Visual board collaboration is deliberately separate from the durable-sync nudge socket. */
-/** A 34 ms cadence stays just below the server's bounded 30 fps rate. */
-export const PREVIEW_INTERVAL = 34
+/**
+ * One frame per 16 ms lets a drag paint at the display's 60 fps. Timers never
+ * fire early, so this is at most 62.5 frames a second, inside the server's
+ * 64-per-second bucket.
+ */
+export const PREVIEW_INTERVAL = 16
 export const PREVIEW_MAX_BYTES = 131_072
 
 /** Keep a dead preview socket quiet, but retry it with the same bounded ladder as live sync. */
@@ -423,7 +427,7 @@ export function createCollaborationChannel(options: CollaborationOptions): Colla
       if (!active || !opened || !socket || socket.readyState !== 1 || !safePage(page) || !safeGesture(gesture)) return false
       // End and discrete frames share the same cadence as movement updates.
       // Replacing the pending frame keeps the newest complete scene while
-      // preventing quick gesture finishes or key repeat from exceeding 30 fps.
+      // preventing quick gesture finishes or key repeat from exceeding 60 fps.
       pending = { page, gesture, phase, scene }
       const wait = Math.max(0, PREVIEW_INTERVAL - (now() - lastPreviewAt))
       if (previewTimer === null) {

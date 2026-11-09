@@ -101,8 +101,8 @@ test('collaboration uses the board room URL and validates complete preview messa
   assert.equal(parsePreview({ ...raw, scene: { objects: [] } }), null)
 })
 
-test('updates are throttled to a bounded 30 fps, the newest scene is serialized, and end is trailing', () => {
-  assert.equal(PREVIEW_INTERVAL, 34)
+test('updates are throttled to a bounded 60 fps, the newest scene is serialized, and end is trailing', () => {
+  assert.equal(PREVIEW_INTERVAL, 16)
   const { live, sockets, time } = channel()
   live.start('saved-board')
   sockets[0].open()
@@ -125,16 +125,17 @@ test('updates are throttled to a bounded 30 fps, the newest scene is serialized,
   assert.deepEqual(sockets[0].sent.map(value => JSON.parse(value).sequence), [0, 1, 2])
 })
 
-test('rapid discrete edits cannot exceed 30 transmitted frames in one second', () => {
+test('rapid discrete edits send 60 frames a second and never outrun the server bucket', () => {
   const { live, sockets, time } = channel()
   live.start('saved-board')
   sockets[0].open()
   activate(sockets[0])
-  for (let i = 0; i < 100; i += 1) {
+  for (let i = 0; i < 1000; i += 1) {
     live.preview('inner-board', `gesture-${i.toString().padStart(4, '0')}`, 'end', () => scene(i))
-    time.advance(10)
+    time.advance(1)
   }
-  assert.equal(sockets[0].sent.length, 30)
+  assert.ok(sockets[0].sent.length >= 60, `sent ${sockets[0].sent.length}`)
+  assert.ok(sockets[0].sent.length <= 64, `sent ${sockets[0].sent.length}`)
   live.stop()
 })
 
@@ -317,3 +318,4 @@ test('sanitizing a received scene makes an isolated copy before rendering', () =
   assert.match(mainSource, /role="status" aria-live="polite" aria-atomic="true"><\/div>/)
   assert.match(mainSource, /if \(saves\.isCurrentReadOnly\(\)\) return/)
 })
+

@@ -705,7 +705,7 @@ export class Board {
   /** Draw a received full scene above the local scene without changing durable state. */
   renderRemotePreview(scene: Scene) {
     // collaboration.ts has already migrated this untrusted wire scene. Do not
-    // migrate or clone it again on every 30 fps frame.
+    // migrate or clone it again on every 60 fps frame.
     const remoteHeight = this.remoteHeight(scene)
     const visibleHeight = this.remotePreviewActive ? this.remoteBoardH : this.boardH
     const heightChanged = remoteHeight !== visibleHeight
@@ -755,7 +755,7 @@ export class Board {
     this.remoteOverlayLayer.batchDraw()
     if (heightChanged) {
       // A remote scene can use a different live-pitch height. Fit once per
-      // height transition, never once per 30 fps preview frame.
+      // height transition, never once per 60 fps preview frame.
       this.zoom = 1
       this.fit()
     } else this.stage.batchDraw()
