@@ -1176,6 +1176,49 @@ p.search-disclaimer {
   margin: 0;
   min-height: 0;
 }
+/* Simple search: the pill box at the top of the panel, then a list of
+   matching posts laid out like the site's Archive. */
+.search-chat-form.search-simple-form {
+  position: relative;
+  bottom: auto;
+  align-items: center;
+  margin: 0 0 12px;
+}
+.search-simple-form .search-question {
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 12px 8px 12px 20px;
+}
+.search-results {
+  list-style: none;
+  margin: 8px 0 30px;
+  padding: 0;
+}
+.search-results li {
+  align-items: baseline;
+  display: flex;
+  font-family: ui-serif, serif;
+  font-size: 15px;
+  gap: 12px;
+  justify-content: space-between;
+  line-height: 1.55;
+}
+.search-results a {
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-results a:hover {
+  text-decoration: underline;
+}
+.search-result-date {
+  color: var(--text-muted, #777);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .search-answer {
   flex: 1 0 auto;
   max-width: 720px;
