@@ -5220,6 +5220,8 @@ body.deskMode #toolbar button { flex: none; }
   justify-content: center;
 }
 .railBtn svg { display: block; width: 21px; height: 21px; }
+/* Tabler draws on a 2px stroke; the rail reads lighter, like the bar beside it. */
+.railBtn svg.ic path { stroke-width: 1.6; }
 .railBtn.active {
   background: var(--card);
   color: var(--orange);

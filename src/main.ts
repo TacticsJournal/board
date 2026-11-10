@@ -2100,11 +2100,11 @@ let deskMode = false
 
 /** The rail's tools, in the order they sit down the left edge. */
 const RAIL_ICONS: Record<string, string> = {
-  players: svg('<circle cx="12" cy="12" r="7.4"/>'),
-  arrows: svg('<path d="M4 17.4C7.6 8.6 13.2 6 19.4 6"/><path d="M15 4.8L19.6 6l-1.2 4.6"/>'),
-  zones: svg('<rect x="4" y="5.6" width="16" height="12.8" rx="1.8" stroke-dasharray="3 2.6"/>'),
-  equipment: svg('<path d="M12 4.4l5.6 13.2H6.4z"/><path d="M4.2 19.8h15.6"/>'),
-  text: svg('<path d="M6 6.4h12"/><path d="M12 6.4V18"/>'),
+  players: icon('shirt-sport'),
+  arrows: icon('arrow-curve-right'),
+  zones: icon('marquee-2'),
+  equipment: icon('cone'),
+  text: icon('typography'),
 }
 
 /** Was the panel left open last time? Folded is the desktop default. */
