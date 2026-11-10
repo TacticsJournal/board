@@ -41,8 +41,10 @@ test('only a white kit needs a line round its head', () => {
   // a lilac or a keeper's grey is a colour and carries itself on a pale pitch
   assert.match(types, /export function isWhiteish\(hex: string\): boolean/)
   assert.match(types, /return r >= 232 && g >= 232 && b >= 232/)
-  assert.match(board, /const pale = isWhiteish\(o\.color\)/)
-  assert.match(saves, /const pale = isWhiteish\(String\(o\.color\)\)/)
+  // on dark paper it is the black kit that vanishes, so the rule asks the paper
+  assert.match(types, /if \(!dark\) return isWhiteish\(hex\)/)
+  assert.match(board, /const pale = headNeedsLine\(o\.color, onDark\)/)
+  assert.match(saves, /const pale = headNeedsLine\(String\(o\.color\), onDark\)/)
 })
 
 test('one spin turns whatever the player wears, keeping them together', () => {
@@ -68,7 +70,7 @@ test('a facing is kept, wrapped into a turn, and absent when it was never set', 
 test('the head is drawn behind the token, and stands clear of its ring', () => {
   // the ring's outer edge is r * 1.19; touching it, the two read as one blob
   assert.match(types, /const base = r \* 1\.41, tip = base \+ r \* 0\.9, half = r \* 0\.78/)
-  assert.match(board, /\.\.\.\(pale \? \{ stroke: '#0b0b0e', strokeWidth: Math\.max\(0\.75, r \* 0\.12\) \} : \{\}\)/)
+  assert.match(board, /\.\.\.\(pale \? \{ stroke: paperInk\(onDark\), strokeWidth: Math\.max\(0\.75, r \* 0\.12\) \} : \{\}\)/)
   // and behind the dot, so it reads as a direction rather than a bite out of it
   assert.match(board, /if \(typeof o\.facing === 'number'\)[\s\S]{0,1400}?g\.add\(new Konva\.Circle/)
 })

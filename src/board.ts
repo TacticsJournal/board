@@ -1,7 +1,7 @@
 import Konva from 'konva'
 import {
   ArrowObj, BallObj, BoxObj, ConeObj, GoalObj, ImageObj, MarkerObj, PlayerObj, Scene, SceneObj, TextObj, Pt,
-  BOARD_W, BOARD_H, uid, cornersFromRect, nodesForShape, insertByTier, objectsInDrawOrder, boxHasCorners, isLight, isWhiteish, armPoints, headPoints, playerDisplayName, resolveNamePos, trianglePoints, trackPlayersAtBall,
+  BOARD_W, BOARD_H, uid, cornersFromRect, nodesForShape, insertByTier, objectsInDrawOrder, boxHasCorners, isLight, headNeedsLine, paperInk, sceneIsDark, sceneLook, armPoints, headPoints, playerDisplayName, resolveNamePos, trianglePoints, trackPlayersAtBall,
 } from './types'
 export { trianglePoints }
 import {
@@ -9,14 +9,14 @@ import {
   nearestOnPath, insertNodeAt, freezeHandles, setNodeCurve, nodesBBox, MIN_NODES,
 } from './path-nodes'
 import { Store } from './store'
-import { pitchById, pitchIconScale, pitchLines, teamCodeStyle, LIVE_BG_KEY } from './pitches'
+import { pitchArt, pitchById, pitchIconScale, pitchLines, teamCodeStyle, LIVE_BG_KEY, PITCH_PAPER } from './pitches'
 import { backgrounds } from './background-library.ts'
 import { getAsset } from './assets'
 import { canPlaceCone } from './entitlements'
 import { arrowHeadSize, arrowRenderedHeadSize, arrowShaftWidth, ARROW_DOT_GAP, ballSrc, coneSrc, goalFullSrc, goalSmallSrc, livePlayerSrc, CONE_ASPECT, GOAL_ASPECT, LIVE_PLAYER_CROP, LIVE_MARKER_ELLIPSE, MARKER_ASPECT } from './board-art'
 import { boardNoteText } from './board-note'
 import { ensureFont } from './fonts.ts'
-import { fontStack, haloAgainst, inkOn, objectAppearance, orOwn, resolveAppearance, type ResolvedAppearance } from './appearance.ts'
+import { fontStack, haloAgainst, inkOn, objectAppearance, orOwn, type ResolvedAppearance } from './appearance.ts'
 import { applyHomography, homographyFromBox, invertHomography, type Homography, type Quad } from './perspective'
 import { movedObjects, objectCentre, PREVIOUS_BOARD_MOVEMENT_OPACITY, PREVIOUS_BOARD_OPACITY } from './previous-board'
 
@@ -25,6 +25,8 @@ export { arrowHeadSize, arrowMediumWidth, ARROW_WIDTH_MEDIUM, ARROW_WIDTH_MEDIUM
 
 const liveScoreboardSrc = new URL('../assets/icons/live/live_scoreboard.png', import.meta.url).href
 const tjLogoSrc = new URL('../assets/brand/tj-logo.png', import.meta.url).href
+/* The same mark in light ink, for a board drawn dark (scripts/make-dark-pitches.py). */
+const tjLogoLightSrc = new URL('../assets/brand/tj-logo-light.png', import.meta.url).href
 const LIVE_SCOREBOARD_CROP = { x: 460, y: 1659, width: 3176, height: 778 }
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 6
@@ -425,6 +427,8 @@ export class Board {
   private noteText = ''
   private noteGroup = new Konva.Group()
   private pitchId = ''
+  /** Whether the art on screen is the dark drawing of that pitch. */
+  private pitchDark = false
   /** Pending coalesced fit, so a burst of size changes costs one fit. */
   private refitFrame = 0
   private container: HTMLDivElement
@@ -434,6 +438,7 @@ export class Board {
   private livePlayerImg!: HTMLImageElement
   private liveScoreboardImg!: HTMLImageElement
   private logoImg!: HTMLImageElement
+  private logoLightImg!: HTMLImageElement
   private pitchImg: HTMLImageElement
   /** Remote pitch art is shared by frames; never create an Image per preview. */
   private remotePitchImages = new Map<string, HTMLImageElement>()
@@ -545,6 +550,9 @@ export class Board {
     this.logoImg = new Image()
     this.logoImg.src = tjLogoSrc
     this.logoImg.onload = () => this.drawOverlay()
+    this.logoLightImg = new Image()
+    this.logoLightImg.src = tjLogoLightSrc
+    this.logoLightImg.onload = () => this.drawOverlay()
     this.drawBackground()
 
     this.bindStage()
@@ -1359,8 +1367,11 @@ export class Board {
     const style = pitchById(this.store.scene.pitch)
     const wantH = style.live ? (this.store.scene.board.h || style.boardH) : style.boardH
     const liveStale = !!style.live && this.loadedLiveVersion !== this.liveVersion
-    if (style.id === this.pitchId && this.boardH === wantH && !liveStale) return
+    const dark = sceneIsDark(this.store.scene)
+    const samePitch = style.id === this.pitchId && this.boardH === wantH && !liveStale
+    if (samePitch && dark === this.pitchDark) return
     this.pitchId = style.id
+    this.pitchDark = dark
     this.boardH = wantH
     this.noteGroup.y(wantH)
     const img = new Image()
@@ -1383,11 +1394,15 @@ export class Board {
       try { img.src = localStorage.getItem(LIVE_BG_KEY) ?? '' } catch { /* private mode */ }
     } else {
       this.pitchToken++
-      img.src = style.src
+      img.src = pitchArt(style, dark)
     }
-    this.zoom = 1
-    this.fit()
-    this.settleInset = this.inset
+    // The same pitch on the other paper is the same board: it keeps the view
+    // it is being looked at through.
+    if (!samePitch) {
+      this.zoom = 1
+      this.fit()
+      this.settleInset = this.inset
+    }
     this.drawBackground()
   }
 
@@ -1434,7 +1449,8 @@ export class Board {
     const bh = this.boardH
     this.bgLayer.destroyChildren()
     this.bgLayer.add(new Konva.Rect({ x: -2000, y: -2000, width: BOARD_W + 4000, height: bh + 4000, fill: this.tilted ? 'rgba(0,0,0,0)' : this.surround }))
-    this.bgLayer.add(new Konva.Rect({ x: 0, y: 0, width: BOARD_W, height: bh, fill: '#ffffff', shadowColor: 'rgba(0,0,0,0.16)', shadowBlur: 14 }))
+    const paper = sceneIsDark(this.store.scene) ? PITCH_PAPER.dark : PITCH_PAPER.light
+    this.bgLayer.add(new Konva.Rect({ x: 0, y: 0, width: BOARD_W, height: bh, fill: paper, shadowColor: 'rgba(0,0,0,0.16)', shadowBlur: 14 }))
     const style = pitchById(this.store.scene.pitch)
     if (this.pitchImg.complete && this.pitchImg.naturalWidth) {
       this.bgLayer.add(new Konva.Image({ image: this.pitchImg, x: 0, y: 0, width: BOARD_W, height: bh }))
@@ -1466,20 +1482,22 @@ export class Board {
     const bh = style.live ? (scene.board?.h || style.boardH) : style.boardH
     this.remoteBackgroundLayer.destroyChildren()
     this.remoteBackgroundLayer.add(new Konva.Rect({ x: -2000, y: -2000, width: BOARD_W + 4000, height: bh + 4000, fill: this.tilted ? 'rgba(0,0,0,0)' : this.surround }))
-    this.remoteBackgroundLayer.add(new Konva.Rect({ x: 0, y: 0, width: BOARD_W, height: bh, fill: '#ffffff', shadowColor: 'rgba(0,0,0,0.16)', shadowBlur: 14 }))
-    if (style.src) {
-      const key = `${style.id}:${style.src}`
+    const dark = sceneIsDark(scene)
+    const art = pitchArt(style, dark)
+    this.remoteBackgroundLayer.add(new Konva.Rect({ x: 0, y: 0, width: BOARD_W, height: bh, fill: dark ? PITCH_PAPER.dark : PITCH_PAPER.light, shadowColor: 'rgba(0,0,0,0.16)', shadowBlur: 14 }))
+    if (art) {
+      const key = `${style.id}:${art}`
       let image = this.remotePitchImages.get(key)
       if (!image) {
         image = new Image()
         image.onload = () => {
-          if (this.remoteScene?.pitch === scene.pitch) {
+          if (this.remoteScene?.pitch === scene.pitch && sceneIsDark(this.remoteScene) === dark) {
             this.drawRemoteBackground(this.remoteScene)
             this.remoteBackgroundLayer.batchDraw()
             this.stage.batchDraw()
           }
         }
-        image.src = style.src
+        image.src = art
         this.remotePitchImages.set(key, image)
       }
       if (image.complete && image.naturalWidth) {
@@ -1508,13 +1526,17 @@ export class Board {
     layer.destroyChildren()
     if (!m) { layer.batchDraw(); return }
     const live = style.live
+    // Our own lettering over our own art follows the paper the art is on.
+    const dark = sceneIsDark(scene)
+    const ink = dark ? '#f5f5f7' : '#000000'
+    const logo = dark ? this.logoLightImg : this.logoImg
     const score = `${m.home || 'Home'} ${m.homeScore || '0'}-${m.awayScore || '0'} ${m.away || 'Away'}`
 
     if (m.showTeams) {
       // Each code sits at the end its side defends: both at the bottom on a
       // board whose goals are left and right, one at each end on a full pitch.
       const { fontSize, awayAtTop } = teamCodeStyle(scene.pitch, bh)
-      const attrs = { fontSize, fontStyle: 'bold', fontFamily: FONT, fill: '#b0b4ba', listening: false }
+      const attrs = { fontSize, fontStyle: 'bold', fontFamily: FONT, fill: dark ? '#62656d' : '#b0b4ba', listening: false }
       const awayLift = style.awayCodeLift ?? 0
       const pad = Math.round(18 * (fontSize / 24))
       const mk = (text: string, right: boolean) => {
@@ -1584,15 +1606,15 @@ export class Board {
         if (sb.logo && (this.brandsExport() || remote)) {
           const domain = new Konva.Text({
             text: 'tacticsjournal.com', fontSize: SIZE, fontStyle: 'bold',
-            fontFamily: FONT, fill: '#000000', listening: false,
+            fontFamily: FONT, fill: ink, listening: false,
           })
           domain.position({ x: sb.x - domain.width() / 2, y: sb.y - 6 - SIZE })
           layer.add(domain)
-          if (this.logoImg.complete && this.logoImg.naturalWidth) {
+          if (logo.complete && logo.naturalWidth) {
             const lw = 34
-            const lh = lw * (this.logoImg.naturalHeight / this.logoImg.naturalWidth)
+            const lh = lw * (logo.naturalHeight / logo.naturalWidth)
             layer.add(new Konva.Image({
-              image: this.logoImg, x: sb.x - lw / 2, y: domain.y() - 7 - lh,
+              image: logo, x: sb.x - lw / 2, y: domain.y() - 7 - lh,
               width: lw, height: lh, listening: false,
             }))
           }
@@ -1601,7 +1623,7 @@ export class Board {
         let ty = sb.y
         for (const text of lines) {
           const t = new Konva.Text({
-            text, fontSize: SIZE, fontFamily: FONT, fill: '#000000', listening: false, y: ty,
+            text, fontSize: SIZE, fontFamily: FONT, fill: ink, listening: false, y: ty,
           })
           t.x(sb.x - t.width() / 2)
           layer.add(t)
@@ -1649,7 +1671,7 @@ export class Board {
    * shared board and its export look the same to everyone. Nothing here asks
    * whether the reader has paid: what an author set is what is drawn.
    */
-  private look(): ResolvedAppearance { return resolveAppearance((this.renderingScene ?? this.store.scene).appearance) }
+  private look(): ResolvedAppearance { return sceneLook(this.renderingScene ?? this.store.scene) }
   /**
    * The stack this board's text is set in. A family whose file has not arrived
    * is fetched here rather than at load: the board asks for what it is drawing,
@@ -1708,12 +1730,13 @@ export class Board {
     const sy = o.flipY ? -1 : 1
     // Arms: two bars opening away from the angle, in the ring's own ink and
     // weight, so a token reads as a body turned rather than a dot.
+    const onDark = sceneIsDark(this.renderingScene ?? this.store.scene)
     if (typeof o.arms === 'number') {
       for (const side of [-1, 1] as const) {
         g.add(new Konva.Line({
           points: armPoints(o.arms, side, r),
           closed: true,
-          fill: '#0b0b0e',
+          fill: paperInk(onDark),
           listening: false,
           perfectDrawEnabled: false,
         }))
@@ -1725,12 +1748,12 @@ export class Board {
       // The kit carries the head, so it needs no outline of its own. A white
       // one would be nothing at all on a white pitch, so that one gets a line;
       // a lilac or a keeper's grey is a colour and carries itself.
-      const pale = isWhiteish(o.color)
+      const pale = headNeedsLine(o.color, onDark)
       g.add(new Konva.Line({
         points: headPoints(o.facing, r),
         closed: true,
         fill: o.color,
-        ...(pale ? { stroke: '#0b0b0e', strokeWidth: Math.max(0.75, r * 0.12) } : {}),
+        ...(pale ? { stroke: paperInk(onDark), strokeWidth: Math.max(0.75, r * 0.12) } : {}),
         lineJoin: 'round',
         listening: false,
         perfectDrawEnabled: false,
@@ -4309,7 +4332,7 @@ export class Board {
     const imgs = [
       this.pitchImg, this.ballImg, this.coneImg,
       this.goalImgs.small, this.goalImgs.normal,
-      this.livePlayerImg, this.liveScoreboardImg, this.logoImg,
+      this.livePlayerImg, this.liveScoreboardImg, this.logoImg, this.logoLightImg,
       ...this.assetImgs.values(),
     ].filter((img): img is HTMLImageElement => !!img && !!img.src && !img.complete)
     if (imgs.length) {

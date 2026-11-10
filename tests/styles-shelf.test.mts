@@ -103,7 +103,7 @@ test('every pitch remembers its own styles, and only its defaults', () => {
   assert.match(main, /data-set="styles-save"/)
   assert.match(main, /data-set="styles-reset"/)
   // a saved pitch keeps what was saved; the built-in rule is only for the rest
-  assert.match(main, /if \(applyPitchStyle\(style\.id\)\) \{ arrowDefaultsLive = !!style\.live; return \}/)
+  assert.match(main, /if \(applyPitchStyle\(pitchStyleKey\(style\.id, dark\)\)\) \{ arrowDefaultsLive = !!style\.live; return \}/)
 })
 
 test('carry forward is an action on the shelf, not the first thing in the room', () => {

@@ -15,6 +15,12 @@ nothing at all. An entry missing a title or a valid date is skipped, and a
 file that cannot be read leaves the list empty rather than failing a build.
 -->
 
+## Dark boards
+Date: 2026-11-09
+Tag: New
+
+Every pitch now comes in dark. Switch a board in Settings, Pitch, and it stays dark for whoever opens it and in every export, whatever theme the app is in.
+
 ## Style a zone, an arrow and a label one tab at a time
 Date: 2026-09-06
 Tag: Improved

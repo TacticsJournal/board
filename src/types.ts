@@ -1,5 +1,5 @@
-import { DEFAULT_PITCH, pitchById } from './pitches.ts'
-import { normalizeAppearance, type BoardAppearance } from './appearance.ts'
+import { DEFAULT_PITCH, pitchById, pitchIsDark } from './pitches.ts'
+import { normalizeAppearance, resolveAppearance, type BoardAppearance, type ResolvedAppearance } from './appearance.ts'
 import type { PathNode, NodeCurve } from './path-nodes.ts'
 
 export type { PathNode, NodeCurve }
@@ -245,6 +245,14 @@ export type Scene = {
   board: { w: number; h: number }
   /** pitch style id (see pitches.ts); absent in old saves -> default */
   pitch?: string
+  /**
+   * Drawn on the dark version of its pitch. Part of the board, not of the
+   * device: a dark board is dark for whoever opens it and in every export,
+   * whatever theme the app around it is in. Absent means light. It only shows
+   * where the pitch has dark art (see sceneIsDark), so a board that moves onto
+   * a photograph and back comes back dark.
+   */
+  dark?: boolean
   match?: MatchInfo
   /** Optional user-defined meanings for arrow line styles. */
   arrowLegend?: ArrowLegend
@@ -254,6 +262,16 @@ export type Scene = {
    */
   appearance?: BoardAppearance
   objects: SceneObj[]
+}
+
+/** True when this board is actually drawn dark: it asks, and its pitch can. */
+export function sceneIsDark(scene: Pick<Scene, 'pitch' | 'dark'> | undefined | null): boolean {
+  return pitchIsDark(scene?.pitch, scene?.dark)
+}
+
+/** A board's appearance filled in for the paper it is drawn on. */
+export function sceneLook(scene: Pick<Scene, 'pitch' | 'dark' | 'appearance'> | undefined | null): ResolvedAppearance {
+  return resolveAppearance(scene?.appearance, sceneIsDark(scene))
 }
 
 export const BOARD_W = 800
@@ -397,6 +415,40 @@ export function isWhiteish(hex: string): boolean {
   return r >= 232 && g >= 232 && b >= 232
 }
 
+
+/**
+ * The ink our own drawing is made in, for the paper it is on: a token's arms,
+ * the line round a head that would otherwise vanish, the scoreboard column.
+ */
+export function paperInk(dark: boolean): string { return dark ? '#f5f5f7' : '#0b0b0e' }
+
+/**
+ * A head is drawn in its kit and needs no line of its own, unless the kit is
+ * the paper's colour: a white one on a white pitch, a black one on a dark.
+ */
+export function headNeedsLine(hex: string, dark: boolean): boolean {
+  if (!dark) return isWhiteish(hex)
+  const c = normalizeHex(hex)
+  if (!c) return false
+  const [r, g, b] = [1, 3, 5].map(k => Number.parseInt(c.slice(k, k + 2), 16))
+  return r <= 56 && g <= 56 && b <= 56
+}
+
+/**
+ * Carry a board's ink onto the other paper. An arrow or a label drawn in the
+ * near-black every light board starts with would be nothing at all on dark, and
+ * a white one nothing on light, so those take the other paper's ink; every
+ * colour that reads on both - a red run, a yellow press - is left as drawn.
+ * Only the ink that would vanish moves, so white lettering set over a zone on
+ * a light board is still white on a dark one. Kits are not ink: a player keeps
+ * his colours, and the ring round him is what the appearance changes.
+ */
+export function repaperInk(objects: SceneObj[], dark: boolean): void {
+  for (const o of objects) {
+    if (o.type !== 'arrow' && o.type !== 'text') continue
+    if (dark ? headNeedsLine(o.color, true) : isWhiteish(o.color)) o.color = dark ? '#ffffff' : '#111111'
+  }
+}
 
 export function playerDisplayName(name: string, mode: PlayerObj['nameDisplay'] = 'last'): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -713,7 +765,7 @@ export function migrate(data: any): Scene {
     const arrowLegend = sanitizeArrowLegend(data.arrowLegend)
     const appearance = normalizeAppearance(data.appearance)
     return {
-      version: 4, board: { w: BOARD_W, h }, pitch: style.id, match: sanitizeMatch(data.match),
+      version: 4, board: { w: BOARD_W, h }, pitch: style.id, ...(data.dark === true ? { dark: true } : {}), match: sanitizeMatch(data.match),
       ...(arrowLegend ? { arrowLegend } : {}), ...(appearance ? { appearance } : {}), objects,
     }
   }

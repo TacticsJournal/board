@@ -162,14 +162,29 @@ export function appearanceDefault(key: AppearanceKey): string | number {
 }
 
 /**
+ * The defaults that were chosen for white paper and cannot be read on dark: a
+ * near-black ring and near-black lettering. A board drawn dark (types.ts,
+ * sceneIsDark) takes these instead wherever it has not said otherwise. They
+ * are only ever what is drawn - nothing here is stored, so a board that goes
+ * back to light is back to the defaults it never left. The cost is one colour:
+ * the light default itself cannot be chosen on a dark board, since a stored
+ * default is no stored value at all.
+ */
+const DARK_DEFAULTS: Partial<Record<AppearanceKey, string>> = {
+  'player.outlineColor': '#f5f5f7',
+  'player.nameColor': '#f5f5f7',
+}
+
+/**
  * A board's appearance filled in from the defaults, so nothing that draws has
  * to know which fields an older save happened to carry.
  */
-export function resolveAppearance(appearance: BoardAppearance | undefined): ResolvedAppearance {
+export function resolveAppearance(appearance: BoardAppearance | undefined, dark = false): ResolvedAppearance {
   const out = {} as ResolvedAppearance
   for (const key of APPEARANCE_KEYS) {
     const stored = appearance ? readPath(appearance, key) : undefined
-    out[key] = stored === undefined || stored === null ? appearanceDefault(key) : coerce(key, stored)
+    const value = stored === undefined || stored === null ? appearanceDefault(key) : coerce(key, stored)
+    out[key] = dark && value === appearanceDefault(key) ? (DARK_DEFAULTS[key] ?? value) : value
   }
   return out
 }

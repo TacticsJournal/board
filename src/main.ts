@@ -9,7 +9,7 @@ import {
   ballSrc, coneSrc, goalFullSrc, goalSmallSrc, livePlayerSrc,
   CONE_ASPECT, GOAL_ASPECT, LIVE_ART_SHEET, LIVE_PLAYER_CROP,
 } from './board'
-import { ArrowObj, BallObj, BoardSizes, BoxObj, GoalObj, ImageObj, MarkerObj, PlayerObj, Scene, SceneObj, TextObj, PLAYER_PALETTE, BOARD_W, emptyMatch, emptyScene, migrate, normalizeHex, uid, insertByTier, TYPE_Z, boxHasCorners, cornersFromRect, nodesForShape, rectFromCorners, isLight, headPoints, armPoints, trackPlayersAtBall } from './types'
+import { ArrowObj, BallObj, BoardSizes, BoxObj, GoalObj, ImageObj, MarkerObj, PlayerObj, Scene, SceneObj, TextObj, PLAYER_PALETTE, BOARD_W, emptyMatch, emptyScene, migrate, normalizeHex, uid, insertByTier, TYPE_Z, boxHasCorners, cornersFromRect, nodesForShape, rectFromCorners, isLight, headPoints, armPoints, trackPlayersAtBall, repaperInk, sceneIsDark, sceneLook } from './types'
 import type { NodeCurve, PathNode } from './path-nodes'
 import { ImportPanel } from './importer'
 import { SavesPanel } from './saves'
@@ -19,7 +19,7 @@ import { formatElapsedSince } from './last-updated'
 import { mountSlidingPills } from './sliding-pill'
 import { TeamPanel, teamCode, type TeamSide } from './teams'
 import {
-  DEFAULT_PITCH, PITCHES, clearActiveSharedPitches, customPitches, pitchById,
+  DEFAULT_PITCH, PITCHES, clearActiveSharedPitches, customPitches, pitchArt, pitchById, pitchIsDark,
   setActiveSharedPitch, setActiveSharedPitches, sharedPitchPlaceholder,
 } from './pitches'
 import {
@@ -245,13 +245,32 @@ function applyBuiltInPitchSizes(style: ReturnType<typeof pitchById>) {
   defaults.text.size = sizes.label
 }
 
-function applyPitchArrowDefault(style: ReturnType<typeof pitchById>) {
+/** Which paper the new-label and new-measure defaults were last set for. */
+let inkDefaultsDark = false
+
+/**
+ * `dark` is asked of the pitch the defaults are being set for, not of the one
+ * on screen: a pitch choice sets them before the scene has changed.
+ */
+function applyPitchArrowDefault(style: ReturnType<typeof pitchById>, dark = pitchIsDark(style.id, store.scene.dark)) {
+  // Labels and measuring lines follow the paper and nothing else: near-black
+  // on white, white on dark. Only the app's own two inks move, so a colour you
+  // picked for them is left alone.
+  if (dark !== inkDefaultsDark) {
+    inkDefaultsDark = dark
+    if (dark && defaults.text.color === '#111111') defaults.text.color = '#ffffff'
+    else if (!dark && defaults.text.color === '#ffffff') defaults.text.color = '#111111'
+    if (dark && defaults.measure.color === '#111827') defaults.measure.color = '#ffffff'
+    else if (!dark && defaults.measure.color === '#ffffff') defaults.measure.color = '#111827'
+  }
   // A pitch you have saved styles for keeps them; the rules below are only for
   // pitches you have not customized.
-  if (applyPitchStyle(style.id)) { arrowDefaultsLive = !!style.live; return }
+  if (applyPitchStyle(pitchStyleKey(style.id, dark))) { arrowDefaultsLive = !!style.live; return }
   applyBuiltInPitchSizes(style)
-  if (style.live && defaults.arrow.color === '#111111') defaults.arrow.color = '#ffffff'
-  else if (!style.live && defaults.arrow.color === '#ffffff') defaults.arrow.color = '#111111'
+  // An arrow wants light ink over video and over dark paper alike.
+  const lightInk = !!style.live || dark
+  if (lightInk && defaults.arrow.color === '#111111') defaults.arrow.color = '#ffffff'
+  else if (!lightInk && defaults.arrow.color === '#ffffff') defaults.arrow.color = '#111111'
   const live = !!style.live
   if (live === arrowDefaultsLive) return
   arrowDefaultsLive = live
@@ -266,6 +285,14 @@ function applyPitchArrowDefault(style: ReturnType<typeof pitchById>) {
  */
 const PITCH_STYLE_KEY = 'tbm-pitch-styles-v1'
 type SavedPitchStyle = Pick<ToolDefaults, 'playerColor' | 'nameSize' | 'playerSize' | 'showNumbers' | 'arrow' | 'measure' | 'box' | 'text' | 'goal'>
+
+/**
+ * A pitch keeps one set of styles for each paper, because the ink that suits
+ * one is the ink that vanishes on the other. The light set keeps the bare id
+ * it has always been saved under.
+ */
+function pitchStyleKey(id: string, dark: boolean): string { return dark ? `${id}@dark` : id }
+const currentPitchStyleKey = () => pitchStyleKey(pitchById(store.scene.pitch).id, sceneIsDark(store.scene))
 
 function loadPitchStyles(): Record<string, SavedPitchStyle> {
   try {
@@ -291,7 +318,7 @@ function currentPitchStyle(): SavedPitchStyle {
 function savePitchDefaults() {
   const id = pitchById(store.scene.pitch).id
   const all = loadPitchStyles()
-  all[id] = currentPitchStyle()
+  all[currentPitchStyleKey()] = currentPitchStyle()
   try { localStorage.setItem(PITCH_STYLE_KEY, JSON.stringify(all)) } catch { /* private mode */ }
   showToast(`New boards on ${pitchById(id).label} will start with these styles.`)
 }
@@ -299,15 +326,16 @@ function savePitchDefaults() {
 function resetPitchDefaults() {
   const id = pitchById(store.scene.pitch).id
   const all = loadPitchStyles()
-  if (!(id in all)) { showToast('This pitch is already on the original styles.'); return }
-  delete all[id]
+  const key = currentPitchStyleKey()
+  if (!(key in all)) { showToast('This pitch is already on the original styles.'); return }
+  delete all[key]
   try { localStorage.setItem(PITCH_STYLE_KEY, JSON.stringify(all)) } catch { /* private mode */ }
   showToast(`${pitchById(id).label} is back to the original styles.`)
 }
 
 /** Wear a pitch's saved styles, if it has any, when a board on it opens. */
-function applyPitchStyle(id: string) {
-  const saved = loadPitchStyles()[id]
+function applyPitchStyle(key: string) {
+  const saved = loadPitchStyles()[key]
   if (!saved) return false
   if (saved.playerColor) defaults.playerColor = saved.playerColor
   if (Number.isFinite(saved.nameSize)) defaults.nameSize = clampProjectSize('nameSize', saved.nameSize)
@@ -323,10 +351,11 @@ function applyPitchStyle(id: string) {
 
 // A saved board, an undo or a collaborator's scene can change the pitch without
 // anyone touching the pitch picker, so the defaults follow the scene itself.
-let arrowDefaultPitch = store.scene.pitch
+const defaultsFor = () => `${store.scene.pitch}|${sceneIsDark(store.scene)}`
+let arrowDefaultPitch = defaultsFor()
 store.subscribe(() => {
-  if (store.scene.pitch === arrowDefaultPitch) return
-  arrowDefaultPitch = store.scene.pitch
+  if (defaultsFor() === arrowDefaultPitch) return
+  arrowDefaultPitch = defaultsFor()
   applyPitchArrowDefault(pitchById(store.scene.pitch))
 })
 applyPitchArrowDefault(pitchById(store.scene.pitch))
@@ -337,11 +366,38 @@ const boardH = () => store.scene.board.h
 function setPitchPreservingLayout(scene: typeof store.scene, pitch: string, h: number) {
   const fromPitch = pitchById(scene.pitch)
   const fromH = scene.board?.h || fromPitch.boardH
+  const wasDark = sceneIsDark(scene)
   scene.objects = remapObjects(scene.objects, fromPitch.id, fromH, pitch, h, uid, {
     from: pitchSizes(fromPitch.id), to: pitchSizes(pitch),
   })
   scene.pitch = pitch
   scene.board = { w: BOARD_W, h }
+  // A dark board carried onto a photograph has no dark paper to be on, and
+  // gets it back when it returns to our own art; its ink goes with it.
+  if (sceneIsDark(scene) !== wasDark) repaperInk(scene.objects, !wasDark)
+}
+
+/**
+ * Draw the board on screen on light or dark paper, in one undoable step. The
+ * choice is the board's own and is kept even where it cannot show - on a
+ * photograph - so the ink only moves when what is drawn actually changes.
+ */
+function applyBoardPaper(dark: boolean): boolean {
+  if ((store.scene.dark === true) === dark) return false
+  const wasDark = sceneIsDark(store.scene)
+  store.apply(s => {
+    if (dark) s.dark = true
+    else delete s.dark
+    if (sceneIsDark(s) !== wasDark) repaperInk(s.objects, !wasDark)
+  })
+  return true
+}
+
+/** A blank board on the paper the one on screen is on, so a project stays one colour. */
+function blankSceneLike(pitchId: string | undefined): Scene {
+  const scene = emptyScene(pitchId)
+  if (store.scene.dark === true) scene.dark = true
+  return scene
 }
 
 const CATEGORY_SCENES_KEY = 'tbm-category-scenes-v1'
@@ -1254,7 +1310,7 @@ function arrowPreview(dash: ArrowObj['dash'], head: boolean, color: string, widt
  * arrow you then drag onto the board is still white.
  */
 const shelfArrowColor = () =>
-  liveArrows() && defaults.arrow.color === '#ffffff' ? '#111111' : defaults.arrow.color
+  (liveArrows() || sceneIsDark(store.scene)) && defaults.arrow.color === '#ffffff' ? '#111111' : defaults.arrow.color
 
 const img = (src: string, w: number, h: number) =>
   `<img src="${src}" width="${w}" height="${h}" alt="" draggable="false">`
@@ -5172,10 +5228,10 @@ const boardsView = new BoardsView(document.querySelector<HTMLElement>('#libRoot'
     carrySelectionToBoards(sourceBoardId, targetBoardIds, scope)
   },
   deleteProject: (id) => { saves.removeDocument(id) },
-  blankScene: () => emptyScene(store.scene.pitch),
+  blankScene: () => blankSceneLike(store.scene.pitch),
   blankProjectScene: () => {
     teams.resetTeams([])
-    return emptyScene(store.scene.pitch)
+    return blankSceneLike(store.scene.pitch)
   },
   blankSceneOn: (pitchId) => blankSceneOnPitch(pitchId),
   addBoardChoices: (changed) => newBoardChoices(changed),
@@ -5354,7 +5410,7 @@ carryMenuEl.addEventListener('click', e => {
  * broadcast frame wants too.
  */
 function blankSceneOnPitch(pitchId: string): Scene {
-  return emptyScene(pitchById(pitchId).id)
+  return blankSceneLike(pitchById(pitchId).id)
 }
 
 /** What the Add board chooser offers, with the same gates the pitch shelf uses. */
@@ -5372,6 +5428,7 @@ function newBoardChoices(thumbLoaded: () => void) {
     builtIn: PITCHES,
     saved: customPitches(),
     currentPitch: pitchById(store.scene.pitch),
+    dark: store.scene.dark === true,
     admin: entitlements.hasBoardAdminAccess(),
     canPick: style => entitlements.canPickPitch(style),
     canUpload: entitlements.canUploadBackground(),
@@ -7194,6 +7251,17 @@ settingsEl.innerHTML = `
     <div class="setPane hidden" data-pane="teams"></div>
     <div class="setPane hidden" data-pane="pitch">
       <div class="setGroupHead">Pitch styles</div>
+      <div class="setGroup">
+        <div class="setItem setItemStatic" data-paper-row>
+          ${icon('sun-moon')}
+          <span class="setItemLabel">Board</span>
+          <span class="setSeg" role="group" aria-label="Board colour">
+            <button data-set="paper-light" aria-pressed="false">Light</button>
+            <button data-set="paper-dark" aria-pressed="false">Dark</button>
+          </span>
+        </div>
+      </div>
+      <p class="setNote" data-paper-note></p>
       <div class="pitchGrid" data-pitch-seg></div>
       <div class="setStatusRow" data-pitch-status hidden>
         <span class="setStatusText" role="status" aria-live="polite" data-pitch-status-text></span>
@@ -7211,7 +7279,7 @@ settingsEl.innerHTML = `
           <span class="setItemLabel">Reset to the original</span>
         </button>
       </div>
-      <p class="setNote">Colours, thicknesses and sizes are remembered per pitch, so a broadcast board can start white while a drawn pitch starts dark. New boards on this pitch start here; the ones you have drawn stay as they are.</p>
+      <p class="setNote">Colours, thicknesses and sizes are remembered per pitch, so a broadcast board can start white while a drawn pitch starts dark. A pitch keeps a separate set for its dark board. New boards on this pitch start here; the ones you have drawn stay as they are.</p>
       <div class="setGroupHead">Your backgrounds<span class="setGroupCount" data-bg-usage></span></div>
       <div class="pitchGrid" data-bg-grid></div>
       <p class="setNote" data-bg-note></p>
@@ -7368,7 +7436,7 @@ function renderSkillsScreen(): void {
    device, and it does that already: the appearance rides on the scene. */
 
 /** What the board is wearing, filled in. */
-function boardLook(): ResolvedAppearance { return resolveAppearance(store.scene.appearance) }
+function boardLook(): ResolvedAppearance { return sceneLook(store.scene) }
 
 /** Write one appearance property onto the open board. */
 function setBoardAppearance(key: AppearanceKey, value: string | number) {
@@ -7421,7 +7489,7 @@ let lookGroup: AppearanceGroup = 'player'
 const LOOK_SWATCHES = ['#0b0b0e', '#ffffff', '#e02020', '#f2c744', '#1e2f6f', '#16a34a'] as const
 
 function targetAppearance(): BoardAppearance | undefined { return store.scene.appearance }
-function readLook(key: AppearanceKey): string | number { return resolveAppearance(targetAppearance())[key] }
+function readLook(key: AppearanceKey): string | number { return resolveAppearance(targetAppearance(), sceneIsDark(store.scene))[key] }
 
 /**
  * Write one property and repaint what changed. The board behind the panel is
@@ -8906,11 +8974,39 @@ store.subscribe(() => {
 
 function renderPitchSeg() {
   const segEl = settingsEl.querySelector('[data-pitch-seg]') as HTMLElement
+  const dark = store.scene.dark === true
   segEl.innerHTML = PITCHES
     .filter(p => !p.hidden && (!p.adminOnly || entitlements.hasBoardAdminAccess()))
-    .map(p => pitchTile(p.id, p.label, p.boardH, p.src, { locked: !entitlements.canPickPitch(p) }))
+    .map(p => pitchTile(p.id, p.label, p.boardH, pitchArt(p, dark), { locked: !entitlements.canPickPitch(p) }))
     .join('')
+  renderPaperSeg()
   renderBackgroundGrid()
+}
+
+/**
+ * Light or dark is the board's, not the app's: it is saved with the board and
+ * is what an export and a shared link show. The control says what the board
+ * asks for, and the note says so when the picture behind it cannot oblige.
+ */
+function renderPaperSeg() {
+  const dark = store.scene.dark === true
+  for (const [choice, on] of [['light', !dark], ['dark', dark]] as const) {
+    const button = settingsEl.querySelector(`[data-set="paper-${choice}"]`)!
+    button.classList.toggle('active', on)
+    button.setAttribute('aria-pressed', String(on))
+  }
+  const note = settingsEl.querySelector('[data-paper-note]') as HTMLElement
+  note.textContent = pitchById(store.scene.pitch).darkSrc
+    ? 'Saved with the board, so it exports and shares the way you see it. It does not follow the app theme.'
+    : 'This board is on your own background, which has no dark version. The choice applies when it is on one of our pitches.'
+}
+
+function choosePaper(dark: boolean) {
+  if (!applyBoardPaper(dark)) return
+  renderPitchSeg()
+  renderPanel()
+  pitchUndoDepth = store.undoDepth
+  setPitchStatus(dark ? 'Board changed to dark' : 'Board changed to light', true)
 }
 
 function renderBackgroundGrid() {
@@ -9162,6 +9258,8 @@ settingsEl.addEventListener('click', (e) => {
   else if (k === 'theme-light') applyTheme(false)
   else if (k === 'theme-dark') applyTheme(true)
   else if (k === 'pitch-undo') undoPitchChange()
+  else if (k === 'paper-light') choosePaper(false)
+  else if (k === 'paper-dark') choosePaper(true)
   else if (k === 'styles-save') savePitchDefaults()
   else if (k === 'styles-reset') resetPitchDefaults()
   else if (k === 'boards-export') exportBoardsFile()
@@ -10396,7 +10494,7 @@ registerWebMcp({
   revision: () => `${library.currentId}:${documentChangeGeneration}:${currentBoard()?.id ?? ''}`,
   editable: () => (BOARD_SELF_HOSTED || entitlements.isPro()) && !saves.isCurrentReadOnly(),
   activeBoard: () => currentBoard()?.id ?? '',
-  blankScene: () => emptyScene(store.scene.pitch),
+  blankScene: () => blankSceneLike(store.scene.pitch),
   commit: (project, expectedRevision, activeBoardId) => {
     if (`${library.currentId}:${documentChangeGeneration}:${currentBoard()?.id ?? ''}` !== expectedRevision) {
       throw new Error('WebMCP: The project changed before the edit could be committed.')

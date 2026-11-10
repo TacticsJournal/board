@@ -24,6 +24,9 @@ export type PitchStyle = {
   id: string
   label: string
   src: string
+  /** The same drawing on dark paper (scripts/make-dark-pitches.py). Only our
+      own art has one: nobody can invert a photograph. */
+  darkSrc?: string
   boardH: number
   /** Board continuity lane. Variants in the same category share a board; different categories get separate boards. */
   category: PitchCategory
@@ -56,17 +59,38 @@ export type PitchStyle = {
 }
 
 export const PITCHES: PitchStyle[] = [
-  { id: 'pitch', label: 'Pitch', src: new URL('../assets/pitch/pitch_marked.jpeg', import.meta.url).href, boardH: 618, pro: false, category: 'pitch', sides: 1, scoreboard: { x: 745, y: 86 }, surface: { x: [{ min: 0.00223, max: 0.99777 }], y: { min: 0.08767, max: 0.90909 } } },
-  { id: 'pitch-up', label: 'Vertical', src: new URL('../assets/pitch/pitch_up_marked.jpeg', import.meta.url).href, boardH: 640, pro: false, category: 'vertical', sides: 1, scoreboard: { x: 75, y: 133 }, surface: { x: [{ min: -0.00131, max: 1.00006 }], y: { min: -0.01198, max: 0.93594 } } },
-  { id: 'full-pitch', label: 'Full Pitch', src: new URL('../assets/pitch/full_pitch_marked.png', import.meta.url).href, boardH: 1066, pro: false, category: 'fullpitch', sides: 1, scoreboard: { x: 75, y: 133 }, defaultSizes: { player: 15, name: 20, label: 23 }, surface: { x: [{ min: -0.00025, max: 0.999 }], y: { min: -0.00135, max: 1.00041 } } },
-  { id: 'training', label: 'Training', src: new URL('../assets/pitch/training_marked.jpeg', import.meta.url).href, boardH: 418, pro: false, category: 'training', sides: 1, scoreboard: { x: 745, y: 86, logo: true }, awayCodeLift: 44, surface: { x: [{ min: 0.05563, max: 0.94312 }], y: { min: 0.11364, max: 0.88636 } } },
-  { id: 'sidebyside', label: 'Two pitches', src: new URL('../assets/pitch/sidebyside_marked.jpeg', import.meta.url).href, boardH: 533, pro: false, category: 'sidebyside', sides: 2, scoreboard: { x: 400, y: 95 }, surface: { x: [{ min: 0.03315, max: 0.45372 }, { min: 0.54503, max: 0.9656 }], y: { min: 0.00646, max: 0.99354 } } },
+  { id: 'pitch', label: 'Pitch', src: new URL('../assets/pitch/pitch_marked.jpeg', import.meta.url).href, darkSrc: new URL('../assets/pitch/pitch_marked_dark.jpeg', import.meta.url).href, boardH: 618, pro: false, category: 'pitch', sides: 1, scoreboard: { x: 745, y: 86 }, surface: { x: [{ min: 0.00223, max: 0.99777 }], y: { min: 0.08767, max: 0.90909 } } },
+  { id: 'pitch-up', label: 'Vertical', src: new URL('../assets/pitch/pitch_up_marked.jpeg', import.meta.url).href, darkSrc: new URL('../assets/pitch/pitch_up_marked_dark.jpeg', import.meta.url).href, boardH: 640, pro: false, category: 'vertical', sides: 1, scoreboard: { x: 75, y: 133 }, surface: { x: [{ min: -0.00131, max: 1.00006 }], y: { min: -0.01198, max: 0.93594 } } },
+  { id: 'full-pitch', label: 'Full Pitch', src: new URL('../assets/pitch/full_pitch_marked.png', import.meta.url).href, darkSrc: new URL('../assets/pitch/full_pitch_marked_dark.png', import.meta.url).href, boardH: 1066, pro: false, category: 'fullpitch', sides: 1, scoreboard: { x: 75, y: 133 }, defaultSizes: { player: 15, name: 20, label: 23 }, surface: { x: [{ min: -0.00025, max: 0.999 }], y: { min: -0.00135, max: 1.00041 } } },
+  { id: 'training', label: 'Training', src: new URL('../assets/pitch/training_marked.jpeg', import.meta.url).href, darkSrc: new URL('../assets/pitch/training_marked_dark.jpeg', import.meta.url).href, boardH: 418, pro: false, category: 'training', sides: 1, scoreboard: { x: 745, y: 86, logo: true }, awayCodeLift: 44, surface: { x: [{ min: 0.05563, max: 0.94312 }], y: { min: 0.11364, max: 0.88636 } } },
+  { id: 'sidebyside', label: 'Two pitches', src: new URL('../assets/pitch/sidebyside_marked.jpeg', import.meta.url).href, darkSrc: new URL('../assets/pitch/sidebyside_marked_dark.jpeg', import.meta.url).href, boardH: 533, pro: false, category: 'sidebyside', sides: 2, scoreboard: { x: 400, y: 95 }, surface: { x: [{ min: 0.03315, max: 0.45372 }, { min: 0.54503, max: 0.9656 }], y: { min: 0.00646, max: 0.99354 } } },
   /* The old single-slot screenshot board. Every screenshot is a saved
      background now, so this is never offered; it stays so boards drawn on it
      keep their art. */
   { id: 'live', label: 'Live', src: '', boardH: 372, pro: false, category: 'live', sides: 1, live: true, hidden: true },
-  { id: 'classic', label: 'Classic', src: new URL('../assets/pitch/pitch.jpeg', import.meta.url).href, boardH: 418, pro: true, adminOnly: true, category: 'classic', sides: 1, scoreboard: { x: 745, y: 86, logo: true }, surface: { x: [{ min: 0.00164, max: 0.99649 }], y: { min: -0.1104, max: 1.10203 } } },
+  { id: 'classic', label: 'Classic', src: new URL('../assets/pitch/pitch.jpeg', import.meta.url).href, darkSrc: new URL('../assets/pitch/pitch_dark.jpeg', import.meta.url).href, boardH: 418, pro: true, adminOnly: true, category: 'classic', sides: 1, scoreboard: { x: 745, y: 86, logo: true }, surface: { x: [{ min: 0.00164, max: 0.99649 }], y: { min: -0.1104, max: 1.10203 } } },
 ]
+
+/**
+ * What a board is drawn on before its art arrives, and behind it. Light is the
+ * white every pitch has always been; dark is the paper the dark art is drawn
+ * on, and has to match PAPER in scripts/make-dark-pitches.py.
+ */
+export const PITCH_PAPER = { light: '#ffffff', dark: '#1b1c1f' } as const
+
+/**
+ * Whether a board that asks for dark is drawn dark. Asking is the scene's
+ * (`scene.dark`); answering is the pitch's, because a board on a photograph
+ * or a broadcast still has no dark version to wear and stays as it is.
+ */
+export function pitchIsDark(id: string | undefined | null, dark: boolean | undefined): boolean {
+  return dark === true && !!pitchById(id).darkSrc
+}
+
+/** The art a board is drawn on: the dark drawing where it is asked for and exists. */
+export function pitchArt(style: PitchStyle, dark: boolean | undefined): string {
+  return dark === true && style.darkSrc ? style.darkSrc : style.src
+}
 
 /** Where the imported live screenshot lives (data URL). */
 export const LIVE_BG_KEY = 'tbm-live-v1'
