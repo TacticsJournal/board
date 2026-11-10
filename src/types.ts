@@ -450,6 +450,17 @@ export function repaperInk(objects: SceneObj[], dark: boolean): void {
   }
 }
 
+/**
+ * Put a board on light or dark paper. The choice is kept even where it cannot
+ * show - on a photograph - so the ink only moves when what is drawn changes.
+ */
+export function setScenePaper(scene: Scene, dark: boolean): void {
+  const wasDark = sceneIsDark(scene)
+  if (dark) scene.dark = true
+  else delete scene.dark
+  if (sceneIsDark(scene) !== wasDark) repaperInk(scene.objects, !wasDark)
+}
+
 export function playerDisplayName(name: string, mode: PlayerObj['nameDisplay'] = 'last'): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
   if (mode === 'full') return parts.join(' ')

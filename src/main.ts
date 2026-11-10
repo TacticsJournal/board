@@ -9,7 +9,7 @@ import {
   ballSrc, coneSrc, goalFullSrc, goalSmallSrc, livePlayerSrc,
   CONE_ASPECT, GOAL_ASPECT, LIVE_ART_SHEET, LIVE_PLAYER_CROP,
 } from './board'
-import { ArrowObj, BallObj, BoardSizes, BoxObj, GoalObj, ImageObj, MarkerObj, PlayerObj, Scene, SceneObj, TextObj, PLAYER_PALETTE, BOARD_W, emptyMatch, emptyScene, migrate, normalizeHex, uid, insertByTier, TYPE_Z, boxHasCorners, cornersFromRect, nodesForShape, rectFromCorners, isLight, headPoints, armPoints, trackPlayersAtBall, repaperInk, sceneIsDark, sceneLook } from './types'
+import { ArrowObj, BallObj, BoardSizes, BoxObj, GoalObj, ImageObj, MarkerObj, PlayerObj, Scene, SceneObj, TextObj, PLAYER_PALETTE, BOARD_W, emptyMatch, emptyScene, migrate, normalizeHex, uid, insertByTier, TYPE_Z, boxHasCorners, cornersFromRect, nodesForShape, rectFromCorners, isLight, headPoints, armPoints, trackPlayersAtBall, repaperInk, sceneIsDark, sceneLook, setScenePaper } from './types'
 import type { NodeCurve, PathNode } from './path-nodes'
 import { ImportPanel } from './importer'
 import { SavesPanel } from './saves'
@@ -26,6 +26,8 @@ import {
   attackAngle as attackAngleFor, formationSlotPoint, pitchLayout, remapObjects,
 } from './pitch-map'
 import { addBoardChoices } from './add-board-options'
+import { AS_DRAWN, canRestyle, exportLookProject, exportLookScene, isAsDrawn, type ExportLook, type ExportPaper } from './export-look'
+import { OffscreenBoard } from './offscreen-board'
 import { backgrounds } from './background-library.ts'
 import {
   addBackgroundFromFile, addBackgroundFromImage, loadBackgrounds, loadImage, migrateLegacyBackgrounds, nameFromFile,
@@ -384,12 +386,7 @@ function setPitchPreservingLayout(scene: typeof store.scene, pitch: string, h: n
  */
 function applyBoardPaper(dark: boolean): boolean {
   if ((store.scene.dark === true) === dark) return false
-  const wasDark = sceneIsDark(store.scene)
-  store.apply(s => {
-    if (dark) s.dark = true
-    else delete s.dark
-    if (sceneIsDark(s) !== wasDark) repaperInk(s.objects, !wasDark)
-  })
+  store.apply(s => setScenePaper(s, dark))
   return true
 }
 
@@ -4917,8 +4914,8 @@ function dataUrlToBlob(url: string): Blob {
   return new Blob([bytes], { type })
 }
 
-function exportPng() {
-  const url = board.exportPng()
+/** `url` is a board already drawn some other way (the export sheet's look). */
+function exportPng(url = board.exportPng()) {
   void recordProductEvent('board_exported', 'png')
   const filename = store.scene.pitch === 'classic'
     ? 'Pitch - Board Tactics Journal.png'
@@ -6302,6 +6299,8 @@ async function openExportSheet() {
   const many = canAnimate(project)
   let kind: ExportKind = 'board'
   let withNotes = true
+  let look: ExportLook = { ...AS_DRAWN }
+  const lookPitches = PITCHES.filter(p => !p.hidden && !p.live && entitlements.canPickPitch(p))
 
   const sheet = document.createElement('div')
   sheet.className = 'expSheet'
@@ -6316,6 +6315,25 @@ async function openExportSheet() {
     </div>
     <div class="expSheet__body">
       <div class="expOpts" data-exp-opts role="group" aria-label="Export format"></div>
+      <div class="expLook">
+        <img class="expPreview" data-exp-preview alt="The open board as it will be exported">
+        <label class="expField">
+          <span>Pitch</span>
+          <select data-exp-pitch aria-label="Pitch style for the export">
+            <option value="">As drawn</option>
+            ${lookPitches.map(p => `<option value="${p.id}">${esc(p.label)}</option>`).join('')}
+          </select>
+        </label>
+        <div class="expField">
+          <span>Colour</span>
+          <span class="expSeg" role="group" aria-label="Board colour for the export">
+            <button data-paper="drawn" aria-pressed="true">As drawn</button>
+            <button data-paper="light" aria-pressed="false">Light</button>
+            <button data-paper="dark" aria-pressed="false">Dark</button>
+          </span>
+        </div>
+        <p class="expHint" data-exp-look-note hidden></p>
+      </div>
       <label class="expNotes"><input type="checkbox" data-exp-notes checked><span>Include the note on each board</span></label>
       <p class="expHint">${!many
         ? 'This project has one board, so there is nothing to animate yet.'
@@ -6349,11 +6367,55 @@ async function openExportSheet() {
   }
   drawOpts()
   opts.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus()
+
+  /* The look is tried on a copy of the open board, off screen, and what comes
+     back is both the preview and the PNG itself. Having the picture in hand
+     before Export is tapped is what lets the share sheet open inside that tap:
+     Safari refuses one that arrives after a wait. */
+  const preview = sheet.querySelector<HTMLImageElement>('[data-exp-preview]')!
+  const lookNote = sheet.querySelector<HTMLElement>('[data-exp-look-note]')!
+  const restyles = () => !isAsDrawn(look) && canRestyle(store.scene)
+  let renderer: OffscreenBoard | null = null
+  let lookUrl = ''
+  let lookTurn = 0
+  let lookReady: Promise<void> = Promise.resolve()
+  const drawLook = () => {
+    const turn = ++lookTurn
+    sheet.querySelectorAll<HTMLElement>('[data-paper]').forEach(button => {
+      const on = button.dataset.paper === look.paper
+      button.classList.toggle('active', on)
+      button.setAttribute('aria-pressed', String(on))
+    })
+    const animated = kind === 'gif' || kind === 'video'
+    const said = !canRestyle(store.scene) && !isAsDrawn(look)
+      ? 'A board on your own background is exported as drawn.'
+      : look.pitch && animated
+        ? 'On another pitch each board is shown whole, so the animation does not follow the zoom set on each board.'
+        : ''
+    lookNote.textContent = said
+    lookNote.hidden = !said
+    lookUrl = ''
+    if (!restyles()) {
+      preview.src = board.toFrameCanvas(BOARD_W).toDataURL('image/png')
+      lookReady = Promise.resolve()
+      return
+    }
+    renderer ??= new OffscreenBoard(defaults)
+    const off = renderer
+    lookReady = (async () => {
+      off.store.loadScene(exportLookScene(store.scene, look, setPitchPreservingLayout))
+      await off.board.imagesReady()
+      if (turn !== lookTurn) return
+      lookUrl = off.board.exportPng()
+      preview.src = lookUrl
+    })().catch(() => { /* the export itself reports what went wrong */ })
+  }
+  drawLook()
   let exporting = false
   const setBusy = (busy: boolean) => {
     exporting = busy
     sheet.setAttribute('aria-busy', String(busy))
-    sheet.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input').forEach(control => { control.disabled = busy })
+    sheet.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>('button, input, select').forEach(control => { control.disabled = busy })
     if (!busy) {
       drawOpts()
       opts.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus()
@@ -6362,6 +6424,9 @@ async function openExportSheet() {
 
   const close = () => {
     sheet.remove()
+    lookTurn++
+    renderer?.destroy()
+    renderer = null
     document.body.classList.remove('composer-open')
     document.removeEventListener('keydown', onKey)
   }
@@ -6372,19 +6437,46 @@ async function openExportSheet() {
     if ((e.target as HTMLElement).matches('[data-exp-notes]')) {
       withNotes = (e.target as HTMLInputElement).checked
     }
+    if ((e.target as HTMLElement).matches('[data-exp-pitch]')) {
+      look = { ...look, pitch: (e.target as HTMLSelectElement).value || null }
+      drawLook()
+    }
   })
   sheet.addEventListener('click', async (e) => {
     const pick = (e.target as HTMLElement).closest<HTMLElement>('[data-kind]')
     if (pick && !exporting) {
       kind = pick.dataset.kind as ExportKind
       drawOpts()
+      drawLook()
       opts.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus()
+      return
+    }
+    const paper = (e.target as HTMLElement).closest<HTMLElement>('[data-paper]')?.dataset.paper as ExportPaper | undefined
+    if (paper && !exporting) {
+      look = { ...look, paper }
+      drawLook()
       return
     }
     const act = (e.target as HTMLElement).closest<HTMLElement>('[data-exp]')?.dataset.exp
     if (act === 'cancel') { close(); return }
     if (act !== 'go') return
-    if (kind === 'board') { close(); exportPng(); return }
+    if (kind === 'board') {
+      if (!restyles()) { close(); exportPng(); return }
+      // Almost always drawn already; a tap that beats the picture waits for it.
+      if (!lookUrl) {
+        setBusy(true)
+        status.textContent = 'Drawing the board\u2026'
+        await lookReady
+        setBusy(false)
+        status.textContent = ''
+      }
+      if (!lookUrl) { status.textContent = 'That export did not work on this device.'; return }
+      const url = lookUrl
+      close()
+      exportPng(url)
+      return
+    }
+    const styled = () => exportLookProject(currentProject(library), look, setPitchPreservingLayout)
     if (kind === 'images') {
       setBusy(true)
       status.textContent = 'Building the project images\u2026'
@@ -6397,7 +6489,7 @@ async function openExportSheet() {
           }
         : undefined
       try {
-        await exportProjectImages(currentProject(library), defaults, (done, total) => {
+        await exportProjectImages(styled(), defaults, (done, total) => {
           status.textContent = `Building the project images\u2026 ${done} of ${total}`
         }, sharedBackgroundScope ?? undefined, individualFallback)
         void recordProductEvent('board_exported', 'png')
@@ -6411,7 +6503,7 @@ async function openExportSheet() {
     setBusy(true)
     status.textContent = kind === 'gif' ? 'Building the GIF\u2026' : 'Recording the video\u2026'
     try {
-      await exportAnimation(kind, currentProject(library), defaults, withNotes, (done, total) => {
+      await exportAnimation(kind, styled(), defaults, withNotes, (done, total) => {
         const pct = Math.round(done * 100 / total)
         status.textContent = kind === 'gif' ? `Building the GIF\u2026 ${pct}%` : `Recording the video\u2026 ${pct}%`
       }, sharedBackgroundScope ?? undefined)

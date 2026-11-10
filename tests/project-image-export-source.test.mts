@@ -11,7 +11,7 @@ test('the export sheet offers every board as individual PNG images', () => {
   assert.match(main, /type ExportKind = 'board' \| 'images' \| 'gif' \| 'video'/)
   assert.match(main, /label: 'All project images'/)
   assert.match(main, /one for every board/)
-  assert.match(main, /if \(kind === 'images'\)[\s\S]*?exportProjectImages\(currentProject\(library\)/)
+  assert.match(main, /if \(kind === 'images'\)[\s\S]*?exportProjectImages\(styled\(\)/)
   assert.match(main, /data-exp-status role="status" aria-live="polite"/)
   assert.match(main, /role="group" aria-label="Export format"/)
   assert.match(main, /aria-pressed=/)

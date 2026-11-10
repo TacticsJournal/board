@@ -4205,6 +4205,21 @@ html[data-theme-resolved="dark"] .carryImportSwitch[aria-checked="true"] .mTrack
 .expOpt.active .expTick { opacity: 1; }
 .expOpt b { display: block; font-size: 13px; font-weight: 600; }
 .expOpt small { display: block; color: var(--ink-soft); font-size: 11.5px; line-height: 1.4; }
+/* How the export is drawn: the open board tried on another pitch or paper. */
+.expLook { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.expPreview { display: block; width: 100%; max-height: 220px; object-fit: contain; border-radius: 10px; background: var(--bar); }
+.expField { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; color: var(--ink); font-size: 13px; }
+.expField select {
+  min-height: 32px; max-width: 60%; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); color: var(--ink); font: inherit; font-size: 13px;
+}
+.expSeg { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--bar); }
+.expSheet .expSeg button {
+  min-height: 30px; padding: 4px 10px; border: 0; border-radius: 6px; background: none;
+  color: var(--ink-soft); font: inherit; font-size: 13px; letter-spacing: -0.01em;
+}
+.expSheet .expSeg button.active { background: var(--card); color: var(--ink); font-weight: 600; }
+.expHint[hidden] { display: none; }
 .expNotes { display: flex; align-items: center; gap: 9px; color: var(--ink); font-size: 13px; }
 .expNotes[hidden] { display: none; }
 .expNotes input { width: 16px; height: 16px; accent-color: var(--action); }
