@@ -1,4 +1,4 @@
-import { pitchArt, type PitchStyle } from './pitches.ts'
+import { pitchArt, type BoardPaper, type PitchStyle } from './pitches.ts'
 
 /**
  * What a new board can start on. The Add board chooser and the settings pitch
@@ -34,8 +34,8 @@ export type AddBoardChoiceInput = {
   /** the user's saved backgrounds */
   saved: PitchStyle[]
   currentPitch: PitchStyle
-  /** the board on screen is drawn dark, so the tiles show the dark art a new board will get */
-  dark?: boolean
+  /** the paper the board on screen asks for, so the tiles show the art a new board will get */
+  paper?: BoardPaper
   admin: boolean
   canPick: (style: PitchStyle) => boolean
   canUpload: boolean
@@ -44,7 +44,7 @@ export type AddBoardChoiceInput = {
 }
 
 export function addBoardChoices(input: AddBoardChoiceInput): AddBoardChoices {
-  const art = (style: PitchStyle) => pitchArt(style, input.dark) || input.thumb?.(style.id) || ''
+  const art = (style: PitchStyle) => pitchArt(style, input.paper) || input.thumb?.(style.id) || ''
   const toChoice = (style: PitchStyle): AddBoardChoice => ({
     id: style.id,
     label: style.label,

@@ -1,4 +1,4 @@
-import { DEFAULT_PITCH, pitchById, pitchIsDark } from './pitches.ts'
+import { DEFAULT_PITCH, isDarkPaper, pitchById, pitchPaper, type BoardPaper, type DarkPaper } from './pitches.ts'
 import { normalizeAppearance, resolveAppearance, type BoardAppearance, type ResolvedAppearance } from './appearance.ts'
 import type { PathNode, NodeCurve } from './path-nodes.ts'
 
@@ -246,13 +246,13 @@ export type Scene = {
   /** pitch style id (see pitches.ts); absent in old saves -> default */
   pitch?: string
   /**
-   * Drawn on the dark version of its pitch. Part of the board, not of the
-   * device: a dark board is dark for whoever opens it and in every export,
-   * whatever theme the app around it is in. Absent means light. It only shows
-   * where the pitch has dark art (see sceneIsDark), so a board that moves onto
-   * a photograph and back comes back dark.
+   * The dark background the board is drawn on: Dark, Slate or Floodlit grass.
+   * Absent means white. Part of the board, not of the device: it is what
+   * whoever opens the board sees and what every export draws, whatever theme
+   * the app around it is in. It only shows where the pitch has that art (see
+   * scenePaper), so a board that moves onto a photograph and back keeps it.
    */
-  dark?: boolean
+  paper?: DarkPaper
   match?: MatchInfo
   /** Optional user-defined meanings for arrow line styles. */
   arrowLegend?: ArrowLegend
@@ -264,13 +264,18 @@ export type Scene = {
   objects: SceneObj[]
 }
 
-/** True when this board is actually drawn dark: it asks, and its pitch can. */
-export function sceneIsDark(scene: Pick<Scene, 'pitch' | 'dark'> | undefined | null): boolean {
-  return pitchIsDark(scene?.pitch, scene?.dark)
+/** The paper this board is actually drawn on: what it asks for, where its pitch has it. */
+export function scenePaper(scene: Pick<Scene, 'pitch' | 'paper'> | undefined | null): BoardPaper {
+  return pitchPaper(scene?.pitch, scene?.paper)
+}
+
+/** True when this board is drawn on any of the dark backgrounds. */
+export function sceneIsDark(scene: Pick<Scene, 'pitch' | 'paper'> | undefined | null): boolean {
+  return scenePaper(scene) !== 'white'
 }
 
 /** A board's appearance filled in for the paper it is drawn on. */
-export function sceneLook(scene: Pick<Scene, 'pitch' | 'dark' | 'appearance'> | undefined | null): ResolvedAppearance {
+export function sceneLook(scene: Pick<Scene, 'pitch' | 'paper' | 'appearance'> | undefined | null): ResolvedAppearance {
   return resolveAppearance(scene?.appearance, sceneIsDark(scene))
 }
 
@@ -448,6 +453,24 @@ export function repaperInk(objects: SceneObj[], dark: boolean): void {
     if (o.type !== 'arrow' && o.type !== 'text') continue
     if (dark ? headNeedsLine(o.color, true) : isWhiteish(o.color)) o.color = dark ? '#ffffff' : '#111111'
   }
+}
+
+/**
+ * Put a board on a paper. The choice is kept even where it cannot show - on a
+ * photograph - and the ink only moves when the board goes between white and
+ * dark: one dark background to another keeps every colour as it is.
+ */
+export function setScenePaper(scene: Scene, paper: BoardPaper): void {
+  const wasDark = sceneIsDark(scene)
+  if (isDarkPaper(paper)) scene.paper = paper
+  else delete scene.paper
+  if (sceneIsDark(scene) !== wasDark) repaperInk(scene.objects, !wasDark)
+}
+
+/** What a save says it is drawn on. Boards saved while dark was on or off read as Dark. */
+function readPaper(data: { paper?: unknown; dark?: unknown }): DarkPaper | undefined {
+  if (isDarkPaper(data.paper)) return data.paper
+  return data.dark === true ? 'dark' : undefined
 }
 
 export function playerDisplayName(name: string, mode: PlayerObj['nameDisplay'] = 'last'): string {
@@ -765,7 +788,7 @@ export function migrate(data: any): Scene {
     const arrowLegend = sanitizeArrowLegend(data.arrowLegend)
     const appearance = normalizeAppearance(data.appearance)
     return {
-      version: 4, board: { w: BOARD_W, h }, pitch: style.id, ...(data.dark === true ? { dark: true } : {}), match: sanitizeMatch(data.match),
+      version: 4, board: { w: BOARD_W, h }, pitch: style.id, ...(readPaper(data) ? { paper: readPaper(data) } : {}), match: sanitizeMatch(data.match),
       ...(arrowLegend ? { arrowLegend } : {}), ...(appearance ? { appearance } : {}), objects,
     }
   }

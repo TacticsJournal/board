@@ -541,9 +541,12 @@ function mergeDocumentValue(template: unknown, current: unknown, key = ''): unkn
     if (Array.isArray((current as { objects?: unknown }).objects) && !('arrowLegend' in current)) {
       delete result.arrowLegend
     }
-    // A board turned back to light drops the field, and must not get it back
-    // from the copy it is being merged over.
-    if (Array.isArray((current as { objects?: unknown }).objects) && !('dark' in current)) delete result.dark
+    // A board turned back to white drops the field, and must not get it back
+    // from the copy it is being merged over; `dark` is the field it replaced.
+    if (Array.isArray((current as { objects?: unknown }).objects)) {
+      if (!('paper' in current)) delete result.paper
+      if (!('dark' in current)) delete result.dark
+    }
     for (const [childKey, value] of Object.entries(current as Record<string, unknown>)) {
       result[childKey] = mergeDocumentValue(old[childKey], value, childKey)
     }

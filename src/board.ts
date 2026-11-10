@@ -1,7 +1,7 @@
 import Konva from 'konva'
 import {
   ArrowObj, BallObj, BoxObj, ConeObj, GoalObj, ImageObj, MarkerObj, PlayerObj, Scene, SceneObj, TextObj, Pt,
-  BOARD_W, BOARD_H, uid, cornersFromRect, nodesForShape, insertByTier, objectsInDrawOrder, boxHasCorners, isLight, headNeedsLine, paperInk, sceneIsDark, sceneLook, armPoints, headPoints, playerDisplayName, resolveNamePos, trianglePoints, trackPlayersAtBall,
+  BOARD_W, BOARD_H, uid, cornersFromRect, nodesForShape, insertByTier, objectsInDrawOrder, boxHasCorners, isLight, headNeedsLine, paperInk, sceneIsDark, sceneLook, scenePaper, armPoints, headPoints, playerDisplayName, resolveNamePos, trianglePoints, trackPlayersAtBall,
 } from './types'
 export { trianglePoints }
 import {
@@ -25,8 +25,6 @@ export { arrowHeadSize, arrowMediumWidth, ARROW_WIDTH_MEDIUM, ARROW_WIDTH_MEDIUM
 
 const liveScoreboardSrc = new URL('../assets/icons/live/live_scoreboard.png', import.meta.url).href
 const tjLogoSrc = new URL('../assets/brand/tj-logo.png', import.meta.url).href
-/* The same mark in light ink, for a board drawn dark (scripts/make-dark-pitches.py). */
-const tjLogoLightSrc = new URL('../assets/brand/tj-logo-light.png', import.meta.url).href
 const LIVE_SCOREBOARD_CROP = { x: 460, y: 1659, width: 3176, height: 778 }
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 6
@@ -427,8 +425,8 @@ export class Board {
   private noteText = ''
   private noteGroup = new Konva.Group()
   private pitchId = ''
-  /** Whether the art on screen is the dark drawing of that pitch. */
-  private pitchDark = false
+  /** Which paper the art on screen is drawn on. */
+  private pitchPaper = 'white'
   /** Pending coalesced fit, so a burst of size changes costs one fit. */
   private refitFrame = 0
   private container: HTMLDivElement
@@ -438,7 +436,6 @@ export class Board {
   private livePlayerImg!: HTMLImageElement
   private liveScoreboardImg!: HTMLImageElement
   private logoImg!: HTMLImageElement
-  private logoLightImg!: HTMLImageElement
   private pitchImg: HTMLImageElement
   /** Remote pitch art is shared by frames; never create an Image per preview. */
   private remotePitchImages = new Map<string, HTMLImageElement>()
@@ -550,9 +547,6 @@ export class Board {
     this.logoImg = new Image()
     this.logoImg.src = tjLogoSrc
     this.logoImg.onload = () => this.drawOverlay()
-    this.logoLightImg = new Image()
-    this.logoLightImg.src = tjLogoLightSrc
-    this.logoLightImg.onload = () => this.drawOverlay()
     this.drawBackground()
 
     this.bindStage()
@@ -1367,11 +1361,11 @@ export class Board {
     const style = pitchById(this.store.scene.pitch)
     const wantH = style.live ? (this.store.scene.board.h || style.boardH) : style.boardH
     const liveStale = !!style.live && this.loadedLiveVersion !== this.liveVersion
-    const dark = sceneIsDark(this.store.scene)
+    const paper = scenePaper(this.store.scene)
     const samePitch = style.id === this.pitchId && this.boardH === wantH && !liveStale
-    if (samePitch && dark === this.pitchDark) return
+    if (samePitch && paper === this.pitchPaper) return
     this.pitchId = style.id
-    this.pitchDark = dark
+    this.pitchPaper = paper
     this.boardH = wantH
     this.noteGroup.y(wantH)
     const img = new Image()
@@ -1394,7 +1388,7 @@ export class Board {
       try { img.src = localStorage.getItem(LIVE_BG_KEY) ?? '' } catch { /* private mode */ }
     } else {
       this.pitchToken++
-      img.src = pitchArt(style, dark)
+      img.src = pitchArt(style, paper)
     }
     // The same pitch on the other paper is the same board: it keeps the view
     // it is being looked at through.
@@ -1449,8 +1443,7 @@ export class Board {
     const bh = this.boardH
     this.bgLayer.destroyChildren()
     this.bgLayer.add(new Konva.Rect({ x: -2000, y: -2000, width: BOARD_W + 4000, height: bh + 4000, fill: this.tilted ? 'rgba(0,0,0,0)' : this.surround }))
-    const paper = sceneIsDark(this.store.scene) ? PITCH_PAPER.dark : PITCH_PAPER.light
-    this.bgLayer.add(new Konva.Rect({ x: 0, y: 0, width: BOARD_W, height: bh, fill: paper, shadowColor: 'rgba(0,0,0,0.16)', shadowBlur: 14 }))
+    this.bgLayer.add(new Konva.Rect({ x: 0, y: 0, width: BOARD_W, height: bh, fill: PITCH_PAPER[scenePaper(this.store.scene)], shadowColor: 'rgba(0,0,0,0.16)', shadowBlur: 14 }))
     const style = pitchById(this.store.scene.pitch)
     if (this.pitchImg.complete && this.pitchImg.naturalWidth) {
       this.bgLayer.add(new Konva.Image({ image: this.pitchImg, x: 0, y: 0, width: BOARD_W, height: bh }))
@@ -1482,16 +1475,16 @@ export class Board {
     const bh = style.live ? (scene.board?.h || style.boardH) : style.boardH
     this.remoteBackgroundLayer.destroyChildren()
     this.remoteBackgroundLayer.add(new Konva.Rect({ x: -2000, y: -2000, width: BOARD_W + 4000, height: bh + 4000, fill: this.tilted ? 'rgba(0,0,0,0)' : this.surround }))
-    const dark = sceneIsDark(scene)
-    const art = pitchArt(style, dark)
-    this.remoteBackgroundLayer.add(new Konva.Rect({ x: 0, y: 0, width: BOARD_W, height: bh, fill: dark ? PITCH_PAPER.dark : PITCH_PAPER.light, shadowColor: 'rgba(0,0,0,0.16)', shadowBlur: 14 }))
+    const paper = scenePaper(scene)
+    const art = pitchArt(style, paper)
+    this.remoteBackgroundLayer.add(new Konva.Rect({ x: 0, y: 0, width: BOARD_W, height: bh, fill: PITCH_PAPER[paper], shadowColor: 'rgba(0,0,0,0.16)', shadowBlur: 14 }))
     if (art) {
       const key = `${style.id}:${art}`
       let image = this.remotePitchImages.get(key)
       if (!image) {
         image = new Image()
         image.onload = () => {
-          if (this.remoteScene?.pitch === scene.pitch && sceneIsDark(this.remoteScene) === dark) {
+          if (this.remoteScene?.pitch === scene.pitch && scenePaper(this.remoteScene) === paper) {
             this.drawRemoteBackground(this.remoteScene)
             this.remoteBackgroundLayer.batchDraw()
             this.stage.batchDraw()
@@ -1526,10 +1519,12 @@ export class Board {
     layer.destroyChildren()
     if (!m) { layer.batchDraw(); return }
     const live = style.live
-    // Our own lettering over our own art follows the paper the art is on.
+    // Our own lettering over our own art follows the paper the art is on. The
+    // mark itself does not: its book is filled white inside its own outline,
+    // which is how tacticsjournal.com shows it on dark as well as on white.
     const dark = sceneIsDark(scene)
-    const ink = dark ? '#f5f5f7' : '#000000'
-    const logo = dark ? this.logoLightImg : this.logoImg
+    const ink = dark ? '#ffffff' : '#000000'
+    const logo = this.logoImg
     const score = `${m.home || 'Home'} ${m.homeScore || '0'}-${m.awayScore || '0'} ${m.away || 'Away'}`
 
     if (m.showTeams) {
@@ -1736,7 +1731,7 @@ export class Board {
         g.add(new Konva.Line({
           points: armPoints(o.arms, side, r),
           closed: true,
-          fill: paperInk(onDark),
+          fill: '#0b0b0e',
           listening: false,
           perfectDrawEnabled: false,
         }))
@@ -4332,7 +4327,7 @@ export class Board {
     const imgs = [
       this.pitchImg, this.ballImg, this.coneImg,
       this.goalImgs.small, this.goalImgs.normal,
-      this.livePlayerImg, this.liveScoreboardImg, this.logoImg, this.logoLightImg,
+      this.livePlayerImg, this.liveScoreboardImg, this.logoImg,
       ...this.assetImgs.values(),
     ].filter((img): img is HTMLImageElement => !!img && !!img.src && !img.complete)
     if (imgs.length) {

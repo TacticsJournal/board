@@ -162,8 +162,9 @@ export function appearanceDefault(key: AppearanceKey): string | number {
 }
 
 /**
- * The defaults that were chosen for white paper and cannot be read on dark: a
- * near-black ring and near-black lettering. A board drawn dark (types.ts,
+ * The defaults that were chosen for white paper and cannot be read on dark:
+ * near-black lettering. The ring stays black on every paper - it is what holds
+ * a token together against grass and charcoal alike. A board drawn dark (types.ts,
  * sceneIsDark) takes these instead wherever it has not said otherwise. They
  * are only ever what is drawn - nothing here is stored, so a board that goes
  * back to light is back to the defaults it never left. The cost is one colour:
@@ -171,7 +172,6 @@ export function appearanceDefault(key: AppearanceKey): string | number {
  * default is no stored value at all.
  */
 const DARK_DEFAULTS: Partial<Record<AppearanceKey, string>> = {
-  'player.outlineColor': '#f5f5f7',
   'player.nameColor': '#f5f5f7',
 }
 
