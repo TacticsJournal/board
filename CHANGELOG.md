@@ -25,7 +25,7 @@ Two more backgrounds in Settings, Pitch: Cream, a warm paper, and Steel, a blue-
 Date: 2026-11-09
 Tag: New
 
-Draw on White, Dark, Slate or Floodlit grass from Settings, Pitch. Players keep a black ring on every one. Export now lets you pick the pitch and the background for the picture, and the board you are working on stays as it is.
+Draw on White, Dark, Slate or Grass from Settings, Pitch. Players keep a black ring on every one. Export now lets you pick the pitch and the background for the picture, and the board you are working on stays as it is.
 
 ## Dark boards
 Date: 2026-11-09

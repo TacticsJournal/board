@@ -246,7 +246,8 @@ export type Scene = {
   /** pitch style id (see pitches.ts); absent in old saves -> default */
   pitch?: string
   /**
-   * The dark background the board is drawn on: Dark, Slate or Floodlit grass.
+   * The background the board is drawn on, other than white: Cream, Steel,
+   * Slate, Dark or Grass.
    * Absent means white. Part of the board, not of the device: it is what
    * whoever opens the board sees and what every export draws, whatever theme
    * the app around it is in. It only shows where the pitch has that art (see

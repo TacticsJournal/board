@@ -16,7 +16,7 @@ const script = read('../scripts/make-dark-pitches.py')
 
 test('six backgrounds are offered, light first, and none is called inverted', () => {
   assert.deepEqual(BOARD_PAPERS.map(p => p.id), ['white', 'cream', 'steel', 'slate', 'dark', 'grass'])
-  assert.deepEqual(BOARD_PAPERS.map(p => p.label), ['White', 'Cream', 'Steel', 'Slate', 'Dark', 'Floodlit grass'])
+  assert.deepEqual(BOARD_PAPERS.map(p => p.label), ['White', 'Cream', 'Steel', 'Slate', 'Dark', 'Grass'])
   assert.equal(PITCH_PAPER.steel, '#4a525a')
   assert.equal(PITCH_PAPER.cream, '#fff5e3')
   assert.doesNotMatch(main, /Inverted/)

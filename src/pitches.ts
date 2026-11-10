@@ -93,7 +93,7 @@ export const BOARD_PAPERS: readonly { id: BoardPaper; label: string }[] = [
   { id: 'steel', label: 'Steel' },
   { id: 'slate', label: 'Slate' },
   { id: 'dark', label: 'Dark' },
-  { id: 'grass', label: 'Floodlit grass' },
+  { id: 'grass', label: 'Grass' },
 ]
 
 export function isArtPaper(value: unknown): value is ArtPaper {
