@@ -53,7 +53,7 @@ test('the full pitch has readable built-in object sizes', () => {
   assert.match(main, /defaults\.playerSize = sizes\.player/)
   assert.match(main, /defaults\.nameSize = sizes\.name/)
   assert.match(main, /defaults\.text\.size = sizes\.label/)
-  assert.match(main, /if \(applyPitchStyle\(style\.id\)\) \{ arrowDefaultsLive = !!style\.live; return \}/)
+  assert.match(main, /if \(applyPitchStyle\(pitchStyleKey\(style\.id, dark\)\)\) \{ arrowDefaultsLive = !!style\.live; return \}/)
 })
 
 test('the full pitch is a whole pitch stood up, and the other boards are unchanged', () => {

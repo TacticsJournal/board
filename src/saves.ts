@@ -1,6 +1,6 @@
 import { Store } from './store'
-import { BOARD_W, Scene, objectsInDrawOrder, isLight, isWhiteish, armPoints, headPoints, playerDisplayName, resolveNamePos } from './types'
-import { pitchById, pitchIconScale } from './pitches'
+import { BOARD_W, Scene, objectsInDrawOrder, isLight, headNeedsLine, paperInk, sceneIsDark, sceneLook, armPoints, headPoints, playerDisplayName, resolveNamePos } from './types'
+import { pitchArt, pitchById, pitchIconScale, PITCH_PAPER } from './pitches'
 import { nodeSegments, nodesToSvgPath, segmentEndTangent } from './path-nodes'
 import { canCreateAgentLink, hasPaidBoardAccess, isPro } from './entitlements'
 import { boardInvitationsUrl, boardSharesUrl, boardUserSearchUrl } from './board-api'
@@ -10,7 +10,7 @@ import { canReviewBoardProposals } from './board-proposals'
 import type { AgentAccessMode } from './board-api'
 import { icon } from './icons'
 import { fontFaceCss } from './fonts.ts'
-import { fontStack, haloAgainst, inkOn, resolveAppearance } from './appearance.ts'
+import { fontStack, haloAgainst, inkOn } from './appearance.ts'
 import { mountSlidingPills } from './sliding-pill'
 import { getAsset } from './assets'
 import { ballSrc, coneSrc, goalFullSrc, goalSmallSrc, livePlayerSrc, CONE_ASPECT, GOAL_ASPECT, LIVE_ART_SHEET, LIVE_MARKER_ELLIPSE, LIVE_PLAYER_CROP, MARKER_ASPECT } from './board-art'
@@ -161,7 +161,7 @@ export function boardArtDefs(scenes: (Scene | undefined)[]): string {
 /** How a board's own text is set, so the SVG reads like the board. The family
     and its tracking come off the scene, as they do on the board itself. */
 function labelFont(scene: Scene | undefined): string {
-  const look = resolveAppearance(scene?.appearance)
+  const look = sceneLook(scene)
   const tracking = look['tracking'] ? ` letter-spacing="${svgNumber(look['tracking'] as number)}"` : ''
   return `font-family="${escXml(fontStack(look['font'] as string))}" font-weight="700" text-anchor="middle"${tracking}`
 }
@@ -183,10 +183,11 @@ export function sceneShapesSvg(scene: Scene | undefined, opts: { fading?: Set<st
      document and cannot see a font the page has loaded, so a thumbnail in a
      searched family would silently come back in the fallback. Carrying the
      file makes what is exported what was drawn. */
-  const look = resolveAppearance(scene?.appearance)
+  const look = sceneLook(scene)
   const face = fontFaceCss(look['font'] as string)
   const LABEL_FONT = labelFont(scene)
   const refs = opts.art === 'point'
+  const onDark = sceneIsDark(scene)
   const parts: string[] = []
   if (face) parts.push(`<style>${face}</style>`)
   for (const o of objs) {
@@ -254,17 +255,17 @@ export function sceneShapesSvg(scene: Scene | undefined, opts: { fading?: Set<st
           const d = pts.reduce((acc, _v, i) => i % 2 === 0
             ? `${acc}${i ? ' L' : 'M'} ${svgNumber(x + pts[i])} ${svgNumber(y + pts[i + 1])}`
             : acc, '')
-          parts.push(`<path d="${d} Z" fill="#0b0b0e"/>`)
+          parts.push(`<path d="${d} Z" fill="${paperInk(onDark)}"/>`)
         }
       }
       if (Number.isFinite(o.facing)) {
         const pts = headPoints(Number(o.facing), r)
-        const pale = isWhiteish(String(o.color))
+        const pale = headNeedsLine(String(o.color), onDark)
         const d = `M ${svgNumber(x + pts[0])} ${svgNumber(y + pts[1])}`
           + ` L ${svgNumber(x + pts[2])} ${svgNumber(y + pts[3])}`
           + ` L ${svgNumber(x + pts[4])} ${svgNumber(y + pts[5])} Z`
         parts.push(`<path d="${d}" fill="${escXml(o.color)}"`
-          + (pale ? ` stroke="#0b0b0e" stroke-width="${svgNumber(Math.max(0.75, r * 0.12), 1.5)}" stroke-linejoin="round"` : '')
+          + (pale ? ` stroke="${paperInk(onDark)}" stroke-width="${svgNumber(Math.max(0.75, r * 0.12), 1.5)}" stroke-linejoin="round"` : '')
           + `/>`)
       }
       const outline = look['player.outline'] as number
@@ -367,8 +368,12 @@ export function sceneBoardHeight(scene: Scene | undefined): number {
 export function scenePitchImage(scene: Scene | undefined, resolved?: string | null): string {
   const style = pitchById(scene?.pitch)
   const bh = sceneBoardHeight(scene)
-  const src = style.src || (style.custom ? resolved || '' : '')
-  return src ? `<image href="${escXml(src)}" width="${BOARD_W}" height="${svgNumber(bh, style.boardH)}"/>` : ''
+  const dark = sceneIsDark(scene)
+  const src = pitchArt(style, dark) || (style.custom ? resolved || '' : '')
+  // Dark paper goes down first, so a thumbnail whose art has not arrived is
+  // not a white card with white lettering on it.
+  const paper = dark ? `<rect width="${BOARD_W}" height="${svgNumber(bh, style.boardH)}" fill="${PITCH_PAPER.dark}"/>` : ''
+  return paper + (src ? `<image href="${escXml(src)}" width="${BOARD_W}" height="${svgNumber(bh, style.boardH)}"/>` : '')
 }
 
 export function previewSvg(scene: Scene | undefined, resolved?: string | null): string {

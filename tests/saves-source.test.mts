@@ -91,7 +91,7 @@ test('new-board flow preserves state unless save succeeds or discard is confirme
   assert.match(view, /const project = newProject\(this\.host\.blankProjectScene\(\)\)/)
   const blankProjectScene = main.match(/blankProjectScene: \(\) => \{[\s\S]*?\n  \},/)?.[0] ?? ''
   assert.match(blankProjectScene, /teams\.resetTeams\(\[\]\)/)
-  assert.match(blankProjectScene, /return emptyScene\(store\.scene\.pitch\)/)
+  assert.match(blankProjectScene, /return blankSceneLike\(store\.scene\.pitch\)/)
   const startNew = saves.match(/private startNew[\s\S]*?\n  }/)?.[0] ?? ''
   assert.doesNotMatch(startNew, /nameInput\(\)\.value\s*=\s*''/)
 })

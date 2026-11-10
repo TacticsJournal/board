@@ -115,7 +115,7 @@ test('a board started on a chosen pitch takes that pitch and its height', () => 
   const blank = main.slice(main.indexOf('function blankSceneOnPitch'), main.indexOf('/* The chooser'))
   // emptyScene reads the height off the style, so an unknown id cannot make a
   // board with no art and no shape.
-  assert.match(blank, /return emptyScene\(pitchById\(pitchId\)\.id\)/)
+  assert.match(blank, /return blankSceneLike\(pitchById\(pitchId\)\.id\)/)
 })
 
 test('a short phone viewport scrolls the sheet instead of squeezing its rows', () => {

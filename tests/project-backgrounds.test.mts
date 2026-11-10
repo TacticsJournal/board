@@ -79,8 +79,8 @@ test('a read in flight when the cache is cleared is dropped rather than kept', a
 
 test('a scene draws the background bytes handed to it, not the pitch style src', () => {
   assert.match(saves, /export function scenePitchImage\(scene: Scene \| undefined, resolved\?: string \| null\): string/)
-  assert.match(saves, /const src = style\.src \|\| \(style\.custom \? resolved \|\| '' : ''\)/)
-  assert.match(saves, /return src \? `<image href="\$\{escXml\(src\)\}"/)
+  assert.match(saves, /const src = pitchArt\(style, dark\) \|\| \(style\.custom \? resolved \|\| '' : ''\)/)
+  assert.match(saves, /\(src \? `<image href="\$\{escXml\(src\)\}"/)
   // the preview passes the bytes through rather than dropping them
   assert.match(saves, /export function previewSvg\(scene: Scene \| undefined, resolved\?: string \| null\): string/)
   assert.match(saves, /\$\{scenePitchImage\(scene, resolved\)\}/)
