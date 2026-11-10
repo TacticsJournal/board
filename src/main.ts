@@ -19,7 +19,7 @@ import { formatElapsedSince } from './last-updated'
 import { mountSlidingPills } from './sliding-pill'
 import { TeamPanel, teamCode, type TeamSide } from './teams'
 import {
-  DEFAULT_PITCH, PITCHES, clearActiveSharedPitches, customPitches, pitchArt, pitchById, pitchPaper, BOARD_PAPERS, type BoardPaper,
+  DEFAULT_PITCH, PITCHES, clearActiveSharedPitches, customPitches, pitchArt, pitchById, pitchPaper, paperIsDark, BOARD_PAPERS, type BoardPaper,
   setActiveSharedPitch, setActiveSharedPitches, sharedPitchPlaceholder,
 } from './pitches'
 import {
@@ -254,7 +254,7 @@ let inkDefaultsDark = false
  * `dark` is asked of the pitch the defaults are being set for, not of the one
  * on screen: a pitch choice sets them before the scene has changed.
  */
-function applyPitchArrowDefault(style: ReturnType<typeof pitchById>, dark = pitchPaper(style.id, store.scene.paper) !== 'white') {
+function applyPitchArrowDefault(style: ReturnType<typeof pitchById>, dark = paperIsDark(pitchPaper(style.id, store.scene.paper))) {
   // Labels and measuring lines follow the paper and nothing else: near-black
   // on white, white on dark. Only the app's own two inks move, so a colour you
   // picked for them is left alone.

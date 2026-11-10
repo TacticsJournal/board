@@ -24,9 +24,9 @@ export type PitchStyle = {
   id: string
   label: string
   src: string
-  /** The same drawing on each dark background (scripts/make-dark-pitches.py).
+  /** The same drawing on each other background (scripts/make-dark-pitches.py).
       Only our own art has them: a photograph has no other paper. */
-  papers?: Record<DarkPaper, string>
+  papers?: Record<ArtPaper, string>
   boardH: number
   /** Board continuity lane. Variants in the same category share a board; different categories get separate boards. */
   category: PitchCategory
@@ -59,39 +59,50 @@ export type PitchStyle = {
 }
 
 export const PITCHES: PitchStyle[] = [
-  { id: 'pitch', label: 'Pitch', src: new URL('../assets/pitch/pitch_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/pitch_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/pitch_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/pitch_marked_grass.jpg', import.meta.url).href }, boardH: 618, pro: false, category: 'pitch', sides: 1, scoreboard: { x: 745, y: 86 }, surface: { x: [{ min: 0.00223, max: 0.99777 }], y: { min: 0.08767, max: 0.90909 } } },
-  { id: 'pitch-up', label: 'Vertical', src: new URL('../assets/pitch/pitch_up_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/pitch_up_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/pitch_up_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/pitch_up_marked_grass.jpg', import.meta.url).href }, boardH: 640, pro: false, category: 'vertical', sides: 1, scoreboard: { x: 75, y: 133 }, surface: { x: [{ min: -0.00131, max: 1.00006 }], y: { min: -0.01198, max: 0.93594 } } },
-  { id: 'full-pitch', label: 'Full Pitch', src: new URL('../assets/pitch/full_pitch_marked.png', import.meta.url).href, papers: { dark: new URL('../assets/pitch/full_pitch_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/full_pitch_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/full_pitch_marked_grass.jpg', import.meta.url).href }, boardH: 1066, pro: false, category: 'fullpitch', sides: 1, scoreboard: { x: 75, y: 133 }, defaultSizes: { player: 15, name: 20, label: 23 }, surface: { x: [{ min: -0.00025, max: 0.999 }], y: { min: -0.00135, max: 1.00041 } } },
-  { id: 'training', label: 'Training', src: new URL('../assets/pitch/training_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/training_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/training_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/training_marked_grass.jpg', import.meta.url).href }, boardH: 418, pro: false, category: 'training', sides: 1, scoreboard: { x: 745, y: 86, logo: true }, awayCodeLift: 44, surface: { x: [{ min: 0.05563, max: 0.94312 }], y: { min: 0.11364, max: 0.88636 } } },
-  { id: 'sidebyside', label: 'Two pitches', src: new URL('../assets/pitch/sidebyside_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/sidebyside_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/sidebyside_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/sidebyside_marked_grass.jpg', import.meta.url).href }, boardH: 533, pro: false, category: 'sidebyside', sides: 2, scoreboard: { x: 400, y: 95 }, surface: { x: [{ min: 0.03315, max: 0.45372 }, { min: 0.54503, max: 0.9656 }], y: { min: 0.00646, max: 0.99354 } } },
+  { id: 'pitch', label: 'Pitch', src: new URL('../assets/pitch/pitch_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/pitch_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/pitch_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/pitch_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/pitch_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/pitch_marked_cream.jpg', import.meta.url).href }, boardH: 618, pro: false, category: 'pitch', sides: 1, scoreboard: { x: 745, y: 86 }, surface: { x: [{ min: 0.00223, max: 0.99777 }], y: { min: 0.08767, max: 0.90909 } } },
+  { id: 'pitch-up', label: 'Vertical', src: new URL('../assets/pitch/pitch_up_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/pitch_up_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/pitch_up_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/pitch_up_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/pitch_up_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/pitch_up_marked_cream.jpg', import.meta.url).href }, boardH: 640, pro: false, category: 'vertical', sides: 1, scoreboard: { x: 75, y: 133 }, surface: { x: [{ min: -0.00131, max: 1.00006 }], y: { min: -0.01198, max: 0.93594 } } },
+  { id: 'full-pitch', label: 'Full Pitch', src: new URL('../assets/pitch/full_pitch_marked.png', import.meta.url).href, papers: { dark: new URL('../assets/pitch/full_pitch_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/full_pitch_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/full_pitch_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/full_pitch_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/full_pitch_marked_cream.jpg', import.meta.url).href }, boardH: 1066, pro: false, category: 'fullpitch', sides: 1, scoreboard: { x: 75, y: 133 }, defaultSizes: { player: 15, name: 20, label: 23 }, surface: { x: [{ min: -0.00025, max: 0.999 }], y: { min: -0.00135, max: 1.00041 } } },
+  { id: 'training', label: 'Training', src: new URL('../assets/pitch/training_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/training_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/training_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/training_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/training_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/training_marked_cream.jpg', import.meta.url).href }, boardH: 418, pro: false, category: 'training', sides: 1, scoreboard: { x: 745, y: 86, logo: true }, awayCodeLift: 44, surface: { x: [{ min: 0.05563, max: 0.94312 }], y: { min: 0.11364, max: 0.88636 } } },
+  { id: 'sidebyside', label: 'Two pitches', src: new URL('../assets/pitch/sidebyside_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/sidebyside_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/sidebyside_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/sidebyside_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/sidebyside_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/sidebyside_marked_cream.jpg', import.meta.url).href }, boardH: 533, pro: false, category: 'sidebyside', sides: 2, scoreboard: { x: 400, y: 95 }, surface: { x: [{ min: 0.03315, max: 0.45372 }, { min: 0.54503, max: 0.9656 }], y: { min: 0.00646, max: 0.99354 } } },
   /* The old single-slot screenshot board. Every screenshot is a saved
      background now, so this is never offered; it stays so boards drawn on it
      keep their art. */
   { id: 'live', label: 'Live', src: '', boardH: 372, pro: false, category: 'live', sides: 1, live: true, hidden: true },
-  { id: 'classic', label: 'Classic', src: new URL('../assets/pitch/pitch.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/pitch_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/pitch_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/pitch_grass.jpg', import.meta.url).href }, boardH: 418, pro: true, adminOnly: true, category: 'classic', sides: 1, scoreboard: { x: 745, y: 86, logo: true }, surface: { x: [{ min: 0.00164, max: 0.99649 }], y: { min: -0.1104, max: 1.10203 } } },
+  { id: 'classic', label: 'Classic', src: new URL('../assets/pitch/pitch.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/pitch_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/pitch_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/pitch_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/pitch_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/pitch_cream.jpg', import.meta.url).href }, boardH: 418, pro: true, adminOnly: true, category: 'classic', sides: 1, scoreboard: { x: 745, y: 86, logo: true }, surface: { x: [{ min: 0.00164, max: 0.99649 }], y: { min: -0.1104, max: 1.10203 } } },
 ]
 
 /**
  * What a board is drawn on. White is the paper every pitch has always been;
- * the other three are dark backgrounds, each its own drawing of the same pitch
+ * each other background is its own drawing of the same pitch
  * (scripts/make-dark-pitches.py). A board stores the one it asks for, and the
  * pitch answers: a photograph has no other paper and stays as it is.
+ *
+ * White and Cream are light: dark ink, the black mark. The rest are dark:
+ * light lines and lettering, the mark filled white, players still ringed black.
  */
-export type DarkPaper = 'dark' | 'slate' | 'grass'
-export type BoardPaper = 'white' | DarkPaper
+export type ArtPaper = 'cream' | 'steel' | 'dark' | 'slate' | 'grass'
+export type BoardPaper = 'white' | ArtPaper
 
-export const DARK_PAPERS: readonly DarkPaper[] = ['dark', 'slate', 'grass']
+export const ART_PAPERS: readonly ArtPaper[] = ['cream', 'steel', 'dark', 'slate', 'grass']
+export const DARK_PAPERS: readonly ArtPaper[] = ['steel', 'dark', 'slate', 'grass']
 
-/** In the order the pickers offer them. */
+/** In the order the pickers offer them: light first, then darker. */
 export const BOARD_PAPERS: readonly { id: BoardPaper; label: string }[] = [
   { id: 'white', label: 'White' },
-  { id: 'dark', label: 'Dark' },
+  { id: 'cream', label: 'Cream' },
+  { id: 'steel', label: 'Steel' },
   { id: 'slate', label: 'Slate' },
-  { id: 'grass', label: 'Floodlit grass' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'grass', label: 'Grass' },
 ]
 
-export function isDarkPaper(value: unknown): value is DarkPaper {
-  return value === 'dark' || value === 'slate' || value === 'grass'
+export function isArtPaper(value: unknown): value is ArtPaper {
+  return (ART_PAPERS as readonly unknown[]).includes(value)
+}
+
+/** A dark background: light lines, light lettering. */
+export function paperIsDark(paper: BoardPaper | undefined): boolean {
+  return (DARK_PAPERS as readonly unknown[]).includes(paper)
 }
 
 /**
@@ -99,17 +110,17 @@ export function isDarkPaper(value: unknown): value is DarkPaper {
  * to match PAPER in scripts/make-dark-pitches.py.
  */
 export const PITCH_PAPER: Record<BoardPaper, string> = {
-  white: '#ffffff', dark: '#1b1c1f', slate: '#1b1e24', grass: '#173626',
+  white: '#ffffff', cream: '#fff5e3', steel: '#4a525a', dark: '#1b1c1f', slate: '#1b1e24', grass: '#173626',
 }
 
 /** The paper a board on this pitch is actually drawn on. */
 export function pitchPaper(id: string | undefined | null, paper: BoardPaper | undefined): BoardPaper {
-  return isDarkPaper(paper) && pitchById(id).papers ? paper : 'white'
+  return isArtPaper(paper) && pitchById(id).papers ? paper : 'white'
 }
 
 /** The art a style is drawn with on that paper. */
 export function pitchArt(style: PitchStyle, paper: BoardPaper | undefined): string {
-  return (isDarkPaper(paper) && style.papers?.[paper]) || style.src
+  return (isArtPaper(paper) && style.papers?.[paper]) || style.src
 }
 
 /** Where the imported live screenshot lives (data URL). */

@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
-import { BOARD_PAPERS, DARK_PAPERS, PITCHES, PITCH_PAPER, pitchArt, pitchById, pitchPaper } from '../src/pitches.ts'
+import { ART_PAPERS, BOARD_PAPERS, DARK_PAPERS, PITCHES, PITCH_PAPER, pitchArt, pitchById, pitchPaper } from '../src/pitches.ts'
 import { emptyScene, headNeedsLine, migrate, repaperInk, sceneIsDark, sceneLook, scenePaper, setScenePaper, type SceneObj } from '../src/types.ts'
 import { appearanceDefault, resolveAppearance } from '../src/appearance.ts'
 import { addBoardChoices } from '../src/add-board-options.ts'
@@ -14,19 +14,21 @@ const board = read('../src/board.ts')
 const main = read('../src/main.ts')
 const script = read('../scripts/make-dark-pitches.py')
 
-test('four backgrounds are offered, white first, and none is called inverted', () => {
-  assert.deepEqual(BOARD_PAPERS.map(p => p.id), ['white', 'dark', 'slate', 'grass'])
-  assert.deepEqual(BOARD_PAPERS.map(p => p.label), ['White', 'Dark', 'Slate', 'Floodlit grass'])
+test('six backgrounds are offered, light first, and none is called inverted', () => {
+  assert.deepEqual(BOARD_PAPERS.map(p => p.id), ['white', 'cream', 'steel', 'slate', 'dark', 'grass'])
+  assert.deepEqual(BOARD_PAPERS.map(p => p.label), ['White', 'Cream', 'Steel', 'Slate', 'Dark', 'Grass'])
+  assert.equal(PITCH_PAPER.steel, '#4a525a')
+  assert.equal(PITCH_PAPER.cream, '#fff5e3')
   assert.doesNotMatch(main, /Inverted/)
 })
 
-test('every pitch we draw has every dark background, and nothing else does', () => {
+test('every pitch we draw has every background, and nothing else does', () => {
   for (const style of PITCHES) {
     if (style.live) {
       assert.equal(style.papers, undefined, `${style.id} is a photograph and has no other paper`)
       continue
     }
-    for (const paper of DARK_PAPERS) {
+    for (const paper of ART_PAPERS) {
       const src = style.papers?.[paper]
       assert.ok(src, `${style.id} has no ${paper} art`)
       assert.ok(existsSync(fileURLToPath(src!)), `${style.id} ${paper} art is not on disk`)
@@ -38,7 +40,7 @@ test('every pitch we draw has every dark background, and nothing else does', () 
 })
 
 test('the colour painted behind the art is the paper the art was made on', () => {
-  for (const paper of DARK_PAPERS) {
+  for (const paper of ART_PAPERS) {
     const [r, g, b] = [1, 3, 5].map(k => Number.parseInt(PITCH_PAPER[paper].slice(k, k + 2), 16))
     assert.match(script, new RegExp(`'${paper}': \\(${r}, ${g}, ${b}\\)`), paper)
   }
@@ -65,8 +67,26 @@ test('the background is the board asking and the pitch answering', () => {
   assert.equal(sceneIsDark(undefined), false)
 })
 
+test('Cream is a light paper and Steel a dark one', () => {
+  assert.equal(sceneIsDark({ pitch: 'pitch', paper: 'cream' }), false)
+  assert.equal(sceneIsDark({ pitch: 'pitch', paper: 'steel' }), true)
+  assert.equal(sceneLook({ pitch: 'pitch', paper: 'cream' })['player.nameColor'], appearanceDefault('player.nameColor'))
+  assert.equal(sceneLook({ pitch: 'pitch', paper: 'steel' })['player.nameColor'], '#f5f5f7')
+  // white to cream is light to light: nobody's ink moves
+  const scene = { ...emptyScene('pitch'), objects: [{ id: 'a', type: 'arrow', color: '#111111' }] as unknown as SceneObj[] }
+  setScenePaper(scene, 'cream')
+  assert.equal(scene.paper, 'cream')
+  assert.equal((scene.objects[0] as { color: string }).color, '#111111')
+  setScenePaper(scene, 'steel')
+  assert.equal((scene.objects[0] as { color: string }).color, '#ffffff')
+  // the cream drawing keeps the mark black, as it is on white
+  assert.match(script, /if paper == 'cream':/)
+})
+
 test('a background survives a save, and a board saved dark before reads as Dark', () => {
   assert.equal(migrate({ ...emptyScene('pitch-up'), paper: 'grass' }).paper, 'grass')
+  assert.equal(migrate({ ...emptyScene('pitch'), paper: 'cream' }).paper, 'cream')
+  assert.equal(migrate({ ...emptyScene('pitch'), paper: 'steel' }).paper, 'steel')
   assert.equal(migrate({ ...emptyScene('pitch'), dark: true }).paper, 'dark')
   assert.equal('paper' in migrate(emptyScene('pitch')), false)
   assert.equal('dark' in migrate({ ...emptyScene('pitch'), dark: true }), false)
