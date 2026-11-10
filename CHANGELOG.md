@@ -15,11 +15,11 @@ nothing at all. An entry missing a title or a valid date is skipped, and a
 file that cannot be read leaves the list empty rather than failing a build.
 -->
 
-## Export on any pitch, light or dark
+## Four board backgrounds, and export on any of them
 Date: 2026-11-09
 Tag: New
 
-Export now lets you pick the pitch and the colour for the picture, so a board drawn on the light horizontal pitch can leave as a dark full pitch. The board you are working on stays exactly as it is.
+Draw on White, Dark, Slate or Floodlit grass from Settings, Pitch. Players keep a black ring on every one. Export now lets you pick the pitch and the background for the picture, and the board you are working on stays as it is.
 
 ## Dark boards
 Date: 2026-11-09

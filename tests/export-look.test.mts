@@ -32,7 +32,8 @@ test('an export as drawn is the board as it is', () => {
 
 test('a look is worn by a copy, never by the board', () => {
   const scene = drawn()
-  const out = exportLookScene(scene, { pitch: 'pitch-up', paper: 'dark' }, carry)
+  const out = exportLookScene(scene, { pitch: 'pitch-up', paper: 'grass' }, carry)
+  assert.equal(out.paper, 'grass')
   assert.equal(out.pitch, 'pitch-up')
   assert.equal(out.board.h, pitchById('pitch-up').boardH)
   assert.equal(sceneIsDark(out), true)
@@ -44,8 +45,8 @@ test('a look is worn by a copy, never by the board', () => {
 })
 
 test('pitch and paper are chosen apart', () => {
-  const dark = { ...drawn(), dark: true }
-  const light = exportLookScene(dark, { pitch: null, paper: 'light' }, carry)
+  const dark: Scene = { ...drawn(), paper: 'dark' }
+  const light = exportLookScene(dark, { pitch: null, paper: 'white' }, carry)
   assert.equal(light.pitch, 'pitch')
   assert.equal(sceneIsDark(light), false)
   const stoodUp = exportLookScene(dark, { pitch: 'full-pitch', paper: 'drawn' }, carry)
@@ -84,7 +85,7 @@ test('a board whose pitch changes is shown whole', () => {
 
 test('the export sheet offers the look, for every kind of export', () => {
   assert.match(main, /data-exp-pitch/)
-  assert.match(main, /data-paper="dark"/)
+  assert.match(main, /data-exp-paper/)
   assert.match(main, /exportLookScene\(store\.scene, look, setPitchPreservingLayout\)/)
   assert.match(main, /const styled = \(\) => exportLookProject\(currentProject\(library\), look, setPitchPreservingLayout\)/)
   assert.match(main, /await exportProjectImages\(styled\(\), defaults/)

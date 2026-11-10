@@ -7,7 +7,7 @@ import { AddBoardChoice, AddBoardChoices } from './add-board-options'
 import { isBackgroundId } from './backgrounds'
 import { createBackgroundCache } from './background-cache'
 import { createIncrementalTaskQueue } from './project-preview-scheduler'
-import { BOARD_W, Scene, sceneIsDark } from './types'
+import { BOARD_W, Scene, scenePaper } from './types'
 import {
   Board, EASES, HOLD_MS, LINK_DURATIONS, Library, Project, UNTITLED,
   addBoard, boardLabel, boardName, boardView, canAnimate, canCreateProject, currentProject, firstLine, noteBody,
@@ -1352,7 +1352,7 @@ export class BoardsView {
     /* an uploaded background is read from storage rather than fetched, so the
        read for every board is started here too, once each */
     for (const scene of scenes) this.background(scene, project.id)
-    const pictures = [...project.boards.map(b => pitchArt(pitchById(b.scene.pitch), sceneIsDark(b.scene))), ...boardArt(scenes).map(a => a.src)]
+    const pictures = [...project.boards.map(b => pitchArt(pitchById(b.scene.pitch), scenePaper(b.scene))), ...boardArt(scenes).map(a => a.src)]
     for (const src of pictures) {
       if (!src) continue
       const img = new Image()

@@ -1,5 +1,5 @@
 import { Store } from './store'
-import { BOARD_W, Scene, objectsInDrawOrder, isLight, headNeedsLine, paperInk, sceneIsDark, sceneLook, armPoints, headPoints, playerDisplayName, resolveNamePos } from './types'
+import { BOARD_W, Scene, objectsInDrawOrder, isLight, headNeedsLine, paperInk, sceneIsDark, sceneLook, scenePaper, armPoints, headPoints, playerDisplayName, resolveNamePos } from './types'
 import { pitchArt, pitchById, pitchIconScale, PITCH_PAPER } from './pitches'
 import { nodeSegments, nodesToSvgPath, segmentEndTangent } from './path-nodes'
 import { canCreateAgentLink, hasPaidBoardAccess, isPro } from './entitlements'
@@ -255,7 +255,7 @@ export function sceneShapesSvg(scene: Scene | undefined, opts: { fading?: Set<st
           const d = pts.reduce((acc, _v, i) => i % 2 === 0
             ? `${acc}${i ? ' L' : 'M'} ${svgNumber(x + pts[i])} ${svgNumber(y + pts[i + 1])}`
             : acc, '')
-          parts.push(`<path d="${d} Z" fill="${paperInk(onDark)}"/>`)
+          parts.push(`<path d="${d} Z" fill="#0b0b0e"/>`)
         }
       }
       if (Number.isFinite(o.facing)) {
@@ -368,12 +368,12 @@ export function sceneBoardHeight(scene: Scene | undefined): number {
 export function scenePitchImage(scene: Scene | undefined, resolved?: string | null): string {
   const style = pitchById(scene?.pitch)
   const bh = sceneBoardHeight(scene)
-  const dark = sceneIsDark(scene)
-  const src = pitchArt(style, dark) || (style.custom ? resolved || '' : '')
+  const paper = scenePaper(scene)
+  const src = pitchArt(style, paper) || (style.custom ? resolved || '' : '')
   // Dark paper goes down first, so a thumbnail whose art has not arrived is
   // not a white card with white lettering on it.
-  const paper = dark ? `<rect width="${BOARD_W}" height="${svgNumber(bh, style.boardH)}" fill="${PITCH_PAPER.dark}"/>` : ''
-  return paper + (src ? `<image href="${escXml(src)}" width="${BOARD_W}" height="${svgNumber(bh, style.boardH)}"/>` : '')
+  const under = paper !== 'white' ? `<rect width="${BOARD_W}" height="${svgNumber(bh, style.boardH)}" fill="${PITCH_PAPER[paper]}"/>` : ''
+  return under + (src ? `<image href="${escXml(src)}" width="${BOARD_W}" height="${svgNumber(bh, style.boardH)}"/>` : '')
 }
 
 export function previewSvg(scene: Scene | undefined, resolved?: string | null): string {

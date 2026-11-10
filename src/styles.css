@@ -2340,8 +2340,11 @@ textarea {
   line-height: 1.4;
 }
 .selfHostFact code,
-/* the note under the board's light/dark control sits over the pitch tiles */
-.setNote[data-paper-note] { margin-bottom: 14px; }
+/* The four backgrounds: smaller tiles than the pitches, four across. */
+.paperGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.paperGrid .pitchShot { aspect-ratio: 4 / 3; }
+.paperGrid .pitchTileName { font-size: 12px; white-space: normal; line-height: 1.25; }
+.setNote[data-paper-note] { margin-bottom: 4px; }
 .setNote code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.92em;
@@ -4213,12 +4216,6 @@ html[data-theme-resolved="dark"] .carryImportSwitch[aria-checked="true"] .mTrack
   min-height: 32px; max-width: 60%; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); color: var(--ink); font: inherit; font-size: 13px;
 }
-.expSeg { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--bar); }
-.expSheet .expSeg button {
-  min-height: 30px; padding: 4px 10px; border: 0; border-radius: 6px; background: none;
-  color: var(--ink-soft); font: inherit; font-size: 13px; letter-spacing: -0.01em;
-}
-.expSheet .expSeg button.active { background: var(--card); color: var(--ink); font-weight: 600; }
 .expHint[hidden] { display: none; }
 .expNotes { display: flex; align-items: center; gap: 9px; color: var(--ink); font-size: 13px; }
 .expNotes[hidden] { display: none; }

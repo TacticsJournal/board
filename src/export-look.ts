@@ -1,12 +1,12 @@
 /* How an export is drawn when it is not drawn the way the board is. Someone
  * who works on the horizontal pitch in light can hand over the same board
- * stood up, or dark, without touching the board itself: the export restyles a
+ * stood up, or on another background, without touching the board itself: the export restyles a
  * copy, and the copy is thrown away. */
-import { pitchById } from './pitches.ts'
+import { pitchById, type BoardPaper } from './pitches.ts'
 import { cloneScene, fullView, type Project } from './projects.ts'
 import { setScenePaper, type Scene } from './types.ts'
 
-export type ExportPaper = 'drawn' | 'light' | 'dark'
+export type ExportPaper = 'drawn' | BoardPaper
 
 export type ExportLook = {
   /** one of our own pitch ids, or null to leave each board on its own */
@@ -39,7 +39,7 @@ export function exportLookScene(scene: Scene, look: ExportLook, carry: CarryPitc
   if (!canRestyle(copy)) return copy
   const target = look.pitch ? pitchById(look.pitch) : null
   if (target && !target.custom && !target.live && target.id !== copy.pitch) carry(copy, target.id, target.boardH)
-  if (look.paper !== 'drawn') setScenePaper(copy, look.paper === 'dark')
+  if (look.paper !== 'drawn') setScenePaper(copy, look.paper)
   return copy
 }
 

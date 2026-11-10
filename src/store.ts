@@ -93,7 +93,7 @@ export class Store {
       taken back, because the entry is dropped as a no-op. */
   private snap(): string {
     const s = this.scene
-    return JSON.stringify({ objects: s.objects, match: s.match, pitch: s.pitch, dark: s.dark === true, board: s.board, arrowLegend: s.arrowLegend, appearance: s.appearance })
+    return JSON.stringify({ objects: s.objects, match: s.match, pitch: s.pitch, paper: s.paper ?? null, board: s.board, arrowLegend: s.arrowLegend, appearance: s.appearance })
   }
 
   /** Snapshot + mutate + persist + emit, for discrete edits. */
@@ -137,8 +137,8 @@ export class Store {
     this.scene.match = parsed.match ?? emptyMatch()
     this.scene.pitch = parsed.pitch ?? this.scene.pitch
     this.scene.board = parsed.board ?? this.scene.board
-    if (parsed.dark === true) this.scene.dark = true
-    else delete this.scene.dark
+    if (parsed.paper) this.scene.paper = parsed.paper
+    else delete this.scene.paper
     if (parsed.arrowLegend) this.scene.arrowLegend = parsed.arrowLegend
     else delete this.scene.arrowLegend
     if (parsed.appearance) this.scene.appearance = parsed.appearance
@@ -154,8 +154,8 @@ export class Store {
     this.scene.match = parsed.match ?? emptyMatch()
     this.scene.pitch = parsed.pitch ?? this.scene.pitch
     this.scene.board = parsed.board ?? this.scene.board
-    if (parsed.dark === true) this.scene.dark = true
-    else delete this.scene.dark
+    if (parsed.paper) this.scene.paper = parsed.paper
+    else delete this.scene.paper
     if (parsed.arrowLegend) this.scene.arrowLegend = parsed.arrowLegend
     else delete this.scene.arrowLegend
     if (parsed.appearance) this.scene.appearance = parsed.appearance

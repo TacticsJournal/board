@@ -19,7 +19,7 @@ import { formatElapsedSince } from './last-updated'
 import { mountSlidingPills } from './sliding-pill'
 import { TeamPanel, teamCode, type TeamSide } from './teams'
 import {
-  DEFAULT_PITCH, PITCHES, clearActiveSharedPitches, customPitches, pitchArt, pitchById, pitchIsDark,
+  DEFAULT_PITCH, PITCHES, clearActiveSharedPitches, customPitches, pitchArt, pitchById, pitchPaper, BOARD_PAPERS, type BoardPaper,
   setActiveSharedPitch, setActiveSharedPitches, sharedPitchPlaceholder,
 } from './pitches'
 import {
@@ -254,7 +254,7 @@ let inkDefaultsDark = false
  * `dark` is asked of the pitch the defaults are being set for, not of the one
  * on screen: a pitch choice sets them before the scene has changed.
  */
-function applyPitchArrowDefault(style: ReturnType<typeof pitchById>, dark = pitchIsDark(style.id, store.scene.dark)) {
+function applyPitchArrowDefault(style: ReturnType<typeof pitchById>, dark = pitchPaper(style.id, store.scene.paper) !== 'white') {
   // Labels and measuring lines follow the paper and nothing else: near-black
   // on white, white on dark. Only the app's own two inks move, so a colour you
   // picked for them is left alone.
@@ -380,20 +380,20 @@ function setPitchPreservingLayout(scene: typeof store.scene, pitch: string, h: n
 }
 
 /**
- * Draw the board on screen on light or dark paper, in one undoable step. The
+ * Draw the board on screen on another background, in one undoable step. The
  * choice is the board's own and is kept even where it cannot show - on a
  * photograph - so the ink only moves when what is drawn actually changes.
  */
-function applyBoardPaper(dark: boolean): boolean {
-  if ((store.scene.dark === true) === dark) return false
-  store.apply(s => setScenePaper(s, dark))
+function applyBoardPaper(paper: BoardPaper): boolean {
+  if ((store.scene.paper ?? 'white') === paper) return false
+  store.apply(s => setScenePaper(s, paper))
   return true
 }
 
 /** A blank board on the paper the one on screen is on, so a project stays one colour. */
 function blankSceneLike(pitchId: string | undefined): Scene {
   const scene = emptyScene(pitchId)
-  if (store.scene.dark === true) scene.dark = true
+  if (store.scene.paper) scene.paper = store.scene.paper
   return scene
 }
 
@@ -5425,7 +5425,7 @@ function newBoardChoices(thumbLoaded: () => void) {
     builtIn: PITCHES,
     saved: customPitches(),
     currentPitch: pitchById(store.scene.pitch),
-    dark: store.scene.dark === true,
+    paper: store.scene.paper,
     admin: entitlements.hasBoardAdminAccess(),
     canPick: style => entitlements.canPickPitch(style),
     canUpload: entitlements.canUploadBackground(),
@@ -6324,14 +6324,13 @@ async function openExportSheet() {
             ${lookPitches.map(p => `<option value="${p.id}">${esc(p.label)}</option>`).join('')}
           </select>
         </label>
-        <div class="expField">
-          <span>Colour</span>
-          <span class="expSeg" role="group" aria-label="Board colour for the export">
-            <button data-paper="drawn" aria-pressed="true">As drawn</button>
-            <button data-paper="light" aria-pressed="false">Light</button>
-            <button data-paper="dark" aria-pressed="false">Dark</button>
-          </span>
-        </div>
+        <label class="expField">
+          <span>Background</span>
+          <select data-exp-paper aria-label="Board background for the export">
+            <option value="drawn">As drawn</option>
+            ${BOARD_PAPERS.map(p => `<option value="${p.id}">${esc(p.label)}</option>`).join('')}
+          </select>
+        </label>
         <p class="expHint" data-exp-look-note hidden></p>
       </div>
       <label class="expNotes"><input type="checkbox" data-exp-notes checked><span>Include the note on each board</span></label>
@@ -6381,11 +6380,6 @@ async function openExportSheet() {
   let lookReady: Promise<void> = Promise.resolve()
   const drawLook = () => {
     const turn = ++lookTurn
-    sheet.querySelectorAll<HTMLElement>('[data-paper]').forEach(button => {
-      const on = button.dataset.paper === look.paper
-      button.classList.toggle('active', on)
-      button.setAttribute('aria-pressed', String(on))
-    })
     const animated = kind === 'gif' || kind === 'video'
     const said = !canRestyle(store.scene) && !isAsDrawn(look)
       ? 'A board on your own background is exported as drawn.'
@@ -6437,6 +6431,10 @@ async function openExportSheet() {
     if ((e.target as HTMLElement).matches('[data-exp-notes]')) {
       withNotes = (e.target as HTMLInputElement).checked
     }
+    if ((e.target as HTMLElement).matches('[data-exp-paper]')) {
+      look = { ...look, paper: (e.target as HTMLSelectElement).value as ExportPaper }
+      drawLook()
+    }
     if ((e.target as HTMLElement).matches('[data-exp-pitch]')) {
       look = { ...look, pitch: (e.target as HTMLSelectElement).value || null }
       drawLook()
@@ -6449,12 +6447,6 @@ async function openExportSheet() {
       drawOpts()
       drawLook()
       opts.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus()
-      return
-    }
-    const paper = (e.target as HTMLElement).closest<HTMLElement>('[data-paper]')?.dataset.paper as ExportPaper | undefined
-    if (paper && !exporting) {
-      look = { ...look, paper }
-      drawLook()
       return
     }
     const act = (e.target as HTMLElement).closest<HTMLElement>('[data-exp]')?.dataset.exp
@@ -7342,18 +7334,10 @@ settingsEl.innerHTML = `
     </div>
     <div class="setPane hidden" data-pane="teams"></div>
     <div class="setPane hidden" data-pane="pitch">
-      <div class="setGroupHead">Pitch styles</div>
-      <div class="setGroup">
-        <div class="setItem setItemStatic" data-paper-row>
-          ${icon('sun-moon')}
-          <span class="setItemLabel">Board</span>
-          <span class="setSeg" role="group" aria-label="Board colour">
-            <button data-set="paper-light" aria-pressed="false">Light</button>
-            <button data-set="paper-dark" aria-pressed="false">Dark</button>
-          </span>
-        </div>
-      </div>
+      <div class="setGroupHead">Background</div>
+      <div class="paperGrid" data-paper-seg role="group" aria-label="Board background"></div>
       <p class="setNote" data-paper-note></p>
+      <div class="setGroupHead">Pitch styles</div>
       <div class="pitchGrid" data-pitch-seg></div>
       <div class="setStatusRow" data-pitch-status hidden>
         <span class="setStatusText" role="status" aria-live="polite" data-pitch-status-text></span>
@@ -7371,7 +7355,7 @@ settingsEl.innerHTML = `
           <span class="setItemLabel">Reset to the original</span>
         </button>
       </div>
-      <p class="setNote">Colours, thicknesses and sizes are remembered per pitch, so a broadcast board can start white while a drawn pitch starts dark. A pitch keeps a separate set for its dark board. New boards on this pitch start here; the ones you have drawn stay as they are.</p>
+      <p class="setNote">Colours, thicknesses and sizes are remembered per pitch, so a broadcast board can start white while a drawn pitch starts dark. A pitch keeps a separate set for its dark backgrounds. New boards on this pitch start here; the ones you have drawn stay as they are.</p>
       <div class="setGroupHead">Your backgrounds<span class="setGroupCount" data-bg-usage></span></div>
       <div class="pitchGrid" data-bg-grid></div>
       <p class="setNote" data-bg-note></p>
@@ -9066,39 +9050,50 @@ store.subscribe(() => {
 
 function renderPitchSeg() {
   const segEl = settingsEl.querySelector('[data-pitch-seg]') as HTMLElement
-  const dark = store.scene.dark === true
+  const paper = store.scene.paper
   segEl.innerHTML = PITCHES
     .filter(p => !p.hidden && (!p.adminOnly || entitlements.hasBoardAdminAccess()))
-    .map(p => pitchTile(p.id, p.label, p.boardH, pitchArt(p, dark), { locked: !entitlements.canPickPitch(p) }))
+    .map(p => pitchTile(p.id, p.label, p.boardH, pitchArt(p, paper), { locked: !entitlements.canPickPitch(p) }))
     .join('')
   renderPaperSeg()
   renderBackgroundGrid()
 }
 
 /**
- * Light or dark is the board's, not the app's: it is saved with the board and
- * is what an export and a shared link show. The control says what the board
- * asks for, and the note says so when the picture behind it cannot oblige.
+ * The background is the board's, not the app's: it is saved with the board and
+ * is what an export and a shared link show. Each tile is the pitch on screen
+ * on that background, so the choice is made by looking, and the note says so
+ * when the picture behind the board cannot oblige.
  */
 function renderPaperSeg() {
-  const dark = store.scene.dark === true
-  for (const [choice, on] of [['light', !dark], ['dark', dark]] as const) {
-    const button = settingsEl.querySelector(`[data-set="paper-${choice}"]`)!
-    button.classList.toggle('active', on)
-    button.setAttribute('aria-pressed', String(on))
-  }
+  const chosen = store.scene.paper ?? 'white'
+  const style = pitchById(store.scene.pitch)
+  const own = !style.papers
+  // a board on someone's own picture shows our pitch in the tiles: the
+  // choice still applies to it, the moment it is back on our art
+  const shown = own ? pitchById(DEFAULT_PITCH) : style
+  const check = icon('check', 'ic')
+  const segEl = settingsEl.querySelector('[data-paper-seg]') as HTMLElement
+  segEl.innerHTML = BOARD_PAPERS.map(p => {
+    const on = p.id === chosen
+    return `<button class="pitchTile paperTile${on ? ' on' : ''}" data-set="paper-${p.id}" aria-pressed="${on}">
+      <span class="pitchShot"><img class="pitchShotImg" src="${pitchArt(shown, p.id)}" alt="">${on ? `<span class="pitchTick">${check}</span>` : ''}</span>
+      <span class="pitchTileName">${esc(p.label)}</span>
+    </button>`
+  }).join('')
   const note = settingsEl.querySelector('[data-paper-note]') as HTMLElement
-  note.textContent = pitchById(store.scene.pitch).darkSrc
-    ? 'Saved with the board, so it exports and shares the way you see it. It does not follow the app theme.'
-    : 'This board is on your own background, which has no dark version. The choice applies when it is on one of our pitches.'
+  note.textContent = own
+    ? 'This board is on your own background, which keeps its own picture. The choice applies when it is on one of our pitches.'
+    : 'Saved with the board, so it exports and shares the way you see it. It does not follow the app theme.'
 }
 
-function choosePaper(dark: boolean) {
-  if (!applyBoardPaper(dark)) return
+function choosePaper(paper: BoardPaper) {
+  if (!applyBoardPaper(paper)) return
   renderPitchSeg()
   renderPanel()
   pitchUndoDepth = store.undoDepth
-  setPitchStatus(dark ? 'Board changed to dark' : 'Board changed to light', true)
+  const label = BOARD_PAPERS.find(p => p.id === paper)?.label ?? 'White'
+  setPitchStatus(`Background changed to ${label}`, true)
 }
 
 function renderBackgroundGrid() {
@@ -9350,8 +9345,7 @@ settingsEl.addEventListener('click', (e) => {
   else if (k === 'theme-light') applyTheme(false)
   else if (k === 'theme-dark') applyTheme(true)
   else if (k === 'pitch-undo') undoPitchChange()
-  else if (k === 'paper-light') choosePaper(false)
-  else if (k === 'paper-dark') choosePaper(true)
+  else if (k?.startsWith('paper-') && BOARD_PAPERS.some(p => `paper-${p.id}` === k)) choosePaper(k.slice(6) as BoardPaper)
   else if (k === 'styles-save') savePitchDefaults()
   else if (k === 'styles-reset') resetPitchDefaults()
   else if (k === 'boards-export') exportBoardsFile()
