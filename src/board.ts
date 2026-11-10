@@ -413,6 +413,14 @@ export class Board {
    * an arrow has none to carry, so it reports how far it has come round.
    */
   onRotation: (deg: number | null) => void = () => {}
+  /**
+   * A live board with no still behind it yet. The board used to write its own
+   * instructions onto the empty frame; the screen owns that now, as controls
+   * rather than words, so the board only says when the frame is empty.
+   */
+  onLiveEmpty: (empty: boolean) => void = () => {}
+  private liveEmptyNow = false
+  get liveEmpty() { return this.liveEmptyNow }
   /** Current board height: tracks the scene's pitch style (width is fixed). */
   boardH = BOARD_H
   /* The board's note is part of the board, not part of the screen: a band
@@ -1454,13 +1462,13 @@ export class Board {
         align: 'center', fontSize: 20, lineHeight: 1.4,
         fontFamily: 'Inter, system-ui, sans-serif', fill: '#9ca3af',
       }))
-    } else if (style.live) {
-      this.bgLayer.add(new Konva.Text({
-        text: 'Add a background image in Settings, Pitch,\nor import a screenshot with the camera button.',
-        x: 0, y: bh / 2 - 24, width: BOARD_W,
-        align: 'center', fontSize: 20, lineHeight: 1.4,
-        fontFamily: 'Inter, system-ui, sans-serif', fill: '#9ca3af',
-      }))
+    }
+    /* A saved background that is still being read is not empty, only late, so
+       only the plain live frame counts: nothing has ever been put behind it. */
+    const empty = !!style.live && !style.custom && !(this.pitchImg.complete && this.pitchImg.naturalWidth)
+    if (empty !== this.liveEmptyNow) {
+      this.liveEmptyNow = empty
+      this.onLiveEmpty(empty)
     }
     this.bgLayer.batchDraw()
   }

@@ -22,7 +22,7 @@ const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8
 const KNOWN = [...DEFAULT_TOP_BAR, 'match', 'ext:3d-view:toggle']
 
 test('the bar ships in the order the design asks for', () => {
-  assert.deepEqual([...DEFAULT_TOP_BAR], ['snap', 'export', 'previous-board', 'undo', 'redo', 'boards', 'more', 'note'])
+  assert.deepEqual([...DEFAULT_TOP_BAR], ['snap', 'export', 'previous-board', 'undo', 'play', 'redo', 'boards', 'more', 'note'])
   // Board settings and extension controls exist but are not on the bar.
   const state = normalizeTopBarState(defaultTopBarState(), KNOWN)
   assert.deepEqual(visibleTopBar(state), [...DEFAULT_TOP_BAR])
@@ -40,6 +40,18 @@ test('a control this build does not ship is dropped, and a new one arrives off t
   assert.equal(isTopBarVisible(state, 'snap'), false)
 })
 
+test('a control a later release ships on the bar takes its place there, not the end', () => {
+  // a bar saved before Play existed: Play lands between undo and redo, on
+  const saved = { version: 1, order: ['note', 'snap', 'export', 'previous-board', 'undo', 'redo', 'boards', 'more'], hidden: ['boards'] }
+  const state = normalizeTopBarState(saved, KNOWN)
+  assert.deepEqual(state.order.slice(0, 7), ['note', 'snap', 'export', 'previous-board', 'undo', 'play', 'redo'])
+  assert.equal(isTopBarVisible(state, 'play'), true)
+  assert.equal(isTopBarVisible(state, 'boards'), false, 'what was switched off stays off')
+  // a control that does not ship on the bar still arrives off it, at the end
+  assert.equal(state.order[state.order.length - 1], 'ext:3d-view:toggle')
+  assert.equal(isTopBarVisible(state, 'match'), false)
+})
+
 test('the menu cannot be switched off, because it is the way back to Tool settings', () => {
   assert.deepEqual([...FIXED_TOP_BAR], ['more'])
   const state = setTopBarVisible(normalizeTopBarState(defaultTopBarState(), KNOWN), 'more', false)
@@ -51,7 +63,7 @@ test('switching a control off keeps its place for when it comes back', () => {
   const start = normalizeTopBarState(defaultTopBarState(), KNOWN)
   const off = setTopBarVisible(start, 'boards', false)
   assert.deepEqual(off.order, start.order)
-  assert.deepEqual(visibleTopBar(off), ['snap', 'export', 'previous-board', 'undo', 'redo', 'more', 'note'])
+  assert.deepEqual(visibleTopBar(off), ['snap', 'export', 'previous-board', 'undo', 'play', 'redo', 'more', 'note'])
   assert.deepEqual(visibleTopBar(setTopBarVisible(off, 'boards', true)), [...DEFAULT_TOP_BAR])
 })
 

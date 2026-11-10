@@ -7,9 +7,12 @@ import { AddBoardChoice, AddBoardChoices } from './add-board-options'
 import { isBackgroundId } from './backgrounds'
 import { createBackgroundCache } from './background-cache'
 import { createIncrementalTaskQueue } from './project-preview-scheduler'
+import { mountSlidingPills } from './sliding-pill'
 import { BOARD_W, Scene, scenePaper } from './types'
 import {
-  Board, EASES, HOLD_MS, LINK_DURATIONS, Library, Project, UNTITLED,
+  Board, EASES, HOLD_MS, LINK_DURATIONS, LINK_STYLES, Library, Project, UNTITLED,
+  type LinkEase, type LinkStyle, type PlayFrame,
+  frameAt, linkStyle, transitionPlace,
   addBoard, boardLabel, boardName, boardView, canAnimate, canCreateProject, currentProject, firstLine, noteBody,
   type CarrySelection,
   easings, frameAtPos, moveBoard, newProject, orderedProjects, projectDuration, removeBoard, touch,
@@ -71,6 +74,8 @@ export type BoardsHost = {
   openProjectHistory: (projectId: string) => void
   /** Leave the library for one project's Proposals. */
   openProjectProposals: (projectId: string) => void
+  /** The Transition sheet closed, so anything showing its chip as open can let go. */
+  transitionClosed?: () => void
 }
 
 /** Owner-only actions for one project, as the host reports them. */
@@ -232,6 +237,24 @@ export class BoardsView {
   }
 
   /**
+   * A board as a picture, filling a tile of any shape. The Slides strip uses
+   * the cards' own rendering, cropped to the tile rather than letterboxed.
+   */
+  thumb(board: Board, projectId = currentProject(this.lib).id): string {
+    const v = boardView(board)
+    this.wantFont(board.scene?.appearance?.font)
+    return `<svg viewBox="${v.x} ${v.y} ${v.w} ${v.h}" preserveAspectRatio="xMidYMid slice" aria-hidden="true">`
+      + scenePitchImage(board.scene, this.background(board.scene, projectId))
+      + sceneShapesSvg(board.scene) + '</svg>'
+  }
+
+  /** Someone outside this view wants a redraw when background bytes land. */
+  onBackground(redraw: () => void): () => void {
+    this.bgWaiting.add(redraw)
+    return () => { this.bgWaiting.delete(redraw) }
+  }
+
+  /**
    * The bytes for a scene's uploaded background, or '' until they arrive.
    *
    * The cache does the reading once; a card redrawn on every change, and a
@@ -313,8 +336,8 @@ export class BoardsView {
           </span>
         </div>
         ${last ? '' : `<div class="libLink">
-          <button data-act="dur" data-i="${i}" title="How long this move takes"${carry ? ' disabled' : ''}>${(board.link.dur / 1000).toFixed(1)}s</button>
-          <button data-act="ease" data-i="${i}" title="How this move accelerates"${carry ? ' disabled' : ''}>${board.link.ease}</button>
+          <button data-act="dur" data-i="${i}" title="Transition: ${LINK_STYLE_LABEL[linkStyle(board.link, board.scene, project.boards[i + 1].scene)]}, ${linkLength(board.link.dur)}"${carry ? ' disabled' : ''}>${LINK_STYLE_ICON[linkStyle(board.link, board.scene, project.boards[i + 1].scene)]}${linkLength(board.link.dur)}</button>
+          <button data-act="ease" data-i="${i}" title="Transition pace"${carry ? ' disabled' : ''}>${board.link.ease}</button>
           <button data-act="insert" data-i="${i}" title="Add a board here"${carry ? ' disabled' : ''}>${icon('plus')}</button>
         </div>`}`
     }).join('')
@@ -513,16 +536,13 @@ export class BoardsView {
           }
           return
         }
-        case 'dur': {
-          const link = project.boards[i].link
-          link.dur = LINK_DURATIONS[(LINK_DURATIONS.indexOf(link.dur) + 1) % LINK_DURATIONS.length]
-          this.commit()
-          return
-        }
+        /* The two chips used to cycle their own values on every tap, which
+           made the length and the pace something you overshot and went round
+           again for. Either one opens the transition now, where all three
+           settings sit together and the change can be watched. */
+        case 'dur':
         case 'ease': {
-          const link = project.boards[i].link
-          link.ease = EASES[(EASES.indexOf(link.ease) + 1) % EASES.length]
-          this.commit()
+          this.openTransition(i, btn)
           return
         }
         case 'new-project': {
@@ -803,6 +823,7 @@ export class BoardsView {
             <svg class="seqPlayer__svg" data-play="svg" preserveAspectRatio="xMidYMid meet">
               <g data-play="art"></g>
               <g data-play="ground"></g>
+              <g data-play="groundOver"></g>
               <g data-play="shapes"></g>
             </svg>
           </div>
@@ -841,6 +862,7 @@ export class BoardsView {
     const stage = pick('stage')
     const svg = pick('svg')
     const ground = pick('ground')
+    const groundOver = pick('groundOver')
     const artDefs = pick('art')
     const shapes = pick('shapes')
 
@@ -911,6 +933,7 @@ export class BoardsView {
     let playing = false, playedFrom = 0
     let noteFor = -1
     let groundFor = ''
+    let groundOverFor = ''
 
     /* Keep a useful minimum everywhere, then spend any height the full-width
        board cannot use on the note instead of leaving it blank. */
@@ -1058,6 +1081,11 @@ export class BoardsView {
          be fetched and decoded again, and blinks out while it is */
       const pitch = scenePitchImage(frame.scene, this.background(frame.scene, project.id))
       if (pitch !== groundFor) { groundFor = pitch; ground.innerHTML = pitch }
+      /* a dissolve lays the other board's ground over this one at its share
+         of the blend; written only when it changes, like the ground under it */
+      const over = frame.blend ? scenePitchImage(frame.blend.scene, this.background(frame.blend.scene, project.id)) : ''
+      if (over !== groundOverFor) { groundOverFor = over; groundOver.innerHTML = over }
+      groundOver.setAttribute('opacity', frame.blend ? frame.blend.alpha.toFixed(3) : '0')
       paintShapes(sceneShapesSvg(frame.scene, {
         fading: frame.fading, fade: frame.exitAlpha,
         arriving: frame.arriving, arrive: frame.enterAlpha,
@@ -1364,7 +1392,265 @@ export class BoardsView {
     setNote(0)
     draw()
   }
+
+  /* ---------- the same frames, drawn elsewhere ----------
+     The player above is a screen of its own. The editor's Play button and
+     the Transition sheet's preview draw the very same frames into a smaller
+     box, so they share one way of putting a frame on an SVG: the ground, the
+     other board's ground over it while a dissolve blends them, and the
+     shapes, kept element for element from one frame to the next. */
+
+  private frameStage(project: Project, cls: string): FrameStage {
+    const NS = 'http://www.w3.org/2000/svg'
+    const svg = document.createElementNS(NS, 'svg')
+    svg.setAttribute('class', cls)
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+    svg.setAttribute('aria-hidden', 'true')
+    svg.innerHTML = '<g data-frame="art"></g><rect data-frame="paper" fill="#ffffff"></rect>'
+      + '<g data-frame="ground"></g><g data-frame="over"></g><g data-frame="shapes"></g>'
+    const part = (key: string) => svg.querySelector<SVGElement>(`[data-frame="${key}"]`)!
+    const paper = part('paper'), ground = part('ground'), over = part('over'), shapes = part('shapes')
+    const scenes = project.boards.map(b => b.scene)
+    part('art').innerHTML = boardArtDefs(scenes)
+    for (const scene of scenes) this.background(scene, project.id)
+    const scratch = document.createElementNS(NS, 'g')
+    let groundFor = '', overFor = ''
+    let last: PlayFrame | null = null
+    const paint = (frame: PlayFrame) => {
+      last = frame
+      const v = frame.view
+      svg.setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`)
+      for (const [key, value] of [['x', v.x], ['y', v.y], ['width', v.w], ['height', v.h]] as const) paper.setAttribute(key, String(value))
+      const pitch = scenePitchImage(frame.scene, this.background(frame.scene, project.id))
+      if (pitch !== groundFor) { groundFor = pitch; ground.innerHTML = pitch }
+      const top = frame.blend ? scenePitchImage(frame.blend.scene, this.background(frame.blend.scene, project.id)) : ''
+      if (top !== overFor) { overFor = top; over.innerHTML = top }
+      over.setAttribute('opacity', frame.blend ? frame.blend.alpha.toFixed(3) : '0')
+      scratch.innerHTML = sceneShapesSvg(frame.scene, {
+        fading: frame.fading, fade: frame.exitAlpha,
+        arriving: frame.arriving, arrive: frame.enterAlpha,
+        riding: frame.riding, ride: frame.rideAlpha,
+        art: 'point',
+      })
+      const next = scratch.children, live = shapes.children
+      let matched = next.length === live.length
+      for (let i = 0; matched && i < next.length; i++) matched = next[i].tagName === live[i].tagName
+      if (!matched) { shapes.replaceChildren(...Array.from(next)); return }
+      for (let i = 0; i < next.length; i++) syncAttributes(live[i], next[i])
+      scratch.replaceChildren()
+    }
+    // bytes that land mid-play fill the board in where it stands
+    const redraw = () => { if (last) paint(last) }
+    this.bgWaiting.add(redraw)
+    return { el: svg, paint, dispose: () => { this.bgWaiting.delete(redraw); svg.remove() } }
+  }
+
+  /**
+   * Play the project over the editor's own board, from board `from`, with
+   * the same clock the exported film uses. The editor is not touched: the
+   * frames are drawn into `host`, and `frame` reports the board on screen so
+   * the strip can follow it. Under reduced motion every link is drawn as a
+   * cut, so the boards follow one another without anything travelling.
+   */
+  playInline(host: HTMLElement, from: number, events: { frame: (current: number) => void; end: (current: number) => void }): InlinePlay | null {
+    const project = currentProject(this.lib)
+    if (!canAnimate(project)) return null
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const played: Project = reduce
+      ? { ...project, boards: project.boards.map(b => ({ ...b, link: { ...b.link, style: 'cut' as LinkStyle } })) }
+      : project
+    const last = played.boards.length - 1
+    const total = projectDuration(played)
+    // a board part-way through starts there; the last board starts over
+    let offset = 0
+    const start = from >= last ? 0 : Math.max(0, from)
+    for (let i = 0; i < start; i++) offset += HOLD_MS + played.boards[i].link.dur
+    const stage = this.frameStage(played, 'editorPlay__svg')
+    host.appendChild(stage.el)
+    let current = start
+    let raf = 0
+    const began = performance.now() - offset
+    const tick = (now: number) => {
+      const ms = now - began
+      const frame = frameAt(played, Math.min(ms, total))
+      stage.paint(frame)
+      if (frame.current !== current) { current = frame.current; events.frame(current) }
+      if (ms >= total) { raf = 0; stage.dispose(); events.end(last); return }
+      raf = requestAnimationFrame(tick)
+    }
+    stage.paint(frameAt(played, offset))
+    events.frame(current)
+    raf = requestAnimationFrame(tick)
+    return {
+      stop: () => {
+        if (raf) cancelAnimationFrame(raf)
+        raf = 0
+        stage.dispose()
+        return current
+      },
+    }
+  }
+
+  /* ---------- the transition sheet ----------
+     One link at a time, shown rather than described: the two boards it joins
+     play into each other on a loop at the top, and every change starts the
+     loop again so the difference is what you see next. */
+
+  private transSheet: HTMLElement | null = null
+  private transStop: (() => void) | null = null
+  private transTrigger: HTMLElement | null = null
+
+  /** Open the transition that leaves board `index` of the current project. */
+  openTransition(index: number, trigger?: HTMLElement | null) {
+    this.closeTransition(false)
+    const project = currentProject(this.lib)
+    const from = project.boards[index]
+    const to = project.boards[index + 1]
+    if (!from || !to) return
+    const link = from.link
+    const sheet = document.createElement('div')
+    sheet.className = 'modal transModal'
+    const seg = (label: string, key: string, options: readonly (readonly [string, string])[]) =>
+      `<div class="setItem setItemStatic"><span class="setItemLabel">${label}</span><span class="setSeg" role="group" aria-label="${label}">${options.map(([value, text]) =>
+        `<button type="button" data-trans="${key}" data-value="${value}">${text}</button>`).join('')}</span></div>`
+    sheet.innerHTML = `
+      <div class="sheet transSheet" role="dialog" aria-modal="true" aria-label="Transition">
+        <div class="sheetHead">
+          <strong>Transition</strong>
+          <span class="sheetBtns"><button class="active" data-trans-done>Done</button></span>
+        </div>
+        <div class="transPreview" aria-label="Preview"></div>
+        <small class="transCap" data-trans-cap></small>
+        <div class="setGroup">
+          ${seg('Style', 'style', LINK_STYLES.map(style => [style, LINK_STYLE_LABEL[style]] as const))}
+          ${seg('Length', 'dur', LINK_DURATIONS.map(dur => [String(dur), linkLength(dur)] as const))}
+          ${seg('Pace', 'ease', EASES.map(ease => [ease, LINK_EASE_LABEL[ease]] as const))}
+        </div>
+        <p class="transNote" data-trans-note></p>
+      </div>`
+    document.body.appendChild(sheet)
+    this.transSheet = sheet
+    this.transTrigger = trigger ?? null
+
+    /* The preview is a project of its own: the two boards and nothing else,
+       holding the real link, so what plays is exactly what was just chosen. */
+    const pair: Project = { ...project, boards: [from, to] }
+    const stage = this.frameStage(pair, 'transPreview__svg')
+    sheet.querySelector('.transPreview')!.appendChild(stage.el)
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const HOLD_FROM = 800, HOLD_TO = 1200
+    let began = performance.now()
+    let raf = 0
+    const tick = (now: number) => {
+      const ms = now - began
+      let pos: number
+      if (reduce.matches) {
+        // no movement: the two boards take turns, a beat each
+        pos = Math.floor(ms / 1500) % 2
+      } else {
+        const loop = HOLD_FROM + link.dur + HOLD_TO
+        const at = ms % loop
+        const k = Math.max(0, Math.min(1, (at - HOLD_FROM) / link.dur))
+        pos = at < HOLD_FROM ? 0 : easings[link.ease](k)
+      }
+      stage.paint(frameAtPos(pair, pos))
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    stage.paint(frameAtPos(pair, 0))
+    this.transStop = () => { cancelAnimationFrame(raf); stage.dispose() }
+
+    const sync = () => {
+      const style = linkStyle(link, from.scene, to.scene)
+      // a length from before these four were the choices shows as the nearest
+      const shownDur = LINK_DURATIONS.reduce((best, d) => Math.abs(d - link.dur) < Math.abs(best - link.dur) ? d : best, LINK_DURATIONS[0])
+      const values: Record<string, string> = { style, dur: String(shownDur), ease: link.ease }
+      sheet.querySelectorAll<HTMLButtonElement>('[data-trans]').forEach(btn => {
+        const on = values[btn.dataset.trans!] === btn.dataset.value
+        btn.classList.toggle('active', on)
+        btn.setAttribute('aria-pressed', String(on))
+      })
+      sheet.querySelector('[data-trans-cap]')!.textContent =
+        `${transitionPlace(project, index)} · ${LINK_STYLE_LABEL[style]}, ${linkLength(link.dur)}`
+      sheet.querySelector('[data-trans-note]')!.textContent = LINK_STYLE_NOTE[style]
+    }
+    sync()
+    mountSlidingPills(sheet)
+
+    sheet.addEventListener('click', e => {
+      const target = e.target as HTMLElement
+      if (target === sheet || target.closest('[data-trans-done]')) { this.closeTransition(true); return }
+      const btn = target.closest<HTMLButtonElement>('[data-trans]')
+      if (!btn) return
+      const value = btn.dataset.value!
+      if (btn.dataset.trans === 'style') link.style = value as LinkStyle
+      else if (btn.dataset.trans === 'dur') link.dur = Number(value)
+      else if (btn.dataset.trans === 'ease') link.ease = value as LinkEase
+      touch(project)
+      this.host.changed(project)
+      if (!this.root.hidden) this.render()
+      sync()
+      // a change is watched from the top of the loop, not from wherever it was
+      began = performance.now()
+    })
+    sheet.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.closeTransition(true); return }
+      if (e.key !== 'Tab') return
+      const stops = Array.from(sheet.querySelectorAll<HTMLElement>('button:not([disabled])'))
+      if (!stops.length) return
+      const edge = e.shiftKey ? stops[0] : stops[stops.length - 1]
+      if (document.activeElement !== edge) return
+      e.preventDefault()
+      ;(e.shiftKey ? stops[stops.length - 1] : stops[0]).focus()
+    })
+    sheet.querySelector<HTMLElement>('[data-trans-done]')?.focus()
+  }
+
+  get transitionOpen() { return !!this.transSheet }
+
+  closeTransition(restoreFocus = true) {
+    const sheet = this.transSheet
+    if (!sheet) return
+    this.transSheet = null
+    this.transStop?.()
+    this.transStop = null
+    const trigger = this.transTrigger
+    this.transTrigger = null
+    sheet.classList.add('hidden')
+    window.setTimeout(() => sheet.remove(), 400)
+    this.host.transitionClosed?.()
+    if (restoreFocus && trigger?.isConnected) trigger.focus()
+  }
+
+  /** The Add board chooser, from outside the list: the strip's add tile. */
+  openAddBoard(afterIndex: number, trigger?: HTMLElement | null) {
+    this.addAfter(afterIndex, trigger)
+  }
 }
+
+/** What a drawn frame needs from the box it is drawn into. */
+type FrameStage = { el: SVGSVGElement; paint: (frame: PlayFrame) => void; dispose: () => void }
+/** A project playing over the editor; stopping it says where it got to. */
+export type InlinePlay = { stop: () => number }
+
+/* ---------- how a transition is named ----------
+   The strip, the Boards list and the sheet all say a transition the same
+   way: its style as a small mark, and its length. */
+
+export const LINK_STYLE_LABEL: Record<LinkStyle, string> = { cut: 'Cut', dissolve: 'Dissolve', move: 'Move' }
+export const LINK_EASE_LABEL: Record<LinkEase, string> = { 'in-out': 'Smooth', linear: 'Even', out: 'Settle' }
+export const LINK_STYLE_NOTE: Record<LinkStyle, string> = {
+  cut: 'The next slide replaces this one at once, like a broadcast cut.',
+  dissolve: 'The slides blend into each other. Drawings fade out, then in.',
+  move: 'Drawings slide to their spots on the next slide. Best when the camera barely moved.',
+}
+export const LINK_STYLE_ICON: Record<LinkStyle, string> = {
+  dissolve: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6" stroke-dasharray="2 2.5"/></svg>',
+  cut: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 4v16"/></svg>',
+  move: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-4-4l4 4l-4 4"/></svg>',
+}
+export function linkLength(dur: number): string { return `${(dur / 1000).toFixed(1)}s` }
+
 
 /* ---------- helpers ---------- */
 

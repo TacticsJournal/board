@@ -28,9 +28,9 @@ test('segmented controls mount one measured pill and release observers when remo
 })
 
 test('match controls are semantic switches that animate only after use', () => {
-  // the two match toggles, the one import decision, and the Tool settings
-  // switch, all of which speak the same way
-  assert.equal((main.match(/role="switch"/g) ?? []).length, 4)
+  // the two match toggles, the import decision, the Add this still copy
+  // switch, and the Tool settings switch, all of which speak the same way
+  assert.equal((main.match(/role="switch"/g) ?? []).length, 5)
   assert.match(main, /class="setItem carryImportSwitch" role="switch"/)
   assert.match(main, /class="mTrack t-toggle" data-on="false"/)
   assert.match(main, /setAttribute\('aria-checked', String\(on\)\)/)

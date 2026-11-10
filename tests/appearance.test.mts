@@ -160,7 +160,8 @@ test('the board is drawn with it, everywhere a board is drawn', () => {
   // what the reader has paid for.
   assert.match(board, /private look\(\): ResolvedAppearance/)
   assert.doesNotMatch(board, /hasPaidBoardAccess|isPro\(\)/)
-  assert.equal((board.match(/fontFamily: 'Inter, system-ui, sans-serif'/g) ?? []).length, 3)
+  // (an empty live frame no longer writes its own words: the screen shows controls there)
+  assert.equal((board.match(/fontFamily: 'Inter, system-ui, sans-serif'/g) ?? []).length, 2)
   assert.match(board, /fontFamily: this\.boardFont\(\)/)
   // The colours that used to be rules now go through the rule-keeping helpers.
   assert.match(board, /inkOn\(look\['player\.numberColor'\], o\.color\)/)

@@ -318,13 +318,16 @@ await page.evaluate(() => {
 })
 await page.waitForTimeout(600)
 
-// a longer link gives the move enough frames to catch the cut in the act
+// a longer link gives the move enough frames to catch the cut in the act. Two
+// different stills dissolve by default, and this is about the move's handoff,
+// so the Transition sheet sets a move, at its longest length.
 await openBoards()
-for (let i = 0; i < 6; i++) {
-  if ((await page.locator('[data-act="dur"]').first().textContent()).trim() === '3.0s') break
-  await page.click('[data-act="dur"]')
-  await page.waitForTimeout(150)
-}
+await page.click('[data-act="dur"]')
+await page.waitForTimeout(300)
+await page.click('[data-trans="style"][data-value="move"]')
+await page.click('[data-trans="dur"][data-value="2200"]')
+await page.click('[data-trans-done]')
+await page.waitForTimeout(450)
 const linkDur = await page.evaluate(() => document.querySelector('[data-act="dur"]').textContent.trim())
 await page.click('.libFoot [data-act="play"]')
 await page.waitForTimeout(1200)

@@ -741,7 +741,10 @@ html[data-theme-resolved="dark"] .site-menu .site-menu-theme { --field-bg: #1112
    both, or the row reads at two weights. */
 .iconBtn svg * { stroke-width: 1.3; }
 @media (max-width: 400px) {
-  .actionRow { gap: 18px; }
+  /* Play joined the row, and a live board adds the camera: ten marks have to
+     fit a 360pt phone, so the gap gives way with the width rather than the
+     last mark falling off the edge. */
+  .actionRow { gap: min(18px, 2.9vw); }
   .iconBtn.barGap { margin-left: 8px; }
 }
 
@@ -5193,6 +5196,163 @@ html[data-theme-resolved="dark"] .shareUserPanel .shareUserOption.is-active { ba
 .shareLinkField:not([hidden]) { display: grid; gap: 7px; }
 .linkField input { font-size: 12px; user-select: text; -webkit-user-select: text; }
 
+/* ---------- match stills: the empty frame, a drop, and the Slides room ----------
+   Every piece here is one the app already draws somewhere else: the empty
+   frame is the pitch's own grey words with the sheets' file buttons under
+   them, a drop is the background picker's selected ring with the toast as its
+   label, and the strip is that picker's tiles, board-sized, with the Boards
+   list's link chips in the gaps. */
+
+/* the empty live board: the words it used to draw, made into a control. It
+   sits over the part of the board the panel leaves visible, takes no pointer
+   of its own, and lets the board under it keep drawing. */
+.stillEmpty {
+  position: absolute;
+  inset: 0 0 var(--panelH, 0px) 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 16px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 15px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+.stillEmpty[hidden] { display: none; }
+.stillEmpty strong { color: var(--ink); font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
+.stillEmpty p { margin: 0 0 10px; }
+.stillEmpty .emptyBtns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; pointer-events: auto; }
+.stillEmpty .fileBtn { font: inherit; font-size: 13px; padding: 9px 14px; }
+.stillEmpty .touchOnly { display: none; }
+@media (pointer: coarse) { .stillEmpty .touchOnly { display: inline-block; } }
+
+/* a drag over the board: the selected ring the picker uses, and the toast as the label */
+.dropVeil {
+  position: absolute;
+  inset: 0 0 var(--panelH, 0px) 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 4px var(--card);
+  background: rgba(0, 0, 0, 0.08);
+  pointer-events: none;
+}
+.dropVeil[hidden] { display: none; }
+.dropVeil .toast { display: flex; flex-direction: column; gap: 2px; }
+.dropVeil .toast small { opacity: 0.7; font-size: 12px; }
+
+/* Play draws the project over the editor; the surround is the board's own */
+.editorPlay {
+  position: absolute;
+  inset: 0 0 var(--panelH, 0px) 0;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f7;
+  cursor: pointer;
+}
+.editorPlay[hidden] { display: none; }
+html[data-theme-resolved="dark"] .editorPlay { background: #000; }
+.editorPlay__svg { display: block; width: 100%; height: 100%; filter: drop-shadow(0 0 7px rgba(0, 0, 0, 0.16)); }
+
+/* the Slides room: the background picker's tiles, board-sized */
+.slidesShelf { flex: none; background: var(--panel); }
+.slidesShelf.hidden { display: none; }
+.slidesScroll {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+}
+.slidesScroll::-webkit-scrollbar { display: none; }
+.slideShot { flex: none; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.slideThumb, .slideAdd {
+  flex: none;
+  position: relative;
+  width: 72px;
+  aspect-ratio: 4096 / 3165;
+  padding: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--bar);
+  cursor: pointer;
+}
+.slideThumb svg { display: block; width: 100%; height: 100%; }
+.slideThumb.current { border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink), inset 0 0 0 2px var(--card); }
+.slideAdd { display: grid; place-items: center; border-style: dashed; border-color: var(--pill); background: none; color: var(--ink-soft); }
+.slideAdd svg { width: 20px; height: 20px; }
+/* a step for every board drawn on the still; the one you are on is ink */
+.slideSteps { display: flex; gap: 4px; height: 5px; }
+.slideSteps button {
+  position: relative;
+  width: 5px;
+  height: 5px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--pill);
+  cursor: pointer;
+}
+/* the dot is small; the press is not */
+.slideSteps button::after { content: ''; position: absolute; inset: -7px -3px; }
+.slideShot.current .slideSteps button.on { background: var(--ink); }
+/* a transition is the gap between two stills: the Boards list's link chip, in the strip */
+.slideLink {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 16px;
+  min-height: 24px;
+  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--bar);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.slideLink svg { width: 12px; height: 12px; }
+.slideLink.on { border-color: var(--ink); color: var(--ink); }
+.libLink button[data-act="dur"] { display: inline-flex; align-items: center; gap: 4px; }
+.libLink button[data-act="dur"] svg { width: 12px; height: 12px; }
+
+/* the two sheets a still brings: one choice, and one transition */
+.stillChoice .setItem, .stillChoice .setGroup { flex: none; }
+.stillChoice .carryImportPreviews span { flex-basis: 96px; height: 74px; }
+.transSheet .setItem, .transSheet .setGroup { flex: none; }
+/* the sheet shows the transition itself, looping, rather than describing it */
+.transPreview {
+  position: relative;
+  flex: none;
+  width: 100%;
+  max-width: 360px;
+  align-self: center;
+  aspect-ratio: 4096 / 3165;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--bar);
+}
+.transPreview__svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.transCap { align-self: center; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.transNote { margin: 0 4px; font-size: 12px; color: var(--ink-soft); line-height: 1.4; }
+
+
 /* ---------- wide window: rail, panel, context bar ----------
    A phone stacks board, panel and rooms down the screen. A wide window has
    width to spare and no height, so the same three stand beside the board: a
@@ -5405,3 +5565,13 @@ body.deskMode .ctxDock .fabBL { position: relative; left: auto; bottom: auto; }
 body.deskMode .ctxDock .linkMenu { top: calc(100% + 8px); bottom: auto; transform-origin: top left; }
 /* the bar owns the top of the stage here, so back sits under it */
 body.deskMode .backBtn { top: 68px; }
+
+/* the stills, beside the board: the strip runs down the panel, and the
+   overlays sit inside the stage inset rather than over the panel */
+body.deskMode .stillEmpty { inset: 16px; }
+body.deskMode .dropVeil { inset: 0; }
+body.deskMode .editorPlay { inset: 0; padding: 16px; }
+body.deskMode .slidesShelf { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+body.deskMode .slidesScroll { flex: 1; min-height: 0; width: 180px; flex-direction: column; overflow-x: hidden; overflow-y: auto; padding: 14px 12px; }
+body.deskMode .slideThumb, body.deskMode .slideAdd { width: 132px; }
+body.deskMode .slideLink { align-self: center; margin-top: 0; }
