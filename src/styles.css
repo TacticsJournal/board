@@ -2340,8 +2340,8 @@ textarea {
   line-height: 1.4;
 }
 .selfHostFact code,
-/* The four backgrounds: smaller tiles than the pitches, four across. */
-.paperGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+/* The backgrounds: smaller tiles than the pitches, three across. */
+.paperGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 8px; }
 .paperGrid .pitchShot { aspect-ratio: 4 / 3; }
 .paperGrid .pitchTileName { font-size: 12px; white-space: normal; line-height: 1.25; }
 .setNote[data-paper-note] { margin-bottom: 4px; }

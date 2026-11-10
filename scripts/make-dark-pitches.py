@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Draw the dark backgrounds of our pitch art: Dark, Slate and Floodlit grass.
+"""Draw the other backgrounds of our pitch art: Cream, Steel, Dark, Slate and
+Floodlit grass.
 
 Every pitch we draw is grey ink on white paper, and every dark version is the
 same drawing on other paper, so the lines sit exactly where pitches.ts
 measured them on the light one and the surface, snap lines and scoreboard
 column are shared by all four.
 
+  cream  the drawing exactly as it is on white, printed on cream paper; the
+         mark stays black, as it is on white
+  steel  flat blue-grey, markings in white, the zone grid kept faint
   dark   the paper and ink exchanged: the drawing as a negative
   slate  flat cool charcoal, markings in crisp white, the zone grid kept faint
   grass  mown bands under floodlights, markings in chalk, the grid kept quiet
@@ -50,8 +54,8 @@ GREY_MARKS = {
 # An 800-wide board exports at 2048 pixels; more than that is only weight.
 MAX_W = 2048
 
-PAPER = {'dark': (27, 28, 31), 'slate': (27, 30, 36), 'grass': (23, 54, 38)}
-INK = {'dark': (245, 245, 247), 'slate': (232, 235, 240), 'grass': (236, 242, 236)}
+PAPER = {'cream': (255, 245, 227), 'steel': (74, 82, 90), 'dark': (27, 28, 31), 'slate': (27, 30, 36), 'grass': (23, 54, 38)}
+INK = {'steel': (240, 242, 245), 'dark': (245, 245, 247), 'slate': (232, 235, 240), 'grass': (236, 242, 236)}
 GRASS_BANDS = ((24, 58, 41), (21, 51, 36))
 WHITE = np.array((255, 255, 255), float)
 
@@ -82,9 +86,9 @@ def vignette(h, w, strength):
 def surface(paper, h, w, layout):
     if paper == 'grass':
         return bands(h, w, layout) * vignette(h, w, 0.35)
-    if paper == 'slate':
-        return np.full((h, w, 3), PAPER['slate'], float) * vignette(h, w, 0.12)
-    return np.full((h, w, 3), PAPER['dark'], float)
+    if paper in ('slate', 'steel'):
+        return np.full((h, w, 3), PAPER[paper], float) * vignette(h, w, 0.12)
+    return np.full((h, w, 3), PAPER[paper], float)
 
 
 def rows_of(mask):
@@ -154,6 +158,14 @@ for name, layout in ART.items():
     a = np.where(mark, 0, (255 - L) / 255)
     for paper in PAPER:
         under = surface(paper, h, w, layout)
+        if paper == 'cream':
+            # light paper: the white art itself, every grey and the black mark
+            # as they are, multiplied onto cream the way ink sits on paper
+            out = (L / 255)[..., None] * np.array(PAPER['cream'], float)
+            target = PITCH / dark_name(name, paper)
+            Image.fromarray(np.clip(out, 0, 255).astype('uint8')).save(target, quality=88, optimize=True)
+            print(f'wrote {target.relative_to(ROOT)}')
+            continue
         ink = np.array(INK[paper], float)
         if paper == 'dark':
             out = under + a[..., None] * (ink - under)

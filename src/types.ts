@@ -1,4 +1,4 @@
-import { DEFAULT_PITCH, isDarkPaper, pitchById, pitchPaper, type BoardPaper, type DarkPaper } from './pitches.ts'
+import { DEFAULT_PITCH, isArtPaper, paperIsDark, pitchById, pitchPaper, type ArtPaper, type BoardPaper } from './pitches.ts'
 import { normalizeAppearance, resolveAppearance, type BoardAppearance, type ResolvedAppearance } from './appearance.ts'
 import type { PathNode, NodeCurve } from './path-nodes.ts'
 
@@ -252,7 +252,7 @@ export type Scene = {
    * the app around it is in. It only shows where the pitch has that art (see
    * scenePaper), so a board that moves onto a photograph and back keeps it.
    */
-  paper?: DarkPaper
+  paper?: ArtPaper
   match?: MatchInfo
   /** Optional user-defined meanings for arrow line styles. */
   arrowLegend?: ArrowLegend
@@ -271,7 +271,7 @@ export function scenePaper(scene: Pick<Scene, 'pitch' | 'paper'> | undefined | n
 
 /** True when this board is drawn on any of the dark backgrounds. */
 export function sceneIsDark(scene: Pick<Scene, 'pitch' | 'paper'> | undefined | null): boolean {
-  return scenePaper(scene) !== 'white'
+  return paperIsDark(scenePaper(scene))
 }
 
 /** A board's appearance filled in for the paper it is drawn on. */
@@ -462,14 +462,14 @@ export function repaperInk(objects: SceneObj[], dark: boolean): void {
  */
 export function setScenePaper(scene: Scene, paper: BoardPaper): void {
   const wasDark = sceneIsDark(scene)
-  if (isDarkPaper(paper)) scene.paper = paper
+  if (isArtPaper(paper)) scene.paper = paper
   else delete scene.paper
   if (sceneIsDark(scene) !== wasDark) repaperInk(scene.objects, !wasDark)
 }
 
 /** What a save says it is drawn on. Boards saved while dark was on or off read as Dark. */
-function readPaper(data: { paper?: unknown; dark?: unknown }): DarkPaper | undefined {
-  if (isDarkPaper(data.paper)) return data.paper
+function readPaper(data: { paper?: unknown; dark?: unknown }): ArtPaper | undefined {
+  if (isArtPaper(data.paper)) return data.paper
   return data.dark === true ? 'dark' : undefined
 }
 

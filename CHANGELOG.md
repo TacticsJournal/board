@@ -15,6 +15,12 @@ nothing at all. An entry missing a title or a valid date is skipped, and a
 file that cannot be read leaves the list empty rather than failing a build.
 -->
 
+## Cream and Steel backgrounds
+Date: 2026-11-10
+Tag: New
+
+Two more backgrounds in Settings, Pitch: Cream, a warm paper, and Steel, a blue-grey. Both are in the export too.
+
 ## Four board backgrounds, and export on any of them
 Date: 2026-11-09
 Tag: New

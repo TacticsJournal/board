@@ -1531,7 +1531,7 @@ export class Board {
       // Each code sits at the end its side defends: both at the bottom on a
       // board whose goals are left and right, one at each end on a full pitch.
       const { fontSize, awayAtTop } = teamCodeStyle(scene.pitch, bh)
-      const attrs = { fontSize, fontStyle: 'bold', fontFamily: FONT, fill: dark ? '#62656d' : '#b0b4ba', listening: false }
+      const attrs = { fontSize, fontStyle: 'bold', fontFamily: FONT, fill: scenePaper(scene) === 'steel' ? '#9aa1a8' : dark ? '#62656d' : '#b0b4ba', listening: false }
       const awayLift = style.awayCodeLift ?? 0
       const pad = Math.round(18 * (fontSize / 24))
       const mk = (text: string, right: boolean) => {
