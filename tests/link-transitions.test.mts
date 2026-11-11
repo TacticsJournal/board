@@ -121,6 +121,13 @@ test('the strip groups the steps drawn on one still', () => {
   assert.deepEqual(stillGroups(project), [{ start: 0, end: 1 }, { start: 2, end: 2 }, { start: 3, end: 4 }])
 })
 
+test('boards on a drawn pitch are a slide each', () => {
+  const project = newProject(emptyScene())
+  addBoard(project, 0, true)
+  assert.equal(project.boards[0].scene.pitch, project.boards[1].scene.pitch)
+  assert.deepEqual(stillGroups(project), [{ start: 0, end: 0 }, { start: 1, end: 1 }])
+})
+
 /* ---------- the frames each style draws ---------- */
 
 test('a move is drawn exactly as before', () => {
