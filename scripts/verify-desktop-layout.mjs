@@ -1,7 +1,7 @@
 /**
  * The wide-window layout: a rail of tools, the panel beside it, and one bar
- * over the board. Checks the pieces land where they belong, that folding the
- * panel gives the board the room, and that the selection's buttons move into
+ * over the board. Checks the pieces land where they belong, that opening and
+ * folding the panel never moves the board, and that the selection's buttons move into
  * the bar rather than floating over the pitch.
  */
 import { chromium } from 'playwright-core'
@@ -47,13 +47,19 @@ try {
   // the board sits under the bar with a margin of surround between them
   if (wideStage && !near(wideStage.y, (bar?.y ?? 0) + (bar?.h ?? 0) + 16, 3)) fail('the board is not under the bar')
 
-  // picking a tool opens the panel; the board gives up exactly the panel's width
+  // picking a tool opens the panel over the board's area; the board stays put
+  const pitchAt = () => page.evaluate(() => {
+    const st = window.Konva?.stages?.[0]
+    return st ? { x: Math.round(st.x()), y: Math.round(st.y()), s: st.scaleX() } : null
+  })
+  const widePitch = await pitchAt()
   await page.click('[data-rail="players"]')
   await page.waitForTimeout(500)
   panel = await box('#panelDock')
   const openStage = await box('#stage')
   if (!panel || panel.w < 100) fail(`panel did not open, width ${panel?.w}`)
-  if (!near(wideStage.w - openStage.w, panel.w, 3)) fail(`board lost ${wideStage.w - openStage.w}px for a ${panel.w}px panel`)
+  if (!near(wideStage.x, openStage.x, 1) || !near(wideStage.w, openStage.w, 1)) fail(`opening the panel moved the board area from ${wideStage.x}/${wideStage.w} to ${openStage.x}/${openStage.w}`)
+  if (JSON.stringify(widePitch) !== JSON.stringify(await pitchAt())) fail('opening the panel moved the pitch')
   if (!(await box('#panelFold'))) fail('the panel has no way to fold itself away')
   // folded keeps its shapes and clips them, so nothing in there takes a tab stop
   const foldedInert = await page.evaluate(() => {
@@ -68,6 +74,7 @@ try {
   await page.waitForTimeout(500)
   panel = await box('#panelDock')
   if (panel && panel.w > 0) fail('clicking the lit tool did not fold the panel')
+  if (JSON.stringify(widePitch) !== JSON.stringify(await pitchAt())) fail('folding the panel moved the pitch')
   const folded = await page.evaluate(() => {
     const p = document.querySelector('#panelDock')
     return { mounted: !!document.querySelector('#shelf .cell'), inert: p.inert }

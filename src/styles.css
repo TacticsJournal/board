@@ -227,6 +227,8 @@ button {
 button:disabled { opacity: 0.35; cursor: default; }
 
 /* ---------- site header (exact copy of tacticsjournal.com) ---------- */
+/* Self-host builds and the iOS app run without the site header. */
+header.site-header[hidden] { display: none; }
 header.site-header {
   display: flex;
   align-items: center;
@@ -5410,10 +5412,13 @@ html[data-theme-resolved="dark"] .railBtn.active { background: #2a2a2c; box-shad
 /* the panel */
 body.deskMode .panelDock {
   order: 1;
-  position: static;
-  width: 180px;
+  position: relative;
+  /* the phone layout floats the panel above the band with these; here it is in flow */
+  inset: auto;
+  width: var(--deskPanelW);
   flex: none;
-  z-index: auto;
+  /* over the board's area, which reaches in under the panel (see .boardArea) */
+  z-index: 22;
   background: var(--panel);
   border-right: 1px solid var(--line);
   overflow: hidden;
@@ -5430,8 +5435,20 @@ body.deskMode .panelDock.folded > * { opacity: 0; }
 /* reduced motion drops the movement and keeps the fade, which is the part
    that explains where the panel went */
 @media (prefers-reduced-motion: reduce) {
-  body.deskMode .panelDock { transition: none; }
+  body.deskMode .panelDock,
+  body.deskMode .boardArea { transition: none; }
 }
+/* Opening the panel must never move the board. The panel takes its width from
+   the column beside it, so the board's area reaches back in under the panel by
+   the same amount, on the same curve: the area, and so the pitch fitted into
+   it, stays exactly where it was. The panel covers the strip it opens over;
+   the board keeps the pitch out of that strip whenever there is room. */
+body.deskMode { --deskPanelW: 180px; }
+body.deskMode .boardArea {
+  isolation: isolate;
+  transition: margin-left var(--dur-push, 220ms) var(--ease-drawer, ease);
+}
+body.deskMode.deskPanelOpen .boardArea { margin-left: calc(-1 * var(--deskPanelW)); }
 body.deskMode .colorPicker, body.deskMode .colorDock { display: none !important; }
 body.deskMode .shelf { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 body.deskMode .shelfScroll { flex: 1; min-height: 0; width: 180px; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; border-top: 0; }

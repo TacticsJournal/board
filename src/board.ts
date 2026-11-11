@@ -984,17 +984,32 @@ export class Board {
     if (shrank) this.refit()
   }
 
+  /**
+   * Width of a side panel that opens over the left of the board's area. The
+   * area keeps its size whether the panel is open or not, so the board never
+   * moves when it opens. Fitting sizes and places the pitch beside it, so the
+   * open panel never covers the pitch either.
+   */
+  private sideInset = 0
+  get leftInset() { return this.sideInset }
+  set leftInset(v: number) {
+    const next = Number.isFinite(v) ? Math.max(0, v) : 0
+    if (next === this.sideInset) return
+    this.sideInset = next
+    this.refit()
+  }
+
   fit() {
     const cw = this.container.clientWidth, full = this.container.clientHeight
     if (!cw || !full) return
     this.stage.size({ width: cw, height: full })
     const ch = Math.max(120, full - this.inset)
-    const base = Math.min(cw / BOARD_W, ch / this.contentH())
+    const base = this.fitBase(cw, ch)
     const scale = base * this.zoom
     const old = this.stage.scaleX()
     this.stage.scale({ x: scale, y: scale })
     if (this.zoom === 1 || !old) {
-      this.stage.position({ x: (cw - BOARD_W * scale) / 2, y: (ch - this.contentH() * scale) / 2 })
+      this.stage.position({ x: this.fitX(cw, BOARD_W * scale), y: (ch - this.contentH() * scale) / 2 })
     }
     this.clampPan()
     this.invalidateTilt()
@@ -1003,6 +1018,21 @@ export class Board {
     if (this.tilted) { this.recomputeCamera(); return }
     this.stage.batchDraw()
     this.onViewChange()
+  }
+
+  /**
+   * The fit scale for a board area. A side panel's strip is left out of the
+   * width, so the pitch always fits beside the panel whether it is open or not.
+   */
+  private fitBase(cw: number, ch: number): number {
+    const w = cw - this.sideInset > BOARD_W * 0.25 ? cw - this.sideInset : cw
+    return Math.min(w / BOARD_W, ch / this.contentH())
+  }
+
+  /** Centred, nudged right only as far as a side panel needs, never past the far edge. */
+  private fitX(cw: number, bw: number): number {
+    const x = (cw - bw) / 2
+    return this.sideInset > 0 && bw <= cw - this.sideInset ? Math.max(x, this.sideInset) : x
   }
 
   /** Fit on the next frame; repeated calls in one frame do a single fit. */
@@ -1312,8 +1342,8 @@ export class Board {
     const cw = this.container.clientWidth, full = this.container.clientHeight
     if (!cw || !full || Math.abs(this.zoom - 1) > 0.001) return false
     const ch = Math.max(120, full - this.inset)
-    const scale = Math.min(cw / BOARD_W, ch / this.contentH())
-    return Math.abs(this.stage.x() - (cw - BOARD_W * scale) / 2) < 1
+    const scale = this.fitBase(cw, ch)
+    return Math.abs(this.stage.x() - this.fitX(cw, BOARD_W * scale)) < 1
       && Math.abs(this.stage.y() - (ch - this.contentH() * scale) / 2) < 1
   }
 
@@ -1334,7 +1364,7 @@ export class Board {
 
   private zoomAt(screen: Pt, factor: number, clamp = true) {
     const cw = this.container.clientWidth, ch = this.container.clientHeight
-    const base = Math.min(cw / BOARD_W, ch / this.contentH())
+    const base = this.fitBase(cw, ch)
     const oldScale = this.stage.scaleX()
     this.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, this.zoom * factor))
     const scale = base * this.zoom
@@ -4249,7 +4279,7 @@ export class Board {
         && this.pinch.ids.includes(ids[0])
         && this.pinch.ids.includes(ids[1])
       const armPinch = () => {
-        const scale = this.stage.scaleX() || Math.min(this.container.clientWidth / BOARD_W, this.container.clientHeight / this.contentH()) * this.zoom
+        const scale = this.stage.scaleX() || this.fitBase(this.container.clientWidth, this.container.clientHeight) * this.zoom
         this.pinch = {
           ids,
           startDist: dist,
@@ -4268,7 +4298,7 @@ export class Board {
       if (frameFactor < 0.7 || frameFactor > 1.4 || frameMove > 160) { armPinch(); return }
 
       const cw = this.container.clientWidth, ch = this.container.clientHeight
-      const base = Math.min(cw / BOARD_W, ch / this.contentH())
+      const base = this.fitBase(cw, ch)
       this.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, pinch.startZoom * (dist / Math.max(1, pinch.startDist))))
       const scale = base * this.zoom
       this.stage.scale({ x: scale, y: scale })

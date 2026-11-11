@@ -38,13 +38,21 @@
     "test:top-bar": "node scripts/verify-top-bar.mjs",
     "test:appearance": "node scripts/verify-appearance.mjs",
     "test:styles-tabs": "node scripts/verify-styles-tabs.mjs",
-    "test:magnet-centre": "node scripts/verify-magnet-centre.mjs"
+    "test:magnet-centre": "node scripts/verify-magnet-centre.mjs",
+    "ios:sync": "vite build && cap sync ios",
+    "ios:open": "cap open ios",
+    "ios:run": "vite build && cap run ios"
   },
   "dependencies": {
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/ios": "^8.6.0",
+    "@capacitor/share": "^8.0.3",
     "@polar-sh/checkout": "^0.4.1",
     "konva": "^10.3.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
     "playwright-core": "^1.61.0",
     "typescript": "6.0.3",
     "vite": "8.3.5"
