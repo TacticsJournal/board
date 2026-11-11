@@ -74,7 +74,8 @@ import { BOARD_EXTENSION_PATHS, BOARD_SELF_HOSTED } from './build-mode.ts'
 import { entries as changelogEntries, entryDate, markAllSeen as markChangelogSeen, unreadEntries, type ChangelogEntry } from './changelog.ts'
 import { registerWebMcp } from './webmcp.ts'
 import { addUserSkill, deleteSkill, installExtension, loadProjectSkillsState, mergeSyncedSkills, newUserSkill, removeExtension, saveProjectSkillsState, saveSkill, setExtensionEnabled, skillsForSync, type ProjectSkillsState, type Skill } from './skills-extensions'
-import { BoardsView, type AddBoardUpload, type ProjectActions } from './boards-view'
+import { BoardsView, LINK_STYLE_ICON, LINK_STYLE_LABEL, linkLength, type AddBoardUpload, type InlinePlay, type ProjectActions } from './boards-view'
+import { STILL_COPY, dropDecision, dropLabel, imageFiles, isTypingTarget, pasteDecision, stillRoute } from './still-intake'
 import { openComposer } from './composer'
 import { CATEGORY_SCENES_RECOVERED_SUFFIX, planCategorySnapshotRecovery } from './category-recovery'
 import { exportAnimation } from './animate-export'
@@ -85,7 +86,7 @@ import { startAgentImport, type BoardImportResult } from './agent-import-ui'
 import { createBoardImportUrl, createProjectImportUrl, createStoredProjectImportUrl, isAgentImportTooLarge, MAX_COMMUNITY_POST_CAPTION_CHARS, postBoardToCommunity, type AgentImportDraft, type BoardImportMode } from './agent-import'
 import { boardPostKey, communityHintDue, communityPostFor, postedAgo, rememberCommunityPost, retireCommunityHint } from './community-post-state'
 import {
-  addBoard, appendBoardCopy, appendProjectCopy, boardName, canAnimate, canCreateProject, carryObjects, currentProject, documentScene, freshDeviceDestination, loadLibrary, migrateProject, newProject, newProjectFromBoard, newProjectFromProjectCopy, orderedProjects, reconcileProjectLibrary, rememberBoard, saveLibrary, storedBoardIndex, touch, undoCarry, viewAfterScene,
+  addBoard, appendBoardCopy, appendProjectCopy, boardName, canAnimate, canCreateProject, carryObjects, currentProject, documentScene, freshDeviceDestination, linkStyle, loadLibrary, migrateProject, newProject, newProjectFromBoard, newProjectFromProjectCopy, orderedProjects, reconcileProjectLibrary, rememberBoard, removeBoard, saveLibrary, stillGroups, storedBoardIndex, touch, undoCarry, viewAfterScene,
   type BoardDocument, type CarryAddition, type CarryResult, type CarrySelection, type Library, type Project,
 } from './projects'
 
@@ -909,12 +910,13 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <button class="iconBtn" data-top="export" aria-label="Share" title="Share and export" aria-haspopup="dialog" aria-expanded="false" aria-controls="shareMenu">${ICONS.export}</button>
     <button class="iconBtn" data-top="previous-board" id="previousBoardBtn" aria-label="Show previous board" title="Show previous board" aria-pressed="false" disabled>${ICONS.previousBoard}</button>
     <button class="iconBtn" data-top="undo" aria-label="Undo" title="Undo (${HINT_UNDO})">${ICONS.undo}</button>
+    <button class="iconBtn" data-top="play" id="playBtn" aria-label="Play" title="Play">${icon('player-play')}</button>
     <button class="iconBtn" data-top="redo" aria-label="Redo" title="Redo (${HINT_REDO})">${ICONS.redo}</button>
     <button class="iconBtn" data-top="boards" aria-label="Boards" title="Boards in this project">${icon('stack')}</button>
     <button class="iconBtn" data-top="more" id="barMoreBtn" aria-label="More" title="More" aria-haspopup="menu" aria-expanded="false" aria-controls="barMenu">${icon('dots')}</button>
     <button class="iconBtn" data-top="note" aria-label="Note" title="This board's note">${icon('note')}</button>
     <button class="iconBtn hidden" data-top="match" aria-label="Board settings" title="Board settings">${ICONS.cog}</button>
-    <button class="iconBtn hidden" data-top="live-shot" aria-label="Import live screenshot" title="Change live screenshot">${ICONS.camera}</button>
+    <button class="iconBtn hidden" data-top="live-shot" aria-label="Add still" title="Add still">${ICONS.camera}</button>
     <div class="barMenu t-dropdown" id="barMenu" data-origin="top-center" role="menu" aria-label="More" hidden>
       <div class="barMenuOverflow" data-bar-overflow></div>
       <button data-bar-menu="extensions" role="menuitem">${icon('puzzle')}<span>Extensions</span></button>
@@ -931,6 +933,13 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="ctxDock" id="ctxDock"></div>
       <div class="boardArea">
         <div id="stage"></div>
+        <div class="stillEmpty" id="stillEmpty" hidden>
+          <strong>Add a match still</strong>
+          <p>Paste a screenshot or drop an image here.</p>
+          <span class="emptyBtns"><button class="fileBtn touchOnly" type="button" data-still="paste">Paste</button><button class="fileBtn" type="button" data-still="pick">Choose image</button></span>
+        </div>
+        <div class="editorPlay" id="editorPlay" hidden></div>
+        <div class="dropVeil" id="dropVeil" hidden><div class="toast"><span data-veil-title></span><small data-veil-hint hidden></small></div></div>
         <button class="boardReset" id="boardReset" type="button" aria-label="Reset 3D camera" title="Reset 3D camera">Reset</button>
         <p class="boardHint" id="boardHint" role="status" aria-live="polite"></p>
         <div class="liveEditChip" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -975,6 +984,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <button class="panelFold hidden" id="panelFold" data-act="fold-panel" aria-label="Hide panel">${icon('chevron-left')}<span>Hide panel</span></button>
       <div class="stylesShelf hidden" id="stylesShelf"></div>
       <div class="quickSet hidden" id="quickSet"></div>
+      <div class="slidesShelf hidden" id="slidesShelf" aria-label="Slides"></div>
       <div class="options" id="options"></div>
     </div>
     <nav class="toolbar" id="toolbar"></nav>
@@ -1093,6 +1103,7 @@ const toolbarEl = document.querySelector<HTMLDivElement>('#toolbar')!
 const shelfEl = document.querySelector<HTMLDivElement>('#shelf')!
 const stylesShelfEl = document.querySelector<HTMLDivElement>('#stylesShelf')!
 const quickSetEl = document.querySelector<HTMLDivElement>('#quickSet')!
+const slidesShelfEl = document.querySelector<HTMLDivElement>('#slidesShelf')!
 const panelDockEl = document.querySelector<HTMLDivElement>('#panelDock')!
 const ctxDockEl = document.querySelector<HTMLDivElement>('#ctxDock')!
 const fabColEl = document.querySelector<HTMLElement>('#fabCol')!
@@ -1238,7 +1249,7 @@ function applyDefaultOption(key: string, v?: string) {
  * Styles holds whatever the selection can be changed by; Text is its own room
  * because its one useful action is making a new one.
  */
-type Room = 'settings' | 'shapes' | 'text' | 'styles'
+type Room = 'settings' | 'shapes' | 'text' | 'styles' | 'slides'
 let room: Room = 'shapes'
 let panelOpen = true
 let shelfCat = 'players'
@@ -1264,6 +1275,7 @@ const ROOMS: { room: Room; label: string; tool?: Tool }[] = [
   { room: 'shapes', label: 'Shapes' },
   { room: 'text', label: 'Text', tool: 'text' },
   { room: 'styles', label: 'Styles' },
+  { room: 'slides', label: 'Slides' },
 ]
 
 /** The tool each shelf category arms. */
@@ -2102,6 +2114,7 @@ const RAIL_ICONS: Record<string, string> = {
   zones: icon('marquee-2'),
   equipment: icon('cone'),
   text: icon('typography'),
+  slides: icon('slideshow'),
 }
 
 /** Was the panel left open last time? Folded is the desktop default. */
@@ -2150,9 +2163,11 @@ function renderRail() {
       ` aria-pressed="${on}">${art}</button>`
   }).join('')
   const textOn = room === 'text'
+  const slidesOn = room === 'slides'
   toolbarEl.innerHTML =
     items +
     `<button class="railBtn${textOn ? ' active' : ''}" data-rail="text" data-tool="text" title="Text" aria-label="Text" aria-pressed="${textOn}">${RAIL_ICONS.text}</button>` +
+    `<button class="railBtn${slidesOn ? ' active' : ''}${slidesOn && !panelOpen ? ' collapsed' : ''}" data-rail="slides" title="Slides" aria-label="Slides" aria-pressed="${slidesOn}">${RAIL_ICONS.slides}</button>` +
     `<button class="railBtn railFoot" data-bar="settings" title="Settings" aria-label="Settings">${ICONS.wrench}</button>`
 }
 
@@ -2176,10 +2191,11 @@ function renderPanel() {
   renderShelf()
   renderStylesShelf()
   renderQuickSet()
+  renderSlidesShelf()
   syncPicker()
   renderOptions()
-  panelFoldEl.classList.toggle('hidden', !deskMode || !shelfHasContent())
-  const folded = deskMode && !shelfShowing()
+  panelFoldEl.classList.toggle('hidden', !deskMode || !(shelfHasContent() || slidesShowing()))
+  const folded = deskMode && !shelfShowing() && !slidesShowing()
   panelDockEl.classList.toggle('folded', folded)
   panelDockEl.inert = folded
   syncPanelHeight()
@@ -2306,6 +2322,15 @@ toolbarEl.addEventListener('click', (e) => {
       board.setTool('text')
       store.select(null)
       renderPanel()
+      return
+    }
+    // Slides is a panel of its own on the rail: the same press folds it away
+    // and brings it back, as a tool's does.
+    if (rail === 'slides') {
+      if (room === 'slides') { setDeskPanel(!panelOpen); return }
+      room = 'slides'
+      if (board.tool === 'text') board.setTool('player')
+      setDeskPanel(true)
       return
     }
     const tool = CAT_TOOL[rail]
@@ -4147,6 +4172,9 @@ function renderOptions() {
   // In Styles and Settings the panel below is the whole room, so the strip
   // stands down rather than showing the tool's own controls under a list.
   if (stylesShowing() || quickSetShowing()) { optionsEl.classList.add('hidden'); optionsEl.innerHTML = ''; closeCarryMenu(false); return }
+  // Slides is the whole room on a phone too; on a wide window the strip is the
+  // bar over the board and stays, as it does beside every other panel.
+  if (!deskMode && slidesShowing()) { optionsEl.classList.add('hidden'); optionsEl.innerHTML = ''; closeCarryMenu(false); return }
   const hide = !deskMode && (shelfShowing() || collapsed)
   const keepStrip = !!sel || !!carryHtml
   optionsEl.classList.toggle('hidden', hide && !keepStrip)
@@ -4974,6 +5002,7 @@ const TOP_BAR_BUTTONS: readonly { id: string; label: string; group: number }[] =
   { id: 'export', label: 'Share and export', group: 0 },
   { id: 'previous-board', label: 'Previous board', group: 0 },
   { id: 'undo', label: 'Undo', group: 1 },
+  { id: 'play', label: 'Play', group: 1 },
   { id: 'redo', label: 'Redo', group: 1 },
   { id: 'boards', label: 'Boards in this project', group: 2 },
   { id: 'more', label: 'More', group: 2 },
@@ -5146,7 +5175,10 @@ document.querySelector('.actionRow')!.addEventListener('click', (e) => {
   const k = btn.dataset.top
   if (k !== 'more' && !btn.closest('#barMenu')) closeBarMenu()
   if (k === 'more') { setBarMenu(!barMenuOpen); return }
-  if (k === 'undo') store.undo()
+  // the editor is under the playing frames: anything done to it stops the play first
+  if (k !== 'play') stopEditorPlay()
+  if (k === 'play') { if (editorPlay) stopEditorPlay(); else startEditorPlay() }
+  else if (k === 'undo') store.undo()
   else if (k === 'redo') store.redo()
   else if (k === 'snap') {
     board.setSnapEnabled(!board.snapEnabled)
@@ -5176,6 +5208,12 @@ if (!library.projects.length) {
 let freshStarter = loadedProjectLibrary ? null : { id: library.currentId, updated: currentProject(library).updated }
 /** Board the editor is holding. */
 let editingBoard = Math.max(0, storedBoardIndex(library, currentProject(library)))
+/** The project playing over the editor, while it does (see Play). */
+let editorPlay: InlinePlay | null = null
+/** The board the Slides strip lights while the project plays over the editor. */
+let playingBoard = -1
+/** The transition whose sheet the strip opened, lit until the sheet closes. */
+let openSlideLink = -1
 /** A viewing aid only. It is deliberately not persisted with a Project. */
 let previousBoardEnabled = false
 /** True while a scene is being swapped in, so the write-back stays quiet. */
@@ -5194,6 +5232,7 @@ function saveProjectChanges(project: Project = currentProject(library)) {
   saveLibrary(library)
   boardsView.refresh()
   syncPreviousBoard()
+  syncSlides()
   // The editor autosaves the open Project through its document adapter. A
   // rename in the Projects screen can affect another Project, so write that
   // one directly instead of accidentally saving the open one.
@@ -5259,6 +5298,7 @@ const boardsView = new BoardsView(document.querySelector<HTMLElement>('#libRoot'
   projectActionsFor,
   openProjectHistory: (projectId) => openProjectScreen(projectId, 'history'),
   openProjectProposals: (projectId) => openProjectScreen(projectId, 'proposals'),
+  transitionClosed: () => { openSlideLink = -1; renderSlidesShelf() },
 })
 boardsView.setLibrary(library)
 
@@ -5565,6 +5605,7 @@ function loadBoardIntoEditor(scene: Scene) {
   renderBoardNote()
   syncPreviousBoard()
   collaborationBoardChanged()
+  syncSlides()
 }
 
 function installProject(project: Project, preferredBoardId?: string) {
@@ -5661,6 +5702,7 @@ store.subscribe(() => {
   writeBackTimer = window.setTimeout(() => {
     saveLibrary(library)
     boardsView.refresh()
+    syncSlides()
   }, 200)
   /* The saved board is what sync and sharing act on, so it keeps up with the
      canvas by itself: no Save button, and nothing that tells you to save
@@ -6517,6 +6559,7 @@ function syncLiveButton() {
 }
 store.subscribe(syncLiveButton)
 syncLiveButton()
+store.subscribe(() => syncStillEmpty())
 
 /** Put a saved background behind the board, at the size its image makes. */
 function useBackground(meta: BackgroundMeta) {
@@ -6540,8 +6583,8 @@ async function applyLiveShot(img: HTMLImageElement, name: string): Promise<boole
     // The camera button is a broadcast still by definition; it only exists on
     // a broadcast board in the first place.
     useBackground(await addBackgroundFromImage(img, name, 'broadcast'))
-    setNote('Screenshot saved to your backgrounds.')
-    showToast('Screenshot saved to your backgrounds.')
+    setNote(STILL_COPY.added)
+    showToast(STILL_COPY.added)
     return true
   } catch {
     setNote('That screenshot could not be saved on this device.')
@@ -6726,6 +6769,7 @@ async function importLiveShots(files: readonly File[], run?: BroadcastImportRun)
     save: (img, name) => addBackgroundFromImage(img, name, 'broadcast'),
     name: file => nameFromFile(file.name),
   })
+  const importedIds: string[] = []
   if (result.saved.length) {
     const project = library.projects.find(item => item.id === ref.projectId)
     const sourceIndex = project?.boards.findIndex(board => board.id === ref.boardId) ?? -1
@@ -6739,7 +6783,6 @@ async function importLiveShots(files: readonly File[], run?: BroadcastImportRun)
       : sourceBoard.scene.objects.filter(object => scope.includes(object.id)).length
     const first = sourceIndex + 1
     let at = sourceIndex
-    const importedIds: string[] = []
     for (const shot of result.saved) {
       addBoard(project, at, false, broadcastShotScene(shot.meta, sourceBoard.scene.match)).title = shot.name
       const imported = project.boards[at + 1]
@@ -6759,6 +6802,12 @@ async function importLiveShots(files: readonly File[], run?: BroadcastImportRun)
       saveProjectChanges(project)
     }
   }
+  // One still from the Add this still sheet is one new board, and taking it
+  // back takes the board back, the copies on it included.
+  if (files.length === 1 && importedIds.length === 1 && !result.failed.length) {
+    showToast(STILL_COPY.addedAsBoard, undoAddedBoardAction(ref.projectId, importedIds[0], ref.boardId))
+    return true
+  }
   const carryNote = carried.objects
     ? ` Carried ${carriedCount} object${carriedCount === 1 ? '' : 's'} to ${carried.boards} board${carried.boards === 1 ? '' : 's'}. They stay on the source board too.`
     : ''
@@ -6777,12 +6826,470 @@ document.querySelector('[data-live-file]')!.addEventListener('change', (e) => {
   const files = Array.from(input.files ?? [])
   input.value = ''
   if (!files.length) return
-  // one image still changes the board in front of you; several become boards
+  takeStills(files)
+})
+
+/** Whether the live board in front of you already has a still behind it. */
+function boardHasStill(): boolean {
+  return !!pitchById(store.scene.pitch).live && !board.liveEmpty
+}
+
+/**
+ * Every still that arrives, picked, pasted or dropped, comes through here, and
+ * `stillRoute` says what it becomes. `replace` is ⌥ held on a drop: the answer
+ * to the question the sheet would have asked.
+ */
+function takeStills(files: File[], replace = false) {
+  const images = imageFiles(files)
+  if (!images.length) { showToast(STILL_COPY.imagesOnly); return }
+  files = images
+  // one image changes the board in front of you; several become boards
   if (files.length > 1) { void importLiveShots(files); return }
   const file = files[0]
+  const route = stillRoute(1, boardHasStill(), replace)
+  if (route === 'choose') { openStillChoice(file); return }
   decodeImageFile(file, liveShotDecoder)
-    .then(img => applyLiveShot(img, nameFromFile(file.name)))
+    .then(img => route === 'replace'
+      ? replaceLiveShot(img, nameFromFile(file.name))
+      : applyLiveShot(img, nameFromFile(file.name)))
     .catch(() => { showToast('That image could not be read.') })
+}
+
+/**
+ * Put a new still behind the board you are on. The drawings stay where they
+ * are, and Undo puts the old still back for as long as nothing else has been
+ * done since.
+ */
+async function replaceLiveShot(img: HTMLImageElement, name: string): Promise<boolean> {
+  try {
+    const meta = await addBackgroundFromImage(img, name, 'broadcast')
+    const boardId = currentBoard()?.id
+    const before = store.undoDepth
+    useBackground(meta)
+    const depth = store.undoDepth
+    // nothing changed is nothing to undo, and an Undo then would take back something else
+    if (depth === before) { showToast(STILL_COPY.replaced); return true }
+    showToast(STILL_COPY.replaced, {
+      label: 'Undo',
+      run: () => {
+        if (currentBoard()?.id !== boardId || store.undoDepth !== depth) return
+        store.undo()
+        board.refreshBackground()
+        renderPitchSeg()
+      },
+    })
+    return true
+  } catch {
+    showToast('That still could not be saved on this device.')
+    return false
+  }
+}
+
+/** The Undo for a still added as a new board: the board goes, and you go back. */
+function undoAddedBoardAction(projectId: string, boardId: string, backToId: string): ToastAction {
+  return {
+    label: 'Undo',
+    run: () => {
+      const project = library.projects.find(item => item.id === projectId)
+      if (!project) return
+      const holding = library.currentId === projectId
+      if (holding) stashEditedBoard(false)
+      if (!removeBoard(project, boardId)) return
+      touch(project)
+      if (holding) {
+        const back = project.boards.findIndex(item => item.id === backToId)
+        editingBoard = back >= 0 ? back : Math.min(editingBoard, project.boards.length - 1)
+        rememberBoard(library, project.id, project.boards[editingBoard].id)
+        saveProjectChanges(project)
+        loadBoardIntoEditor(project.boards[editingBoard].scene)
+      } else {
+        saveProjectChanges(project)
+      }
+    },
+  }
+}
+
+/* ---------- one still onto a board that has one ----------
+   A second picture on a live board is nearly always the next moment of the
+   match, but sometimes a better frame of the same one. The sheet asks which,
+   once, with the picture in front of you; ⌥ on a drop answers it ahead. */
+
+type StillChoiceState = {
+  modal: HTMLElement
+  file: File
+  preview: string
+  include: boolean
+  hasObjects: boolean
+  scope: CarrySelection
+  projectId: string
+  boardId: string
+  restoreFocus: HTMLElement | null
+}
+let stillChoice: StillChoiceState | null = null
+
+function closeStillChoice(restoreFocus = true) {
+  const state = stillChoice
+  if (!state) return
+  stillChoice = null
+  state.modal.classList.add('hidden')
+  window.setTimeout(() => {
+    URL.revokeObjectURL(state.preview)
+    state.modal.remove()
+  }, reducedMotion() ? 0 : 400)
+  if (restoreFocus && state.restoreFocus?.isConnected) state.restoreFocus.focus()
+}
+
+function openStillChoice(file: File) {
+  closeStillChoice(false)
+  const selected = selectedObjects().map(object => object.id)
+  const hasObjects = store.scene.objects.length > 0
+  const state: StillChoiceState = {
+    modal: document.createElement('div'),
+    file,
+    preview: URL.createObjectURL(file),
+    include: hasObjects,
+    hasObjects,
+    // what would be copied is settled here, as the import sheet settles it
+    scope: selected.length ? selected : 'all',
+    projectId: currentProject(library).id,
+    boardId: currentBoard()?.id ?? '',
+    restoreFocus: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  }
+  const chev = icon('chevron-right', 'ic setChev')
+  state.modal.className = 'modal stillChoiceModal'
+  state.modal.innerHTML = `
+    <div class="sheet stillChoice" role="dialog" aria-modal="true" aria-label="Add this still">
+      <div class="sheetHead">
+        <strong>Add this still</strong>
+        <span class="sheetBtns"><button data-choose="cancel">Cancel</button></span>
+      </div>
+      <div class="carryImportPreviews"><span><img src="${state.preview}" alt="${esc(file.name)}"></span></div>
+      <div class="setGroup">
+        <button class="setItem" data-choose="new"><span class="setItemLabel">New board<span class="setItemNote">Added after this one.</span></span>${chev}</button>
+        <button class="setItem" data-choose="replace"><span class="setItemLabel">Replace this still<span class="setItemNote">Your drawings stay where they are.</span></span>${chev}</button>
+      </div>
+      <div class="setGroup"><button class="setItem carryImportSwitch" role="switch" aria-checked="${hasObjects}" data-choose-copy${hasObjects ? '' : ' disabled'}>
+        <span class="setItemLabel">Copy objects to the new board<span class="setItemNote">${hasObjects ? 'They stay on this board too.' : 'This board has no objects to copy.'}</span></span>
+        <span class="mTrack t-toggle" data-on="${hasObjects}"><span class="mThumb t-toggle-thumb"></span></span>
+      </button></div>
+    </div>`
+  stillChoice = state
+  document.body.appendChild(state.modal)
+  state.modal.addEventListener('click', e => {
+    const target = e.target as HTMLElement
+    if (target === state.modal || target.closest('[data-choose="cancel"]')) { closeStillChoice(); return }
+    const copy = target.closest<HTMLElement>('[data-choose-copy]')
+    if (copy && !copy.hasAttribute('disabled')) {
+      copy.querySelector<HTMLElement>('.mTrack')?.classList.add('is-init')
+      state.include = !state.include
+      copy.setAttribute('aria-checked', String(state.include))
+      copy.querySelector<HTMLElement>('.mTrack')?.setAttribute('data-on', String(state.include))
+      return
+    }
+    const pick = target.closest<HTMLElement>('[data-choose]')?.dataset.choose
+    if (pick === 'new') {
+      closeStillChoice(false)
+      void importLiveShots([state.file], {
+        include: state.include && state.hasObjects,
+        scope: state.scope,
+        projectId: state.projectId,
+        boardId: state.boardId,
+      })
+    } else if (pick === 'replace') {
+      closeStillChoice(false)
+      // the board may have changed under the sheet; the replace is for the one it was asked about
+      if (currentBoard()?.id !== state.boardId) return
+      decodeImageFile(state.file, liveShotDecoder)
+        .then(img => replaceLiveShot(img, nameFromFile(state.file.name)))
+        .catch(() => { showToast('That image could not be read.') })
+    }
+  })
+  state.modal.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeStillChoice(); return }
+    if (e.key !== 'Tab') return
+    const stops = Array.from(state.modal.querySelectorAll<HTMLElement>('button:not([disabled])'))
+    if (!stops.length) return
+    const edge = e.shiftKey ? stops[0] : stops[stops.length - 1]
+    if (document.activeElement !== edge) return
+    e.preventDefault()
+    ;(e.shiftKey ? stops[stops.length - 1] : stops[0]).focus()
+  })
+  state.modal.querySelector<HTMLElement>('[data-choose="new"]')?.focus()
+}
+
+/* ---------- paste and drop ----------
+   A still is usually already on the clipboard: a screenshot of the match.
+   Paste takes it wherever the board is in front of you, and a drop takes a
+   file off the desktop. Both are the live board's alone, and both go through
+   the same route as the picker. */
+
+/** True while a sheet is up: it owns the keyboard and the pointer, not the board. */
+function sheetOpen(): boolean {
+  return !!document.querySelector('.modal:not(.hidden)') || boardsView.isOpen || boardsView.transitionOpen
+}
+
+/** A pasted file is called whatever the clipboard calls it; give it a name worth keeping. */
+function pastedFile(blob: Blob, i: number): File {
+  const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg')
+  return new File([blob], `Pasted still${i ? ` ${i + 1}` : ''}.${ext}`, { type: blob.type })
+}
+
+document.addEventListener('paste', (e) => {
+  const decision = pasteDecision({
+    live: !!pitchById(store.scene.pitch).live,
+    typing: isTypingTarget(document.activeElement as HTMLElement | null) || !!textEditor,
+    blocked: sheetOpen() || !!editorPlay,
+    files: Array.from(e.clipboardData?.files ?? []),
+    hasStill: boardHasStill(),
+  })
+  if (decision.kind === 'ignore') return
+  e.preventDefault()
+  if (decision.kind === 'empty') { showToast(STILL_COPY.nothingToPaste); return }
+  takeStills(Array.from(e.clipboardData?.files ?? []).filter(f => f.type.startsWith('image/')).map(pastedFile))
+})
+
+/** The touch Paste button: there is no keyboard shortcut to reach for there. */
+async function pasteFromClipboard() {
+  try {
+    const items = await navigator.clipboard.read()
+    const blobs: Blob[] = []
+    for (const item of items) {
+      const type = item.types.find(t => t.startsWith('image/'))
+      if (type) blobs.push(await item.getType(type))
+    }
+    if (!blobs.length) { showToast(STILL_COPY.nothingToPaste); return }
+    takeStills(blobs.map(pastedFile))
+  } catch {
+    showToast(STILL_COPY.nothingToPaste)
+  }
+}
+
+const dropVeilEl = document.querySelector<HTMLElement>('#dropVeil')!
+const REPLACE_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '\u2325' : 'Alt'
+let dragDepth = 0
+
+/** Only a drag carrying files, over a live board with nothing in front of it, is ours. */
+function dragIsOurs(e: DragEvent): boolean {
+  return !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')
+    && !!pitchById(store.scene.pitch).live && !sheetOpen() && !editorPlay
+}
+
+function hideDropVeil() {
+  dragDepth = 0
+  dropVeilEl.hidden = true
+}
+
+document.addEventListener('dragenter', (e) => {
+  if (!dragIsOurs(e)) return
+  e.preventDefault()
+  dragDepth++
+  const count = Array.from(e.dataTransfer!.items).filter(item => item.kind === 'file').length || 1
+  const label = dropLabel(count, boardHasStill(), REPLACE_KEY)
+  dropVeilEl.querySelector('[data-veil-title]')!.textContent = label.title
+  const hint = dropVeilEl.querySelector<HTMLElement>('[data-veil-hint]')!
+  hint.textContent = label.hint ?? ''
+  hint.hidden = !label.hint
+  dropVeilEl.hidden = false
+})
+document.addEventListener('dragover', (e) => {
+  if (!dragIsOurs(e)) return
+  e.preventDefault()
+  e.dataTransfer!.dropEffect = 'copy'
+})
+document.addEventListener('dragleave', (e) => {
+  if (dropVeilEl.hidden) return
+  if (--dragDepth <= 0 || !e.relatedTarget) hideDropVeil()
+})
+document.addEventListener('drop', (e) => {
+  const ours = !dropVeilEl.hidden || dragIsOurs(e)
+  hideDropVeil()
+  if (!ours) return
+  e.preventDefault()
+  const files = Array.from(e.dataTransfer?.files ?? [])
+  const decision = dropDecision({ files, hasStill: boardHasStill(), replaceKey: e.altKey })
+  if (decision.kind === 'reject') { showToast(STILL_COPY.imagesOnly); return }
+  takeStills(files, e.altKey)
+})
+
+/* ---------- the empty live board ----------
+   A live board with nothing behind it used to write its instructions onto
+   the frame. They are controls now: the same words, with the picker one tap
+   away, and on a touch screen a Paste button for the keyboard it does not
+   have. The board says when it is empty; this only shows and hides. */
+
+const stillEmptyEl = document.querySelector<HTMLElement>('#stillEmpty')!
+function syncStillEmpty() {
+  // read off the page, not a binding: the board can ask before this line has run
+  const el = document.querySelector<HTMLElement>('#stillEmpty')
+  if (el) el.hidden = !board.liveEmpty || !pitchById(store.scene.pitch).live || !!editorPlay
+}
+board.onLiveEmpty = syncStillEmpty
+syncStillEmpty()
+stillEmptyEl.addEventListener('click', (e) => {
+  const act = (e.target as HTMLElement).closest<HTMLElement>('[data-still]')?.dataset.still
+  if (act === 'pick') void openLiveShotPicker()
+  else if (act === 'paste') void pasteFromClipboard()
+})
+
+
+/* ---------- Play: the project, on the board you are editing ----------
+   The Boards list's View animation is a screen of its own. Play is the same
+   clock and the same frames drawn over the editor itself, so a transition
+   can be watched where it was made and the board is back under your hand the
+   moment it stops. The editor is never written to while it plays: the frames
+   are pictures over it, and stopping opens whichever board was on screen. */
+
+const editorPlayEl = document.querySelector<HTMLElement>('#editorPlay')!
+function syncPlayButton() {
+  const playBtnEl = document.querySelector<HTMLButtonElement>('#playBtn')
+  if (!playBtnEl) return
+  const playing = !!editorPlay
+  const many = canAnimate(currentProject(library))
+  playBtnEl.innerHTML = icon(playing ? 'player-pause' : 'player-play')
+  const label = playing ? 'Pause' : 'Play'
+  playBtnEl.setAttribute('aria-label', label)
+  playBtnEl.title = playing || many ? label : 'A project needs two boards to play'
+  playBtnEl.disabled = !playing && !many
+  playBtnEl.setAttribute('aria-pressed', String(playing))
+}
+
+/** Put board `index` of the current project in the editor. */
+function openEditorBoard(index: number) {
+  const project = currentProject(library)
+  const target = project.boards[index]
+  if (!target || index === editingBoard) return
+  stashEditedBoard()
+  editingBoard = index
+  rememberBoard(library, project.id, target.id)
+  saveLibrary(library)
+  loadBoardIntoEditor(target.scene)
+  boardsView.refresh()
+}
+
+
+function startEditorPlay() {
+  if (editorPlay) return
+  stashEditedBoard(false)
+  store.select(null)
+  editorPlayEl.hidden = false
+  editorPlay = boardsView.playInline(editorPlayEl, editingBoard, {
+    frame: (current) => { playingBoard = current; renderSlidesShelf() },
+    end: (current) => finishEditorPlay(current),
+  })
+  if (!editorPlay) { editorPlayEl.hidden = true; return }
+  syncPlayButton()
+  syncStillEmpty()
+}
+
+function stopEditorPlay() {
+  const play = editorPlay
+  if (!play) return
+  finishEditorPlay(play.stop())
+}
+
+function finishEditorPlay(current: number) {
+  editorPlay = null
+  playingBoard = -1
+  editorPlayEl.hidden = true
+  editorPlayEl.replaceChildren()
+  // the board that was on screen when it stopped is the one left in front of you
+  openEditorBoard(current)
+  syncPlayButton()
+  syncStillEmpty()
+  renderSlidesShelf()
+}
+
+// a tap on the playing board stops it there, as Escape does
+editorPlayEl.addEventListener('click', stopEditorPlay)
+document.addEventListener('keydown', (e) => {
+  if (editorPlay && e.key === 'Escape') { e.preventDefault(); stopEditorPlay() }
+}, true)
+
+/* ---------- the Slides room ----------
+   The project as a strip of stills: the boards on one photograph are one
+   picture with a step for each, a transition sits in the gap wherever the
+   photograph changes, and the last tile adds the next still. The strip is
+   drawn from the boards themselves, so it is never out of step with them. */
+
+/** Everything that follows the project's boards: the strip and the Play button. */
+function syncSlides() {
+  renderSlidesShelf()
+  syncPlayButton()
+}
+
+function slidesShowing() { return panelOpen && room === 'slides' && board.interactionState !== 'node-edit' }
+
+
+function renderSlidesShelf() {
+  if (!slidesShowing()) {
+    slidesShelfEl.classList.add('hidden')
+    slidesShelfEl.innerHTML = ''
+    return
+  }
+  slidesShelfEl.classList.remove('hidden')
+  const project = currentProject(library)
+  const groups = stillGroups(project)
+  const at = playingBoard >= 0 ? playingBoard : editingBoard
+  const old = slidesShelfEl.querySelector<HTMLElement>('[data-slides-scroll]')
+  const scrollX = old?.scrollLeft ?? 0
+  const scrollY = old?.scrollTop ?? 0
+  const tiles = groups.map((group, g) => {
+    const current = at >= group.start && at <= group.end
+    // the picture is the step you are on, or the first step of a still you are not on
+    const shown = project.boards[current ? at : group.start]
+    const label = `Slide ${g + 1} of ${groups.length}`
+    const steps = Array.from({ length: group.end - group.start + 1 }, (_, k) => {
+      const i = group.start + k
+      return `<button type="button" class="${i === at ? 'on' : ''}" data-slide-board="${i}" aria-label="${esc(`${label}, step ${k + 1}`)}"${i === at ? ' aria-current="true"' : ''}></button>`
+    }).join('')
+    const thumb = `<span class="slideShot${current ? ' current' : ''}">`
+      + `<button type="button" class="slideThumb${current ? ' current' : ''}" data-slide-board="${current ? at : group.start}" title="${label}" aria-label="${label}"${current ? ' aria-current="true"' : ''}>${boardsView.thumb(shown, project.id)}</button>`
+      + `<span class="slideSteps">${steps}</span></span>`
+    const next = groups[g + 1]
+    if (!next) return thumb
+    const from = project.boards[group.end]
+    const style = linkStyle(from.link, from.scene, project.boards[next.start].scene)
+    const length = linkLength(from.link.dur)
+    return thumb + `<button type="button" class="slideLink${openSlideLink === group.end ? ' on' : ''}" data-slide-link="${group.end}" title="Transition: ${LINK_STYLE_LABEL[style]}, ${length}" aria-label="Transition: ${LINK_STYLE_LABEL[style]}, ${length}">${LINK_STYLE_ICON[style]}${length}</button>`
+  }).join('')
+  const live = !!pitchById(store.scene.pitch).live
+  const add = live ? 'Add still' : 'Add board'
+  slidesShelfEl.innerHTML = `<div class="slidesScroll" data-slides-scroll>${tiles}`
+    + `<button type="button" class="slideAdd" data-slide-add aria-label="${add}" title="${add}">${icon('plus')}</button></div>`
+  const scroll = slidesShelfEl.querySelector<HTMLElement>('[data-slides-scroll]')!
+  scroll.scrollLeft = scrollX
+  scroll.scrollTop = scrollY
+  // the still you are on is always in view, however long the project is
+  slidesShelfEl.querySelector<HTMLElement>('.slideShot.current')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+}
+
+// a still read after the strip was drawn fills its tile in where it stands
+boardsView.onBackground(() => renderSlidesShelf())
+
+slidesShelfEl.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement
+  const link = target.closest<HTMLElement>('[data-slide-link]')
+  if (link) {
+    stopEditorPlay()
+    stashEditedBoard(false)
+    openSlideLink = Number(link.dataset.slideLink)
+    renderSlidesShelf()
+    boardsView.openTransition(openSlideLink, link)
+    return
+  }
+  const pick = target.closest<HTMLElement>('[data-slide-board]')
+  if (pick) {
+    stopEditorPlay()
+    openEditorBoard(Number(pick.dataset.slideBoard))
+    renderSlidesShelf()
+    return
+  }
+  if (target.closest('[data-slide-add]')) {
+    stopEditorPlay()
+    // a live board adds the next still; any other board adds the next board
+    if (pitchById(store.scene.pitch).live) void openLiveShotPicker()
+    else { stashEditedBoard(false); boardsView.openAddBoard(editingBoard, target.closest<HTMLElement>('[data-slide-add]')) }
+  }
 })
 
 /* ---------- match settings (cog): scoreboard + team codes overlay ---------- */
@@ -7150,7 +7657,7 @@ settingsEl.innerHTML = `
         <p><b>Players.</b> Open Players in the bottom menu, then tap + Player for a single dot or + XI for a full lineup. Set your clubs under Teams in Settings to load real squads and kit colors.</p>
         <p><b>Edit a dot.</b> Tap a player to pick a name from the roster, set the shirt number, and change its color. Drag any piece to move it; select it for resize handles.</p>
         <p><b>Icons, arrows, zones, text.</b> Pick the tool in the bottom menu, then tap or drag on the board. Use Icons → Measure for a straight measuring line anywhere; it has no middle bend handle.</p>
-        <p><b>View.</b> Pinch or scroll to zoom, drag the empty pitch to pan. The icon row above has export, fit view, undo, redo and new board. Use the camera button to bring a broadcast screenshot onto the live board.</p>
+        <p><b>View.</b> Pinch or scroll to zoom, drag the empty pitch to pan. The icon row above has export, fit view, undo, redo and new board. On a live board, paste a screenshot, drop an image, or use the camera button to add a still. Slides shows the project as a strip, and Play runs it on the board.</p>
         <p><b>Boards.</b> Keep unlimited projects and saved boards on this device. Open Boards in Settings to name, load, delete, or move them to another device.</p>
       </div>
     </div>

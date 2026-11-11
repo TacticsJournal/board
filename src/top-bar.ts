@@ -19,7 +19,7 @@ export type TopBarState = {
  * turning an extension on no longer rearranges the bar on its own.
  */
 export const DEFAULT_TOP_BAR: readonly string[] = [
-  'snap', 'export', 'previous-board', 'undo', 'redo', 'boards', 'more', 'note',
+  'snap', 'export', 'previous-board', 'undo', 'play', 'redo', 'boards', 'more', 'note',
 ]
 
 /** The menu is the way back to this screen, so it cannot be switched off. */
@@ -55,9 +55,15 @@ export function normalizeTopBarState(raw: unknown, known: readonly string[]): To
   const hidden = new Set(strings(input.hidden).filter(id => known.includes(id) && !FIXED_TOP_BAR.includes(id)))
   for (const id of known) {
     if (seen.has(id)) continue
-    order.push(id)
+    seen.add(id)
     // A control the saved bar has never met is off unless it ships on the bar.
-    if (!DEFAULT_TOP_BAR.includes(id)) hidden.add(id)
+    // One that ships on the bar takes its shipping place, after the control
+    // it follows there, rather than landing at the far end of someone's row.
+    const at = DEFAULT_TOP_BAR.indexOf(id)
+    const after = at > 0 ? DEFAULT_TOP_BAR.slice(0, at).reverse().find(prev => order.includes(prev)) : undefined
+    if (after) order.splice(order.indexOf(after) + 1, 0, id)
+    else order.push(id)
+    if (at < 0) hidden.add(id)
   }
   return { version: 1, order, hidden: order.filter(id => hidden.has(id)) }
 }

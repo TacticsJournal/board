@@ -71,6 +71,7 @@ const BODIES = {
   'marquee-2': `<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6V5a1 1 0 0 1 1-1h1m5 0h2m5 0h1a1 1 0 0 1 1 1v1m0 5v2m0 5v1a1 1 0 0 1-1 1h-1m-5 0h-2m-5 0H5a1 1 0 0 1-1-1v-1m0-5v-2"/>`,
   'cone': `<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 17.998v-.5l-8.13-14.99a1 1 0 0 0-1.74 0L3 17.497v.5c0 1.659 4.03 3.003 9 3.003s9-1.344 9-3.002"/>`,
   'typography': `<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 20h3m7 0h7M6.9 15h6.9M10.2 6.3L16 20M5 20l6-16h2l7 16"/>`,
+  'slideshow': `<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M15 6h.01M3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z"/><path d="m3 13l4-4a3 5 0 0 1 3 0l4 4"/><path d="m13 12l2-2a3 5 0 0 1 3 0l3 3M8 21h.01M12 21h.01M16 21h.01"/></g>`,
 } as const
 
 export type IconName = keyof typeof BODIES

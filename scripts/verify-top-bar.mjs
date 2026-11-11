@@ -9,7 +9,7 @@ import { chromium } from 'playwright-core'
 import { chromePath } from './lib/chrome.mjs'
 
 const baseUrl = new URL(process.env.BOARD_URL || 'http://localhost:4173/').href
-const DEFAULT_BAR = ['snap', 'export', 'previous-board', 'undo', 'redo', 'boards', 'more', 'note']
+const DEFAULT_BAR = ['snap', 'export', 'previous-board', 'undo', 'play', 'redo', 'boards', 'more', 'note']
 
 const errors = []
 const check = (ok, msg) => { if (!ok) errors.push(msg) }
@@ -71,7 +71,7 @@ await page.click('[data-tools-move="note up"]')
 await page.waitForTimeout(300)
 await page.click('[data-set="close"]')
 await page.waitForTimeout(400)
-const edited = ['export', 'previous-board', 'undo', 'redo', 'boards', 'note', 'more']
+const edited = ['export', 'previous-board', 'undo', 'play', 'redo', 'boards', 'note', 'more']
 same(await visibleBar(), edited, 'the bar follows Tool settings straight away')
 
 // Switched off is not gone: it moved into the menu, and still works there.

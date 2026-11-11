@@ -18,8 +18,21 @@ import { PITCHES, pitchById } from './pitches.ts'
 export type BoardView = { x: number; y: number; w: number; h: number }
 
 export type LinkEase = 'in-out' | 'linear' | 'out'
-/** How long the move off this board takes, and how it accelerates. */
-export type BoardLink = { dur: number; ease: LinkEase }
+/**
+ * What the change to the next board looks like. A move carries every object
+ * that is on both boards to its new spot, which only reads when the ground
+ * under them is the same; a dissolve blends one board into the next and lets
+ * nothing travel, which is what two different match stills want; a cut swaps
+ * at once, the way a broadcast does.
+ */
+export type LinkStyle = 'cut' | 'dissolve' | 'move'
+/**
+ * How long the move off this board takes, how it accelerates, and what it
+ * looks like. A link written before there was a choice has no style, and is
+ * read as the one its two boards suggest (see `linkStyle`), so it follows the
+ * boards when they are reordered rather than keeping a guess made elsewhere.
+ */
+export type BoardLink = { dur: number; ease: LinkEase; style?: LinkStyle }
 
 export type Board = {
   id: string
@@ -64,8 +77,14 @@ export type Library = {
 export const DEFAULT_LINK: BoardLink = { dur: 1200, ease: 'in-out' }
 /** Time held on a board before the next move starts. */
 export const HOLD_MS = 700
-export const LINK_DURATIONS = [600, 1000, 1200, 1600, 2200, 3000]
+/** The lengths the Transition sheet offers. A stored length off this list is kept. */
+export const LINK_DURATIONS = [300, 600, 1200, 2200]
 export const EASES: LinkEase[] = ['in-out', 'linear', 'out']
+export const LINK_STYLES: LinkStyle[] = ['cut', 'dissolve', 'move']
+/** A new link between two different stills: a short blend, not a journey. */
+export const DISSOLVE_LINK: Required<BoardLink> = { dur: 600, ease: 'in-out', style: 'dissolve' }
+/** A new link between two boards on the same ground: the players travel. */
+export const MOVE_LINK: Required<BoardLink> = { dur: 1200, ease: 'in-out', style: 'move' }
 export const UNTITLED = 'Untitled project'
 
 const KEY = 'tbm-board-projects-v1'
@@ -369,6 +388,13 @@ export function addBoard(project: Project, afterIdx: number, copy: boolean, blan
     ? { ...makeBoard(src.scene), view: { ...src.view } }
     : makeBoard(blank ?? emptyScene())
   project.boards.splice(afterIdx + 1, 0, board)
+  /* The links either side of a new board are new pairs. The board's own link
+     starts as the default for it and the next board, and the link into it is
+     only retargeted when nobody has chosen it: a still put after a still
+     dissolves, a step on the same still moves. */
+  const next = project.boards[afterIdx + 2]
+  if (next) board.link = defaultLinkBetween(board.scene, next.scene)
+  if (src && isDefaultLink(src.link)) src.link = defaultLinkBetween(src.scene, board.scene)
   return board
 }
 
@@ -446,6 +472,78 @@ export function canAnimate(project: Project): boolean {
   return project.boards.length > 1
 }
 
+/* ---------- transitions ----------
+   A link's style is the one thing about it that depends on both of its
+   boards. Two boards on the same pitch or photograph move, because the same
+   player in two places on the same ground is a run. Two live boards on
+   different photographs are two moments of a match: a player's spot on one
+   frame means nothing on the next camera angle, so they dissolve. */
+
+/** True when two scenes are two different match stills. */
+export function differentStills(a: Scene, b: Scene): boolean {
+  return a.pitch !== b.pitch && !!pitchById(a.pitch).live && !!pitchById(b.pitch).live
+}
+
+/** The style a link has, or the one its two boards suggest when it has none. */
+export function linkStyle(link: BoardLink, from: Scene, to: Scene): LinkStyle {
+  if (link.style && LINK_STYLES.includes(link.style)) return link.style
+  return differentStills(from, to) ? 'dissolve' : 'move'
+}
+
+/**
+ * The Slides strip's stills: runs of consecutive boards on the same ground.
+ * Each run is one picture with a step for every board drawn on it, and only
+ * between two runs does the strip show a transition, because inside a run
+ * every change is the players moving on the same frame.
+ */
+export function stillGroups(project: Project): { start: number; end: number }[] {
+  const groups: { start: number; end: number }[] = []
+  project.boards.forEach((board, i) => {
+    const run = groups[groups.length - 1]
+    if (run && project.boards[run.end].scene.pitch === board.scene.pitch) run.end = i
+    else groups.push({ start: i, end: i })
+  })
+  return groups
+}
+
+/**
+ * Where a transition sits, in the strip's own numbers: a slide is a still,
+ * so the link between two stills is "Slide 2 to slide 3", and a link between
+ * two steps drawn on the same still says which steps.
+ */
+export function transitionPlace(project: Project, index: number): string {
+  const groups = stillGroups(project)
+  const from = groups.findIndex(g => index >= g.start && index <= g.end)
+  const to = groups.findIndex(g => index + 1 >= g.start && index + 1 <= g.end)
+  if (from === to && from >= 0) {
+    const step = index - groups[from].start + 1
+    return `Slide ${from + 1}, step ${step} to step ${step + 1}`
+  }
+  return `Slide ${from + 1} to slide ${to + 1}`
+}
+
+/**
+ * What a brand-new link between two boards should be. Between two stills it
+ * is written out as a dissolve; on the same ground it is the plain default
+ * with no style at all, which `linkStyle` reads as a move for as long as the
+ * two boards share their ground and as a dissolve if one of them is later put
+ * on a different still.
+ */
+export function defaultLinkBetween(from: Scene, to: Scene): BoardLink {
+  return differentStills(from, to) ? { ...DISSOLVE_LINK } : { ...DEFAULT_LINK }
+}
+
+/**
+ * A link nobody has touched: one of the two defaults, or the old default
+ * written before styles existed. Only these are retargeted when a board is put
+ * after them, so a transition someone chose is never changed behind them.
+ */
+export function isDefaultLink(link: BoardLink): boolean {
+  if (link.ease !== 'in-out') return false
+  if (link.dur === MOVE_LINK.dur) return !link.style || link.style === 'move'
+  return link.dur === DISSOLVE_LINK.dur && link.style === 'dissolve'
+}
+
 /* ---------- persistence ---------- */
 
 type LooseBoard = Partial<Board> & { notes?: Record<string, string> }
@@ -474,6 +572,8 @@ function migrateBoard(raw: LooseBoard, links?: BoardLink[], index = 0): Board | 
     link: {
       dur: Number.isFinite(stored?.dur) ? Math.max(120, Number(stored!.dur)) : DEFAULT_LINK.dur,
       ease: stored && EASES.includes(stored.ease as LinkEase) ? stored.ease as LinkEase : DEFAULT_LINK.ease,
+      // a missing or unknown style stays missing: `linkStyle` reads it from the boards
+      ...(stored && LINK_STYLES.includes(stored.style as LinkStyle) ? { style: stored.style as LinkStyle } : {}),
     },
   }
 }
@@ -922,7 +1022,56 @@ export const HANDOFF = 0.45
  * and everything else the scene carries is `a`'s up to the handoff and `b`'s
  * from it, so an arriving asset never appears over the outgoing photograph.
  */
-export function tweenScene(a: Scene, b: Scene, t: number): { scene: Scene; fading: Set<string>; arriving: Set<string>; riding: Set<string> } {
+export type SceneTween = {
+  scene: Scene
+  fading: Set<string>
+  arriving: Set<string>
+  riding: Set<string>
+  /**
+   * The other board's ground, laid over this one's at `alpha`, while a
+   * dissolve is blending the two. A move and a cut never blend: their ground
+   * changes in one frame.
+   */
+  blend: { scene: Scene; alpha: number } | null
+}
+
+/* A dissolve lets nothing travel. The outgoing board's objects are gone by
+   DISSOLVE_OUT, the incoming board's start at DISSOLVE_IN, and in the gap
+   between them the scene swaps from one board's objects to the other's, so
+   the same id is never drawn twice. The ground blends right across. */
+export const DISSOLVE_OUT = 0.4
+export const DISSOLVE_IN = 0.55
+const DISSOLVE_SWAP = (DISSOLVE_OUT + DISSOLVE_IN) / 2
+
+/**
+ * The scene `t` of the way from `a` to `b`, drawn as `style` says: a move by
+ * default, which is how every link was drawn before there was a choice.
+ */
+export function tweenScene(a: Scene, b: Scene, t: number, style: LinkStyle = 'move'): SceneTween {
+  if (style === 'cut') {
+    // the swap is the very start of the move: any progress at all is the next board
+    return { scene: t > 0 ? b : a, fading: new Set(), arriving: new Set(), riding: new Set(), blend: null }
+  }
+  if (style === 'dissolve') {
+    const leaving = t < DISSOLVE_SWAP
+    const shown = leaving ? a : b
+    const other = leaving ? b : a
+    const ids = new Set(shown.objects.map(o => o.id))
+    // the ground under the objects is always their own board's, with the
+    // other board's over it at whatever share of the blend it has
+    const share = leaving ? t : 1 - t
+    return {
+      scene: shown,
+      fading: leaving ? ids : new Set(),
+      arriving: leaving ? new Set() : ids,
+      riding: new Set(),
+      blend: t > 0 && t < 1 ? { scene: other, alpha: share } : null,
+    }
+  }
+  return { ...moveScene(a, b, t), blend: null }
+}
+
+function moveScene(a: Scene, b: Scene, t: number): { scene: Scene; fading: Set<string>; arriving: Set<string>; riding: Set<string> } {
   const target = new Map(b.objects.map(o => [o.id, o]))
   const fading = new Set<string>()
   const arriving = new Set<string>()
@@ -991,6 +1140,11 @@ function enterAlpha(p: number): number { return Math.max(0, Math.min(1, (p - HAN
    its ink until the last stretch and goes as the player reaches the tip. */
 function rideAlpha(p: number): number { return Math.max(0, 1 - Math.max(0, p - 0.82) / 0.18) }
 
+/* The same two curves for a dissolve: out over the first stretch, in over the
+   last, with the blend of the ground carrying the middle on its own. */
+function dissolveExit(p: number): number { return Math.max(0, 1 - p / DISSOLVE_OUT) }
+function dissolveEnter(p: number): number { return Math.max(0, Math.min(1, (p - DISSOLVE_IN) / (1 - DISSOLVE_IN))) }
+
 export type PlayFrame = {
   index: number
   /** Board the caption should be showing. */
@@ -1011,6 +1165,53 @@ export type PlayFrame = {
   moving: boolean
   /** Eased progress through the current move, 0 while a board is held. */
   p: number
+  /** How the board being left changes to the next one. */
+  style: LinkStyle
+  /** The other board's ground over this one, while a dissolve blends them. */
+  blend: { scene: Scene; alpha: number } | null
+}
+
+/**
+ * One frame `p` of the way from board `index` to the next, as that link's
+ * style draws it. Both clocks below come here, so the player on screen, the
+ * deck and the exported film can never disagree about a transition.
+ */
+function frameBetween(project: Project, index: number, toIndex: number, p: number, moving: boolean): PlayFrame {
+  const last = project.boards.length - 1
+  const from = project.boards[index]
+  const to = project.boards[Math.min(toIndex, last)]
+  const style = from === to ? 'move' : linkStyle(from.link, from.scene, to.scene)
+  const { scene, fading, arriving, riding, blend } = tweenScene(from.scene, to.scene, p, style)
+  const next = Math.min(index + 1, last)
+  if (style === 'cut') {
+    // nothing fades in a cut, the words included: the next board is simply there
+    const there = p > 0
+    return {
+      index, current: there ? next : index, view: boardView(there ? to : from), scene,
+      fading, exitAlpha: 0, arriving, enterAlpha: 1, riding, rideAlpha: 1,
+      noteAlpha: 1, moving, p, style, blend,
+    }
+  }
+  // the note leaves with the board it belongs to and arrives with the next
+  const noteAlpha = !moving || p === 0 ? 1 : p < 0.42 ? 1 - p / 0.42 : p > 0.58 ? (p - 0.58) / 0.42 : 0
+  const dissolve = style === 'dissolve'
+  return {
+    index,
+    current: moving && p > 0.5 ? next : index,
+    view: tweenView(boardView(from), boardView(to), p),
+    scene,
+    fading,
+    exitAlpha: dissolve ? dissolveExit(p) : exitAlpha(p),
+    arriving,
+    enterAlpha: dissolve ? dissolveEnter(p) : enterAlpha(p),
+    riding,
+    rideAlpha: rideAlpha(p),
+    noteAlpha,
+    moving,
+    p,
+    style,
+    blend,
+  }
 }
 
 /**
@@ -1023,26 +1224,7 @@ export function frameAtPos(project: Project, pos: number): PlayFrame {
   const held = Math.max(0, Math.min(last, pos))
   const index = Math.min(last, Math.floor(held))
   const p = Math.max(0, Math.min(1, held - index))
-  const from = project.boards[index]
-  const to = project.boards[Math.min(index + 1, last)]
-  const { scene, fading, arriving, riding } = tweenScene(from.scene, to.scene, p)
-  // the note leaves with the board it belongs to and arrives with the next
-  const noteAlpha = p === 0 ? 1 : p < 0.42 ? 1 - p / 0.42 : p > 0.58 ? (p - 0.58) / 0.42 : 0
-  return {
-    index,
-    current: p > 0.5 ? Math.min(index + 1, last) : index,
-    view: tweenView(boardView(from), boardView(to), p),
-    scene,
-    fading,
-    exitAlpha: exitAlpha(p),
-    arriving,
-    enterAlpha: enterAlpha(p),
-    riding,
-    rideAlpha: rideAlpha(p),
-    noteAlpha,
-    moving: p > 0,
-    p,
-  }
+  return frameBetween(project, index, index + 1, p, p > 0)
 }
 
 /** What the player should draw `ms` into the project. */
@@ -1061,25 +1243,7 @@ export function frameAt(project: Project, ms: number): PlayFrame {
     if (t <= acc + s.dur) { seg = s; local = s.dur ? (t - acc) / s.dur : 0; break }
     acc += s.dur
   }
-  const from = project.boards[seg.index]
-  const to = project.boards[Math.min(seg.index + (seg.move ? 1 : 0), project.boards.length - 1)]
   const p = seg.move ? easings[project.boards[seg.index].link.ease](Math.min(1, local)) : 0
-  const { scene, fading, arriving, riding } = tweenScene(from.scene, to.scene, p)
-  // the note leaves with the board it belongs to and arrives with the next
-  const noteAlpha = seg.move ? (p < 0.42 ? 1 - p / 0.42 : p > 0.58 ? (p - 0.58) / 0.42 : 0) : 1
-  return {
-    index: seg.index,
-    current: seg.move && p > 0.5 ? seg.index + 1 : seg.index,
-    view: tweenView(boardView(from), boardView(to), p),
-    scene,
-    fading,
-    exitAlpha: exitAlpha(p),
-    arriving,
-    enterAlpha: enterAlpha(p),
-    riding,
-    rideAlpha: rideAlpha(p),
-    noteAlpha,
-    moving: seg.move,
-    p,
-  }
+  // a held board is tweened against itself, so nothing is leaving or arriving
+  return frameBetween(project, seg.index, seg.index + (seg.move ? 1 : 0), p, seg.move)
 }

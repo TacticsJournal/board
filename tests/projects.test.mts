@@ -598,6 +598,8 @@ test('the ground hands over at the one moment neither board has anything to show
   project.boards[0].scene.board = { w: 800, h: 640 }
   project.boards[1].scene.pitch = 'bg:two'
   project.boards[1].scene.board = { w: 800, h: 450 }
+  // two stills dissolve unless someone picks a move; this is the move's handoff
+  project.boards[0].link.style = 'move'
   const gone = { id: 'old-one', type: 'player', x: 100, y: 100, r: 14, color: '#e02020' }
   const fresh = { ...gone, id: 'new-one', x: 500 }
   const both = { ...gone, id: 'stays', x: 200, y: 200 }

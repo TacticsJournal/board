@@ -11,6 +11,7 @@ const MAX_BOARD_NOTE = 20_000
 const OBJECT_ID = /^[A-Za-z0-9_-]{1,100}$/
 const OBJECT_TYPES = new Set(['player', 'ball', 'cone', 'goal', 'image', 'marker', 'arrow', 'box', 'text'])
 const EASES = new Set(['in-out', 'linear', 'out'])
+const LINK_STYLES = new Set(['cut', 'dissolve', 'move'])
 
 export type WebMcpSnapshot = {
   project: Project
@@ -128,11 +129,20 @@ function validateView(value: unknown): BoardView {
 function validateLink(value: unknown): BoardLink {
   const link = record(value)
   if (!link) fail('link must be an object.')
-  checkKeys(link, ['dur', 'ease'], 'link')
+  checkKeys(link, ['dur', 'ease', 'style'], 'link')
   const dur = validFinite(link.dur, 'link.dur')
   if (dur < 120) fail('link.dur must be at least 120.')
   if (typeof link.ease !== 'string' || !EASES.has(link.ease)) fail('link.ease must be in-out, linear, or out.')
-  return { dur, ease: link.ease as BoardLink['ease'] }
+  // a style is optional, as it is in a stored project: without one the two
+  // boards decide, a move on the same ground and a dissolve between stills
+  if (own(link, 'style') && (typeof link.style !== 'string' || !LINK_STYLES.has(link.style))) {
+    fail('link.style must be cut, dissolve, or move.')
+  }
+  return {
+    dur,
+    ease: link.ease as BoardLink['ease'],
+    ...(own(link, 'style') ? { style: link.style as BoardLink['style'] } : {}),
+  }
 }
 
 function validateObjectId(value: unknown, name: string): string {
@@ -364,7 +374,7 @@ const VIEW_INPUT_SCHEMA = {
 }
 const LINK_INPUT_SCHEMA = {
   type: 'object', additionalProperties: false, required: ['dur', 'ease'],
-  properties: { dur: { type: 'number', minimum: 120 }, ease: { type: 'string', enum: ['in-out', 'linear', 'out'] } },
+  properties: { dur: { type: 'number', minimum: 120 }, ease: { type: 'string', enum: ['in-out', 'linear', 'out'] }, style: { type: 'string', enum: ['cut', 'dissolve', 'move'] } },
 }
 
 export const READ_CURRENT_PROJECT_SCHEMA = {

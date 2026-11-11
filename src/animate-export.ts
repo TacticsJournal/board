@@ -110,6 +110,18 @@ async function renderFrames(
       frame.arriving.forEach(id => alpha.set(id, frame.enterAlpha))
       frame.riding.forEach(id => alpha.set(id, frame.rideAlpha))
       const shot = offscreen.board.toFrameCanvas(width, coverView(frame.view, aspect), alpha)
+      /* A dissolve blends two grounds. The same objects are drawn over the
+         other board's ground too, at the same alphas, and that second picture
+         is laid over the first at the blend's share: where an object is, both
+         pictures agree and it stays put, and everywhere else one photograph
+         turns into the other. This is the blend the player draws on screen. */
+      let over: HTMLCanvasElement | null = null
+      if (frame.blend && frame.blend.alpha > 0) {
+        offscreen.store.loadScene({ ...frame.blend.scene, objects: frame.scene.objects })
+        await Promise.resolve()
+        await offscreen.board.imagesReady()
+        over = offscreen.board.toFrameCanvas(width, coverView(frame.view, aspect), alpha)
+      }
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, out.width, out.height)
       /* one scale for both directions, so a frame is never stretched: the
@@ -122,6 +134,13 @@ async function renderFrames(
       ctx.clip()
       ctx.drawImage(shot, (width - shot.width * k) / 2, (boardH - shot.height * k) / 2,
         shot.width * k, shot.height * k)
+      if (over && frame.blend) {
+        const ko = Math.max(width / over.width, boardH / over.height)
+        ctx.globalAlpha = Math.max(0, Math.min(1, frame.blend.alpha))
+        ctx.drawImage(over, (width - over.width * ko) / 2, (boardH - over.height * ko) / 2,
+          over.width * ko, over.height * ko)
+        ctx.globalAlpha = 1
+      }
       ctx.restore()
       if (captionH) {
         ctx.fillStyle = '#f7f3ec'

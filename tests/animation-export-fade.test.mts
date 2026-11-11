@@ -66,6 +66,8 @@ test('the exported film cuts the photograph where nothing of either board shows'
   project.boards[1].scene.objects = [{ id: 'new', type: 'player', x: 500, y: 100, r: 14, color: '#e02020' }] as never
   project.boards[0].link.dur = 1000
   project.boards[0].link.ease = 'linear'
+  // two stills dissolve unless someone picks a move; this is the move's cut
+  project.boards[0].link.style = 'move'
 
   const total = projectDuration(project)
   const grounds: string[] = []
