@@ -2,6 +2,7 @@ import { backgrounds } from './background-library'
 import { isBackgroundId } from './backgrounds'
 import type { ToolDefaults } from './board'
 import { OffscreenBoard } from './offscreen-board'
+import { IS_NATIVE_APP, nativeShareFile, nativeShareFiles } from './native'
 import { boardName, type Project } from './projects'
 import { zipFiles, type ZipFile } from './zip'
 
@@ -29,6 +30,7 @@ function canvasPng(canvas: HTMLCanvasElement): Promise<Blob> {
 }
 
 function download(blob: Blob, filename: string): void {
+  if (IS_NATIVE_APP) { void nativeShareFile(blob, filename); return }
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.download = filename
@@ -42,6 +44,9 @@ export function downloadProjectImage(file: ProjectImageFile): void {
 }
 
 function shareImages(files: readonly ZipFile[], projectName: string): Promise<boolean> {
+  if (IS_NATIVE_APP) {
+    return nativeShareFiles(files.map(file => ({ source: new Blob([file.data as BlobPart], { type: 'image/png' }), name: file.name })), projectName)
+  }
   const nav = navigator as Navigator & { canShare?: (data: ShareData) => boolean }
   if (!nav.share || !nav.canShare) return Promise.resolve(false)
   const shareFiles = files.map(file => new File([file.data], file.name, { type: 'image/png' }))

@@ -227,6 +227,8 @@ button {
 button:disabled { opacity: 0.35; cursor: default; }
 
 /* ---------- site header (exact copy of tacticsjournal.com) ---------- */
+/* Self-host builds and the iOS app run without the site header. */
+header.site-header[hidden] { display: none; }
 header.site-header {
   display: flex;
   align-items: center;

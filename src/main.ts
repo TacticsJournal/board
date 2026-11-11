@@ -48,6 +48,7 @@ import { createTabPresence } from './tab-presence'
 import { TJ_ORIGIN, usingBillingSandbox } from './origin'
 import { boardAgentLinksUrl, boardInvitationUrl, boardPresenceUrl, boardSkillsUrl, ensureBoardSession, resetBoardSession, type AgentAccessMode } from './board-api'
 import { startCheckout, type CheckoutProduct } from './checkout'
+import { IS_NATIVE_APP, nativeShareFile } from './native'
 import * as entitlements from './entitlements'
 import {
   AssetQuotaError, ASSET_BUDGET_BYTES, ASSET_CATEGORIES, AssetCategory, UserAsset,
@@ -720,7 +721,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 </div>
 <div class="app">
   <div class="appBanner hidden" id="appBanner" role="status" aria-live="polite"></div>
-  <header class="site-header"${BOARD_SELF_HOSTED ? ' hidden' : ''}>
+  <header class="site-header"${BOARD_SELF_HOSTED || IS_NATIVE_APP ? ' hidden' : ''}>
     <a href="https://tacticsjournal.com/" class="site-logo" aria-label="Tactics Journal home">
       <img src="${BOARD_SELF_HOSTED ? tjLogoSrc : 'https://tacticsjournal.com/assets/IMG_5503.png'}" alt="Tactics Journal" />
     </a>
@@ -4931,6 +4932,10 @@ board.onShapeDrawn = () => {
 /* ---------- topbar actions ---------- */
 
 function download(name: string, href: string) {
+  if (IS_NATIVE_APP) {
+    void nativeShareFile(href, name).then(ok => { if (!ok) showToast('Could not export. Try again.') })
+    return
+  }
   const a = document.createElement('a')
   a.download = name
   a.href = href
@@ -4955,6 +4960,8 @@ function exportPng(url = board.exportPng()) {
   const filename = store.scene.pitch === 'classic'
     ? 'Pitch - Board Tactics Journal.png'
     : 'tactics-board.png'
+  // the app has no downloads; its share sheet offers Save Image and Files
+  if (IS_NATIVE_APP) { download(filename, url); return }
   // share sheet on devices that support it (iOS/Android); only fall back
   // to a download when sharing is unavailable or refused - never after a cancel
   if (navigator.share && (navigator as any).canShare) {
@@ -9278,6 +9285,9 @@ const LICENSE_MANAGE_URL = `${TJ_ORIGIN}/settings/`
 const PRO_CHECKOUT_OPEN = true
 
 function proCheckoutOpen(): boolean {
+  // The App Store takes payment in the app. Polar checkout never opens there;
+  // the StoreKit purchase replaces it.
+  if (IS_NATIVE_APP) return false
   return PRO_CHECKOUT_OPEN || entitlements.isTrustedPreviewBuild()
 }
 
@@ -9388,6 +9398,7 @@ function openSignIn() {
  * bought, abandoned, signed out, closed — says what happened in the same place.
  */
 async function buy(button: HTMLButtonElement): Promise<void> {
+  if (IS_NATIVE_APP) return
   const product = button.dataset.buy as CheckoutProduct
   const note = settingsEl.querySelector('[data-buy-note]') as HTMLElement | null
   const say = (message: string) => { if (note) note.textContent = message }

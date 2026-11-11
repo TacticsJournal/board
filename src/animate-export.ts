@@ -2,6 +2,7 @@ import { backgrounds } from './background-library'
 import { isBackgroundId } from './backgrounds'
 import { ToolDefaults } from './board'
 import { GifWriter } from './gif'
+import { IS_NATIVE_APP, nativeShareFile } from './native'
 import { OffscreenBoard } from './offscreen-board'
 import { BOARD_W } from './types'
 import { Project, boardName, coverView, exportAspect, frameAt, projectDuration } from './projects'
@@ -164,6 +165,7 @@ async function renderFrames(
 }
 
 function download(blob: Blob, filename: string) {
+  if (IS_NATIVE_APP) { void nativeShareFile(blob, filename); return }
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.download = filename
@@ -179,6 +181,7 @@ function download(blob: Blob, filename: string) {
  * user closing it falls back to a download.
  */
 function share(blob: Blob, filename: string) {
+  if (IS_NATIVE_APP) { void nativeShareFile(blob, filename); return }
   const file = new File([blob], filename, { type: blob.type })
   const nav = navigator as Navigator & { canShare?: (data: ShareData) => boolean }
   if (nav.share && nav.canShare?.({ files: [file] })) {
