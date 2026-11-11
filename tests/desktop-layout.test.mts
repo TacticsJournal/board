@@ -70,7 +70,16 @@ test('folding clips the panel rather than emptying it first', () => {
   assert.match(main, /panelDockEl\.inert = folded/)
   assert.match(css, /body\.deskMode \.panelDock\.folded > \* \{ opacity: 0; \}/)
   // the movement goes under reduced motion; the fade stays
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\n  body\.deskMode \.panelDock \{ transition: none; \}\n\}/)
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\n  body\.deskMode \.panelDock,\n  body\.deskMode \.boardArea \{ transition: none; \}\n\}/)
+})
+
+test('opening the panel never moves the board', () => {
+  // the board's area reaches back in under the open panel by the panel's width
+  assert.match(css, /body\.deskMode\.deskPanelOpen \.boardArea \{ margin-left: calc\(-1 \* var\(--deskPanelW\)\); \}/)
+  assert.match(css, /transition: margin-left var\(--dur-push, 220ms\) var\(--ease-drawer, ease\)/)
+  assert.match(main, /document\.body\.classList\.toggle\('deskPanelOpen', deskMode && !folded\)/)
+  // the pitch is kept clear of where the panel opens, open or not
+  assert.match(main, /board\.leftInset = on \? DESK_PANEL_W : 0/)
 })
 
 test('the fold is a push, and the rail answers a press', () => {

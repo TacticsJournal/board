@@ -2104,6 +2104,8 @@ if ('EyeDropper' in window) colorPickerEl.querySelector('[data-picker-eye]')?.cl
  */
 const DESK_QUERY = '(min-width: 1024px), (min-width: 600px) and (max-height: 640px) and (min-aspect-ratio: 3/2)'
 const DESK_PANEL_KEY = 'tbm-desk-panel-v1'
+/** The side panel's width; matches --deskPanelW in styles.css. */
+const DESK_PANEL_W = 180
 const deskQuery = window.matchMedia(DESK_QUERY)
 let deskMode = false
 
@@ -2147,6 +2149,9 @@ function applyLayout() {
     panelDockEl.append(optionsEl)
     panelOpen = true
   }
+  // Where the side panel opens over the board's area. The pitch is sized and
+  // placed beside it, open or not, so it never has to move or be covered.
+  board.leftInset = on ? DESK_PANEL_W : 0
   closeLinkMenu()
   renderPanel()
   board.fit()
@@ -2198,6 +2203,8 @@ function renderPanel() {
   const folded = deskMode && !shelfShowing() && !slidesShowing()
   panelDockEl.classList.toggle('folded', folded)
   panelDockEl.inert = folded
+  // the board's area reaches in under an open panel, so opening it moves nothing
+  document.body.classList.toggle('deskPanelOpen', deskMode && !folded)
   syncPanelHeight()
 }
 
