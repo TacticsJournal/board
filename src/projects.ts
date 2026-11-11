@@ -491,16 +491,19 @@ export function linkStyle(link: BoardLink, from: Scene, to: Scene): LinkStyle {
 }
 
 /**
- * The Slides strip's stills: runs of consecutive boards on the same ground.
+ * The Slides strip's stills: runs of consecutive boards on the same photograph.
  * Each run is one picture with a step for every board drawn on it, and only
  * between two runs does the strip show a transition, because inside a run
- * every change is the players moving on the same frame.
+ * every change is the players moving on the same frame. A drawn pitch is not
+ * a photograph: every board on one is a slide of its own, or a project of
+ * boards on the same pitch would show as a single slide.
  */
 export function stillGroups(project: Project): { start: number; end: number }[] {
   const groups: { start: number; end: number }[] = []
   project.boards.forEach((board, i) => {
     const run = groups[groups.length - 1]
-    if (run && project.boards[run.end].scene.pitch === board.scene.pitch) run.end = i
+    const pitch = board.scene.pitch
+    if (run && project.boards[run.end].scene.pitch === pitch && pitchById(pitch).live) run.end = i
     else groups.push({ start: i, end: i })
   })
   return groups
