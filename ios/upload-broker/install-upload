@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Installs board-upload the way divernote-upload is installed: the script
+# root-owned in /usr/local/sbin, a wrapper on PATH, and a sudo rule that lets
+# only that script run without a password. It reuses the App Store Connect key
+# divernote-upload already reads from /etc/agent-secrets. Run it yourself:
+#   sudo ios/upload-broker/install-upload
+set -euo pipefail
+
+[[ "${EUID}" -eq 0 ]] || { echo "Run with sudo: sudo $0" >&2; exit 1; }
+here="$(cd "$(dirname "$0")" && pwd)"
+
+install -o root -g wheel -m 0755 "$here/board-upload" /usr/local/sbin/board-upload
+
+wrapper="$(mktemp)"
+printf '#!/usr/bin/env bash\nset -euo pipefail\nexec sudo -n /usr/local/sbin/board-upload "$@"\n' > "$wrapper"
+install -o root -g wheel -m 0755 "$wrapper" /usr/local/bin/board-upload
+rm -f "$wrapper"
+
+rule="$(mktemp)"
+echo "kyleboas ALL=(root) NOPASSWD: /usr/local/sbin/board-upload" > "$rule"
+# A broken sudo rule can lock sudo out; check it before it goes live.
+visudo -cf "$rule" >/dev/null
+install -o root -g wheel -m 0440 "$rule" /etc/sudoers.d/board-upload
+rm -f "$rule"
+
+install -d -o kyleboas -g staff -m 0755 /Users/kyleboas/board-builds
+
+for secret in xcode xcode-key-id xcode-issuer-id; do
+  [[ -f "/etc/agent-secrets/$secret.secret" ]] || echo "Note: /etc/agent-secrets/$secret.secret is missing" >&2
+done
+echo "Installed board-upload"

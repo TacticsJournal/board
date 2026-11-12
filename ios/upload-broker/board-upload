@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Uploads a Board build that ios/beta signed to App Store Connect
+# (TestFlight). Installed root-only at /usr/local/sbin/board-upload by
+# ios/upload-broker/install-upload; the App Store Connect key it reads never
+# leaves its root-only file.
+#
+#   board-upload ~/board-builds/Board-N.ipa
+set -euo pipefail
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+
+readonly KEY_FILE=/etc/agent-secrets/xcode.secret
+readonly KEY_ID_FILE=/etc/agent-secrets/xcode-key-id.secret
+readonly ISSUER_FILE=/etc/agent-secrets/xcode-issuer-id.secret
+readonly BUILD_ROOT=/Users/kyleboas/board-builds
+readonly OWNER_UID=503
+readonly BUNDLE_ID=com.tacticsjournal.board
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "board-upload must run through its sudo wrapper" >&2
+  exit 1
+fi
+if [[ "$#" -ne 1 ]]; then
+  echo "Usage: board-upload <path to Board .ipa>" >&2
+  exit 64
+fi
+
+build="$1"
+# The one argument is a build path, never a flag altool or xcodebuild could act on.
+case "$build" in
+  -*) echo "board-upload takes a build path, not an option" >&2; exit 64 ;;
+esac
+build="${build%/}"
+[[ "$build" == /* ]] || { echo "The build path must be absolute" >&2; exit 64; }
+[[ "$build" != *..* ]] || { echo "The build path must not contain '..'" >&2; exit 64; }
+[[ "$build" == *.ipa ]] || { echo "The build must be an .ipa" >&2; exit 64; }
+[[ "$build" == "$BUILD_ROOT"/* ]] || { echo "The build must live under $BUILD_ROOT" >&2; exit 64; }
+[[ ! -L "$build" ]] || { echo "Refusing to upload through a symbolic link" >&2; exit 1; }
+[[ -e "$build" ]] || { echo "The build does not exist: $build" >&2; exit 1; }
+
+# Only Board goes through here: the app and every extension in it must
+# carry its bundle IDs, and the build must belong to the build account.
+/usr/bin/python3 - "$build" "$OWNER_UID" "$BUNDLE_ID" <<'PY'
+import os, plistlib, re, stat, sys, zipfile
+build, owner, bundle = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+if os.path.realpath(build) != build:
+    raise SystemExit("The build path must not pass through links")
+info = os.stat(build, follow_symlinks=False)
+if info.st_uid not in (0, owner):
+    raise SystemExit("The build belongs to another account")
+if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= 314572800:
+    raise SystemExit("The build must be a file under the approved size")
+with zipfile.ZipFile(build) as archive:
+    names = archive.namelist()
+    apps = [plistlib.loads(archive.read(n)) for n in names
+            if re.fullmatch(r"Payload/[^/]+\.app/Info\.plist", n)]
+    extensions = [plistlib.loads(archive.read(n)) for n in names
+                  if re.fullmatch(r"Payload/[^/]+\.app/PlugIns/[^/]+\.appex/Info\.plist", n)]
+if len(apps) != 1:
+    raise SystemExit("The build must hold exactly one app")
+found = apps[0].get("CFBundleIdentifier")
+if found != bundle:
+    raise SystemExit(f"The build is {found}, not {bundle}")
+for extension in extensions:
+    if not str(extension.get("CFBundleIdentifier")).startswith(bundle + "."):
+        raise SystemExit("The build holds an unexpected extension")
+PY
+
+for secret in "$KEY_FILE" "$KEY_ID_FILE" "$ISSUER_FILE"; do
+  if [[ ! -f "$secret" || -L "$secret" ]]; then
+    echo "Missing secret: $secret" >&2
+    exit 1
+  fi
+  /usr/bin/python3 - "$secret" <<'PY'
+import os, stat, sys
+path = sys.argv[1]
+info = os.stat(path, follow_symlinks=False)
+if info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600:
+    raise SystemExit(f"{path} must be root-owned with mode 0600")
+if not 0 < info.st_size <= 8192:
+    raise SystemExit(f"{path} has an invalid size")
+PY
+done
+
+/usr/bin/grep -q 'BEGIN PRIVATE KEY' "$KEY_FILE" || {
+  echo "The stored xcode secret is not an App Store Connect private key" >&2
+  exit 1
+}
+IFS= read -r key_id < "$KEY_ID_FILE" || true
+IFS= read -r issuer < "$ISSUER_FILE" || true
+[[ "$key_id" =~ ^[A-Z0-9]{8,12}$ ]] || { echo "The stored key ID is invalid" >&2; exit 1; }
+[[ "$issuer" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || {
+  echo "The stored issuer ID is invalid" >&2
+  exit 1
+}
+
+# altool writes state into a home directory. A private one per run
+# keeps it out of both root's and the caller's.
+work="$(/usr/bin/mktemp -d /private/tmp/board-upload.XXXXXX)"
+trap 'rm -rf "$work"' EXIT
+chmod 0700 "$work"
+
+echo "Uploading $build to App Store Connect as key $key_id"
+/usr/bin/env -i PATH=/usr/bin:/bin HOME="$work" \
+  /usr/bin/xcrun altool --upload-app --file "$build" --type ios \
+    --apiKey "$key_id" --apiIssuer "$issuer" --p8-file-path "$KEY_FILE"
