@@ -33,12 +33,11 @@ test('viewport changes refit the board as well as the gate', () => {
   assert.match(main, /window\.visualViewport\?\.addEventListener\('resize', updateViewportGate\)/)
 })
 
-test('a pitch picked under the tall Settings panel refits once the panel goes back down', () => {
-  const sync = board.slice(board.indexOf('  private syncPitch() {'), board.indexOf('  private syncPitch() {') + 2400)
-  assert.match(sync, /this\.fit\(\)\s*\n\s*this\.settleInset = this\.inset/)
-  const setter = board.slice(board.indexOf('  set bottomInset('), board.indexOf('  fit() {'))
-  // the panel growing still never moves the board; only shrinking below the
-  // height the pitch was fitted under refits, and only once
-  assert.match(setter, /const shrank = next < this\.settleInset/)
-  assert.match(setter, /this\.settleInset = null\s*\n\s*if \(shrank\) this\.refit\(\)/)
+test('a panel opening or closing never refits the board, even right after a pitch loads', () => {
+  assert.doesNotMatch(board, /settleInset/)
+  const setter = board.slice(board.indexOf('  set bottomInset('), board.indexOf('  /**\n   * Width of a side panel'))
+  assert.doesNotMatch(setter, /fit\(\)/)
+  // a pitch picked from Settings is fitted under the usual panel, not the tall one
+  const sync = main.slice(main.indexOf('function syncPanelHeight() {'), main.indexOf("window.addEventListener('resize', syncPanelHeight)"))
+  assert.match(sync, /if \(room === 'settings' && panelOpen && h > 0\) return\s*\n\s*board\.bottomInset = h/)
 })

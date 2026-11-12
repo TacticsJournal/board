@@ -2283,6 +2283,11 @@ function syncPanelHeight() {
   }
   const h = deskMode ? 0 : Math.round(panelDockEl.getBoundingClientRect().height)
   document.documentElement.style.setProperty('--panelH', `${h}px`)
+  // Settings is the tall panel, open for a moment while something is changed.
+  // A pitch picked there is fitted to the panel the board is normally used
+  // under, not to the sliver above Settings, so nothing has to refit (and the
+  // board does not jump) when Settings goes back down.
+  if (room === 'settings' && panelOpen && h > 0) return
   board.bottomInset = h
 }
 

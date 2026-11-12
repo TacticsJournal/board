@@ -958,30 +958,17 @@ export class Board {
 
   /**
    * Height of the bottom panel that floats over the stage. The stage keeps the
-   * full container - opening a panel must never resize or move the board - so
-   * fitting centres the board in what is left visible above it.
+   * full container - opening or closing a panel must never resize or move the
+   * board - so this is only remembered for the next fit, which centres the
+   * board in what is left visible above it.
    */
   private inset = 0
-  /**
-   * The panel height a new pitch was fitted under, until the panel next moves.
-   * A pitch is picked from Settings, which is the panel at its tallest, so the
-   * board is fitted into the sliver above it. When that panel then goes back
-   * down, that one change refits, or the pitch stays the sliver's size. Any
-   * other first move (the panel growing) drops it, so the board still never
-   * moves under a panel that is opening.
-   */
-  private settleInset: number | null = null
   get bottomInset() { return this.inset }
   set bottomInset(v: number) {
-    const next = Number.isFinite(v) ? Math.max(0, v) : 0
-    if (next === this.inset) return
     // The panel is an overlay. Remember its height for the next requested fit,
-    // but do not refit now or opening the menu moves the board underneath it.
+    // but do not refit now or opening or closing it moves the board underneath.
+    const next = Number.isFinite(v) ? Math.max(0, v) : 0
     this.inset = next
-    if (this.settleInset === null) return
-    const shrank = next < this.settleInset
-    this.settleInset = null
-    if (shrank) this.refit()
   }
 
   /**
@@ -1433,7 +1420,6 @@ export class Board {
     if (!samePitch) {
       this.zoom = 1
       this.fit()
-      this.settleInset = this.inset
     }
     this.drawBackground()
   }
