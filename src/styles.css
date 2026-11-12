@@ -1592,18 +1592,6 @@ html[data-theme-resolved="dark"] .seg button.active { box-shadow: 0 1px 2px rgba
 .rosterRow.on { background: var(--row-press); font-weight: 600; }
 .rosterEmpty { padding: 14px 12px; font-size: 12px; color: var(--ink-soft); background: var(--card); border-top: 1px solid var(--line); }
 
-/* Same reason the shapes shelf gives its arrow cells a pale ground: a dark
-   arrow drawn for grass disappears on a dark panel. Colour and letter cells
-   carry themselves, so only the drawn line takes the ground. */
-html[data-theme-resolved="dark"] .styleGroup.wide .cell {
-  background: #dcdce0;
-  color: #111214;
-}
-html[data-theme-resolved="dark"] .styleGroup.wide .cell.active {
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-}
-
 /* ---------- the settings room ---------- */
 /* The few settings worth reaching mid-board, in the band itself. The rows are
    the sheet's rows at panel size; More opens the sheet for everything else. */
@@ -1884,21 +1872,6 @@ html[data-theme-resolved="dark"] .styleGroup.wide .cell.active {
 }
 html[data-theme-resolved="dark"] .cell.active { background: #2a2a2c; box-shadow: none; }
 
-/* Arrows and equipment are board art in the board's own ink, and on the dark
-   shelf a black arrow all but disappears. Those cells keep a pitch-pale ground
-   of their own, so the art is read against what it was drawn against. Zones
-   are washes of colour that carry themselves, and players carry their kit, so
-   both stay on the sheet; the add cell is an affordance, not art. */
-html[data-theme-resolved="dark"] .shelfGrid[data-cat="arrows"] .cell:not(.cellAdd):not(.cellSpacer),
-html[data-theme-resolved="dark"] .shelfGrid[data-cat="equipment"] .cell:not(.cellAdd):not(.cellSpacer) {
-  background: #dcdce0;
-  color: #111214;
-}
-html[data-theme-resolved="dark"] .shelfGrid[data-cat="arrows"] .cell.active,
-html[data-theme-resolved="dark"] .shelfGrid[data-cat="equipment"] .cell.active {
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-}
 .shelfRail { display: flex; align-items: center; height: 32px; background: var(--panel); }
 .shelfRailList { display: flex; align-items: center; gap: 20px; min-width: 0; flex: 1; height: 32px; padding: 0 14px; overflow-x: auto; scrollbar-width: none; }
 .shelfRailList::-webkit-scrollbar { display: none; }
