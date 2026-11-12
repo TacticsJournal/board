@@ -1800,7 +1800,7 @@ function scrollShelfTo(cat: string) {
   if (!scroll || !sec || !scroll.clientWidth || !scroll.clientHeight) { pendingCatScroll = cat; return }
   shelfSpyLocked = true
   const behavior = reducedMotion() ? 'auto' : 'smooth'
-  scroll.scrollTo(deskMode ? { top: sec.offsetTop, behavior } : { left: sec.offsetLeft, behavior })
+  scroll.scrollTo(columnShelf() ? { top: sec.offsetTop, behavior } : { left: sec.offsetLeft, behavior })
   window.setTimeout(() => { shelfSpyLocked = false }, reducedMotion() ? 0 : 700)
   pendingCatScroll = null
 }
@@ -1891,8 +1891,8 @@ shelfEl.addEventListener('scroll', (e) => {
     if (shelfSpyLocked) return
     const sections = [...shelfEl.querySelectorAll<HTMLElement>('.shelfSec')]
     if (!sections.length) return
-    const axisOffset = (section: HTMLElement) => deskMode ? section.offsetTop : section.offsetLeft
-    const probe = (deskMode ? scroll.scrollTop + scroll.clientHeight * 0.28 : scroll.scrollLeft + scroll.clientWidth * 0.28)
+    const axisOffset = (section: HTMLElement) => columnShelf() ? section.offsetTop : section.offsetLeft
+    const probe = (columnShelf() ? scroll.scrollTop + scroll.clientHeight * 0.28 : scroll.scrollLeft + scroll.clientWidth * 0.28)
     const active = probe <= axisOffset(sections[0]) ? sections[0] : probe >= axisOffset(sections[sections.length - 1]) ? sections[sections.length - 1] : sections.reduce((last, section) => axisOffset(section) <= probe ? section : last, sections[0])
     if (active.dataset.cat) markShelfCat(active.dataset.cat)
   })
@@ -2103,12 +2103,26 @@ if ('EyeDropper' in window) colorPickerEl.querySelector('[data-picker-eye]')?.cl
  * and one bar over the board for whatever the tool or the selection can change.
  * Nothing floats over the pitch here, and nothing about the phone changes.
  */
-const DESK_QUERY = '(min-width: 1024px), (min-width: 600px) and (max-height: 640px) and (min-aspect-ratio: 3/2)'
+const DESK_QUERY = '(min-width: 1024px)'
+/**
+ * A phone on its side. It keeps the phone's controls - the top bar and the
+ * room band - because those are the ones its owner knows, but a panel under
+ * the board would leave the pitch a sliver of the screen's little height. The
+ * panel opens beside the pitch instead, over the space a wide pitch leaves
+ * empty on either side, and the pitch is always fitted clear of it.
+ */
+const SIDE_QUERY = '(min-width: 600px) and (max-height: 640px) and (min-aspect-ratio: 3/2)'
+/** The landscape side panel's width; matches --sidePanelW in styles.css. */
+const SIDE_PANEL_W = 232
 const DESK_PANEL_KEY = 'tbm-desk-panel-v1'
 /** The side panel's width; matches --deskPanelW in styles.css. */
 const DESK_PANEL_W = 180
 const deskQuery = window.matchMedia(DESK_QUERY)
+const sideQuery = window.matchMedia(SIDE_QUERY)
 let deskMode = false
+let sideMode = false
+/** The shelf runs down a column rather than along a strip. */
+const columnShelf = () => deskMode || sideMode
 
 /** The rail's tools, in the order they sit down the left edge. */
 const RAIL_ICONS: Record<string, string> = {
@@ -2135,8 +2149,18 @@ function setDeskPanelPref(open: boolean) {
  */
 function applyLayout() {
   const on = deskQuery.matches
-  if (on === deskMode) return
+  const side = !on && sideQuery.matches
+  if (on === deskMode && side === sideMode) return
+  const deskChanged = on !== deskMode
   deskMode = on
+  sideMode = side
+  document.body.classList.toggle('sideMode', side)
+  if (!deskChanged) {
+    board.leftInset = side ? SIDE_PANEL_W : 0
+    renderPanel()
+    board.fit()
+    return
+  }
   document.body.classList.toggle('deskMode', on)
   if (on) {
     if (pickerOpen) setPickerOpen(false, false)
@@ -2152,7 +2176,7 @@ function applyLayout() {
   }
   // Where the side panel opens over the board's area. The pitch is sized and
   // placed beside it, open or not, so it never has to move or be covered.
-  board.leftInset = on ? DESK_PANEL_W : 0
+  board.leftInset = on ? DESK_PANEL_W : side ? SIDE_PANEL_W : 0
   closeLinkMenu()
   renderPanel()
   board.fit()
@@ -2206,6 +2230,8 @@ function renderPanel() {
   panelDockEl.inert = folded
   // the board's area reaches in under an open panel, so opening it moves nothing
   document.body.classList.toggle('deskPanelOpen', deskMode && !folded)
+  // the landscape side panel is drawn only while something is in it
+  panelDockEl.classList.toggle('empty', ![...panelDockEl.children].some(el => el instanceof HTMLElement && !el.classList.contains('hidden') && el.offsetHeight > 0 && !el.matches('.colorPicker, .colorDock, .pickerCurrentDot')))
   syncPanelHeight()
 }
 
@@ -2244,13 +2270,14 @@ function syncPanelHeight() {
      the thing every one of these controls is being judged against. */
   const work = document.querySelector<HTMLElement>('.workArea')
   const workH = Math.round(work?.getBoundingClientRect().height ?? 0)
-  if (workH > 0 && !deskMode) {
+  if (workH > 0 && !deskMode && !sideMode) {
     const boardFloor = Math.max(170, Math.round(workH * 0.42))
     document.documentElement.style.setProperty('--quickMax', `${Math.max(150, workH - boardFloor)}px`)
   } else {
     document.documentElement.style.removeProperty('--quickMax')
   }
-  const h = deskMode ? 0 : Math.round(panelDockEl.getBoundingClientRect().height)
+  // beside the pitch, the panel covers none of the board's height
+  const h = deskMode || sideMode ? 0 : Math.round(panelDockEl.getBoundingClientRect().height)
   document.documentElement.style.setProperty('--panelH', `${h}px`)
   board.bottomInset = h
 }
@@ -10045,6 +10072,7 @@ store.onSelect(() => { syncRoomToSelection(); renderOptions(); syncTop(); render
 // phone's bottom panel and then swaps it out.
 applyLayout()
 deskQuery.addEventListener('change', () => { applyLayout(); renderFabs() })
+sideQuery.addEventListener('change', () => { applyLayout(); renderFabs() })
 renderPanel()
 // The first fit can run before the panel has a measured height, which would
 // centre the pitch behind it. Re-fit once now that the inset is known.
