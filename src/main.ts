@@ -1320,7 +1320,9 @@ const CAT_TOOL: Record<string, Tool> = { players: 'player', arrows: 'arrow', zon
  */
 const arrowPreviewCache = new Map<string, string>()
 function arrowPreview(dash: ArrowObj['dash'], head: boolean, color: string, width: number, measure = false, live = false) {
-  const key = `${dash}|${head}|${color}|${width}|${measure}|${live}`
+  // the dark panel needs no plate, so the plate is part of what is cached
+  const plate = !themeIsDark && isLight(color)
+  const key = `${dash}|${head}|${color}|${width}|${measure}|${live}|${plate}`
   const hit = arrowPreviewCache.get(key)
   if (hit) return hit
   const W = 72, H = 30
@@ -1328,9 +1330,10 @@ function arrowPreview(dash: ArrowObj['dash'], head: boolean, color: string, widt
   const stage = new Konva.Stage({ container: holder, width: W, height: H })
   const layer = new Konva.Layer({ listening: false })
   stage.add(layer)
-  // On the pitch a white arrow reads against grass; the shelf is pale in both
-  // themes, so a light one brings a dark plate with it rather than vanishing.
-  if (isLight(color)) layer.add(new Konva.Rect({ width: W, height: H, cornerRadius: 7, fill: '#4b5058' }))
+  // On the pitch a white arrow reads against grass; on the pale light-theme
+  // shelf a light one brings a dark plate with it rather than vanishing. The
+  // dark-theme shelf is already dark, so there it is drawn bare.
+  if (plate) layer.add(new Konva.Rect({ width: W, height: H, cornerRadius: 7, fill: '#4b5058' }))
   layer.add(makeArrowShape({
     id: 'preview', type: 'arrow',
     x1: 6, y1: H / 2, x2: W - 6, y2: H / 2, mx: W / 2, my: H / 2,
