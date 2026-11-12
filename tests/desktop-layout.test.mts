@@ -6,7 +6,7 @@ const main = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8')
 const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8')
 
 test('the wide layout is a breakpoint, not a second app', () => {
-  assert.match(main, /const DESK_QUERY = '\(min-width: 1024px\), \(min-width: 600px\) and \(max-height: 640px\) and \(min-aspect-ratio: 3\/2\)'/)
+  assert.match(main, /const DESK_QUERY = '\(min-width: 1024px\)'/)
   // a wide, short window (a docked pane, a landscape phone) has no height to
   // stack a panel under the board, so it takes the side-by-side layout too
   assert.match(main, /deskQuery\.addEventListener\('change'/)
@@ -43,7 +43,7 @@ test('switching tools leaves the panel folded if that is how it was left', () =>
 })
 
 test('nothing insets the board on a wide window', () => {
-  assert.match(main, /const h = deskMode \? 0 : Math\.round\(panelDockEl\.getBoundingClientRect\(\)\.height\)/)
+  assert.match(main, /const h = deskMode \|\| sideMode \? 0 : Math\.round\(panelDockEl\.getBoundingClientRect\(\)\.height\)/)
 })
 
 test('the options strip is the bar over the board and always shows there', () => {
@@ -58,7 +58,7 @@ test('the phone layout keeps its own rules', () => {
     const selector = line.trim()
     if (!selector || selector.startsWith('/*') || selector.startsWith('*') || selector.startsWith('@media')) continue
     if (!selector.includes('{')) continue
-    if (/^(\.workArea|\.boardArea|\.ctxDock|\.panelFold|\.railBtn|\.railFoot|html\[data-theme|body\.deskMode)/.test(selector)) continue
+    if (/^(\.workArea|\.boardArea|\.ctxDock|\.panelFold|\.railBtn|\.railFoot|html\[data-theme|body\.deskMode|body\.sideMode)/.test(selector)) continue
     assert.fail(`desktop block touches a phone selector: ${selector}`)
   }
   assert.match(desk, /body\.deskMode\.lib-open \.stageWrap/)
@@ -79,7 +79,20 @@ test('opening the panel never moves the board', () => {
   assert.match(css, /transition: margin-left var\(--dur-push, 220ms\) var\(--ease-drawer, ease\)/)
   assert.match(main, /document\.body\.classList\.toggle\('deskPanelOpen', deskMode && !folded\)/)
   // the pitch is kept clear of where the panel opens, open or not
-  assert.match(main, /board\.leftInset = on \? DESK_PANEL_W : 0/)
+  assert.match(main, /board\.leftInset = on \? DESK_PANEL_W : side \? SIDE_PANEL_W : 0/)
+})
+
+test('a phone on its side keeps the phone controls and opens the panel beside the pitch', () => {
+  // short and wide, but not a wide window: the phone layout, not the rail
+  assert.match(main, /const SIDE_QUERY = '\(min-width: 600px\) and \(max-height: 640px\) and \(min-aspect-ratio: 3\/2\)'/)
+  assert.match(main, /const side = !on && sideQuery\.matches/)
+  // the pitch is always fitted clear of the column, and the column takes none of its height
+  assert.match(main, /board\.leftInset = side \? SIDE_PANEL_W : 0/)
+  const width = Number(/const SIDE_PANEL_W = (\d+)/.exec(main)?.[1])
+  assert.match(css, new RegExp(`body\\.sideMode \\{ --sidePanelW: ${width}px; \\}`))
+  assert.match(css, /body\.sideMode \.panelDock \{[^}]*width: var\(--sidePanelW\)/)
+  // the shelf runs down the column, like the wide window's
+  assert.match(main, /const columnShelf = \(\) => deskMode \|\| sideMode/)
 })
 
 test('the fold is a push, and the rail answers a press', () => {
