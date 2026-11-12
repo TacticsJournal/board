@@ -392,11 +392,42 @@ function applyBoardPaper(paper: BoardPaper): boolean {
   return true
 }
 
+/**
+ * By default the board follows the app's theme: White in light mode, Dark in
+ * dark mode. Only those two swap, so a board you put on Cream, Steel, Slate or
+ * Grass stays there. Turned off in Settings, every board keeps what it has.
+ */
+const BOARD_FOLLOWS_THEME_KEY = 'tbm-board-follows-theme-v1'
+// read before the theme is first applied, so a board opened during startup
+// already lands on the right paper ('tbm-theme-v1' is THEME_KEY, declared later)
+let themeIsDark = (() => {
+  let saved: string | null = null
+  try { saved = localStorage.getItem('tbm-theme-v1') } catch { /* private mode */ }
+  return saved === 'dark' || (saved !== 'light' && !!window.matchMedia?.('(prefers-color-scheme: dark)').matches)
+})()
+function boardFollowsTheme(): boolean {
+  try { return localStorage.getItem(BOARD_FOLLOWS_THEME_KEY) !== 'off' } catch { return true }
+}
+/** The paper `scene` should be on for the theme, or null when it stays as it is. */
+function themePaperFor(scene: Scene): BoardPaper | null {
+  if (!boardFollowsTheme()) return null
+  const current = scene.paper ?? 'white'
+  if (current !== 'white' && current !== 'dark') return null
+  const wanted: BoardPaper = themeIsDark ? 'dark' : 'white'
+  return wanted === current ? null : wanted
+}
+/** Put a scene that is not on screen yet on the theme's paper, ink and all. */
+function followThemePaper(scene: Scene): Scene {
+  const paper = themePaperFor(scene)
+  if (paper) setScenePaper(scene, paper)
+  return scene
+}
+
 /** A blank board on the paper the one on screen is on, so a project stays one colour. */
 function blankSceneLike(pitchId: string | undefined): Scene {
   const scene = emptyScene(pitchId)
   if (store.scene.paper) scene.paper = store.scene.paper
-  return scene
+  return followThemePaper(scene)
 }
 
 const CATEGORY_SCENES_KEY = 'tbm-category-scenes-v1'
@@ -5614,7 +5645,7 @@ function loadBoardIntoEditor(scene: Scene) {
   selectProjectBackgroundResolver(currentProject(library))
   clearCollaborationPreview()
   swappingScene = true
-  store.loadScene(migrate(JSON.parse(JSON.stringify(scene))))
+  store.loadScene(followThemePaper(migrate(JSON.parse(JSON.stringify(scene)))))
   swappingScene = false
   renderBoardNote()
   syncPreviousBoard()
@@ -7552,6 +7583,11 @@ settingsEl.innerHTML = `
             <button data-set="theme-dark" aria-pressed="false">Dark</button>
           </span>
         </div>
+        <button class="setItem carryImportSwitch" data-set="board-follows-theme" role="switch" aria-checked="true">
+          ${icon('soccer-field')}
+          <span class="setItemLabel">Dark board in dark mode<span class="setItemNote">Boards on White switch to Dark when the theme is dark, and back. Other backgrounds stay as they are.</span></span>
+          <span class="mTrack t-toggle" data-on="true"><span class="mThumb t-toggle-thumb"></span></span>
+        </button>
       </div>
 
       <div class="setGroupHead">Editor</div>
@@ -9237,10 +9273,14 @@ saves.onOpenProposals = (target) => {
   settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
 }
 
+let themeApplied = false
 function setThemeResolved(dark: boolean, selected: 'system' | 'light' | 'dark') {
   // same attribute tacticsjournal.com uses, so the palettes stay in sync
   document.documentElement.setAttribute('data-theme-resolved', dark ? 'dark' : 'light')
   board.setDarkSurround(dark)
+  themeIsDark = dark
+  syncBoardToTheme(!themeApplied)
+  themeApplied = true
   for (const choice of ['system', 'light', 'dark'] as const) {
     const button = settingsEl.querySelector(`[data-set="theme-${choice}"]`)!
     button.classList.toggle('active', selected === choice)
@@ -9250,6 +9290,32 @@ function setThemeResolved(dark: boolean, selected: 'system' | 'light' | 'dark') 
   if (menuSelect) menuSelect.value = selected
   const accountSelect = document.querySelector<HTMLSelectElement>('#account-panel-theme-select')
   if (accountSelect) accountSelect.value = selected
+}
+/**
+ * Move the board on screen onto the theme's paper. A switch of theme is an
+ * undoable step, so a board you wanted to keep is one undo away; the first
+ * one at startup is not, so there is nothing to undo on a fresh page.
+ */
+function syncBoardToTheme(quiet = false) {
+  const paper = themePaperFor(store.scene)
+  if (paper) {
+    if (quiet) { setScenePaper(store.scene, paper); store.persist(); store.emit() }
+    else store.apply(s => setScenePaper(s, paper))
+    renderPitchSeg()
+  }
+  const toggle = settingsEl.querySelector<HTMLElement>('[data-set="board-follows-theme"]')
+  if (toggle) {
+    const on = boardFollowsTheme()
+    toggle.setAttribute('aria-checked', String(on))
+    toggle.querySelector<HTMLElement>('.mTrack')?.setAttribute('data-on', String(on))
+  }
+}
+function toggleBoardFollowsTheme() {
+  const on = !boardFollowsTheme()
+  try { localStorage.setItem(BOARD_FOLLOWS_THEME_KEY, on ? 'on' : 'off') } catch { /* private mode */ }
+  settingsEl.querySelector<HTMLElement>('[data-set="board-follows-theme"] .mTrack')?.classList.add('is-init')
+  syncBoardToTheme()
+  renderPaperSeg()
 }
 function prefersDark() { return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches }
 function applyThemeChoice(selected: 'system' | 'light' | 'dark') {
@@ -9609,7 +9675,9 @@ function renderPaperSeg() {
   const note = settingsEl.querySelector('[data-paper-note]') as HTMLElement
   note.textContent = own
     ? 'This board is on your own background, which keeps its own picture. The choice applies when it is on one of our pitches.'
-    : 'Saved with the board, so it exports and shares the way you see it. It does not follow the app theme.'
+    : boardFollowsTheme()
+      ? 'Saved with the board, so it exports and shares the way you see it. White and Dark follow the app theme; turn that off under Dark board in dark mode.'
+      : 'Saved with the board, so it exports and shares the way you see it. It does not follow the app theme.'
 }
 
 function choosePaper(paper: BoardPaper) {
@@ -9869,6 +9937,7 @@ settingsEl.addEventListener('click', (e) => {
   else if (k === 'theme-system') applyThemeChoice('system')
   else if (k === 'theme-light') applyTheme(false)
   else if (k === 'theme-dark') applyTheme(true)
+  else if (k === 'board-follows-theme') toggleBoardFollowsTheme()
   else if (k === 'pitch-undo') undoPitchChange()
   else if (k?.startsWith('paper-') && BOARD_PAPERS.some(p => `paper-${p.id}` === k)) choosePaper(k.slice(6) as BoardPaper)
   else if (k === 'styles-save') savePitchDefaults()
