@@ -1,3 +1,4 @@
+import { webOrigin } from './app-origin.ts'
 import { boardLiveUrl } from './board-api.ts'
 
 /**
@@ -67,7 +68,7 @@ export type LiveChannel = {
   readonly attempts: number
 }
 
-export function liveUrl(origin: string = typeof location === 'undefined' ? 'https://board.tacticsjournal.com' : location.origin): string {
+export function liveUrl(origin: string = webOrigin()): string {
   return new URL(boardLiveUrl(), origin).href.replace(/^http/, 'ws')
 }
 

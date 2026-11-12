@@ -1,3 +1,4 @@
+import { webOrigin } from './app-origin.ts'
 import { boardCollaborationUrl } from './board-api.ts'
 import { insertByTier, migrate, sanitizeObjects, type Scene, type SceneObj } from './types.ts'
 
@@ -85,7 +86,7 @@ export type CollaborationChannel = {
   readonly room: string | null
 }
 
-export function collaborationUrl(boardId: string, deviceId: string, origin: string = typeof location === 'undefined' ? 'https://board.tacticsjournal.com' : location.origin): string {
+export function collaborationUrl(boardId: string, deviceId: string, origin: string = webOrigin()): string {
   const url = new URL(boardCollaborationUrl(), origin)
   url.searchParams.set('board_id', boardId)
   url.searchParams.set('device', deviceId)

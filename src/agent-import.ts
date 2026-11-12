@@ -1,3 +1,4 @@
+import { webOrigin } from './app-origin.ts'
 import {
   documentScene, normalizeDocumentArrowLegends, tryNormalizeBoardDocument,
   type BoardDocument,
@@ -314,7 +315,7 @@ export async function postBoardToCommunity(
   document: BoardDocument,
   preview: string,
   caption: string,
-  origin = window.location.origin,
+  origin = webOrigin(),
   fetcher: typeof fetch = fetch,
   // The board copy this post already has, when the board is being sent again.
   // Given, the post is rewritten in place; absent, a post is created.
@@ -365,7 +366,7 @@ export function createBoardImportUrl(
   name: string,
   document: BoardDocument,
   preview: string,
-  origin = window.location.origin,
+  origin = webOrigin(),
   fetcher: typeof fetch = fetch,
 ): Promise<string> {
   return storeTemporaryCopy('board', name, document, preview, origin, fetcher)
@@ -375,7 +376,7 @@ export function createBoardImportUrl(
 export function createProjectImportUrl(
   name: string,
   document: BoardDocument,
-  origin = window.location.origin,
+  origin = webOrigin(),
   fetcher: typeof fetch = fetch,
 ): Promise<string> {
   return storeTemporaryCopy('project', name, document, null, origin, fetcher)
@@ -384,7 +385,7 @@ export function createProjectImportUrl(
 export async function createStoredProjectImportUrl(
   name: string,
   document: BoardDocument,
-  origin = window.location.origin,
+  origin = webOrigin(),
   fetcher: typeof fetch = fetch,
 ): Promise<string> {
   const stableDocument = JSON.parse(JSON.stringify(document)) as BoardDocument
