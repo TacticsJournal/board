@@ -1,3 +1,4 @@
+import './app-boot'
 import './styles.css'
 import './tj-panels.css'
 import { initTjHeader } from './tjheader'
@@ -49,6 +50,8 @@ import { TJ_ORIGIN, usingBillingSandbox } from './origin'
 import { boardAgentLinksUrl, boardInvitationUrl, boardPresenceUrl, boardSkillsUrl, ensureBoardSession, resetBoardSession, type AgentAccessMode } from './board-api'
 import { startCheckout, type CheckoutProduct } from './checkout'
 import { IS_NATIVE_APP, nativeShareFile } from './native'
+import { webOrigin } from './app-origin'
+import * as appAccount from './native-account'
 import * as entitlements from './entitlements'
 import {
   AssetQuotaError, ASSET_BUDGET_BYTES, ASSET_CATEGORIES, AssetCategory, UserAsset,
@@ -6170,7 +6173,7 @@ function makeCommunityPost(body: HTMLElement) {
         newProjectFromBoard(current, postName),
         boardLinkPreview(),
         caption.value,
-        window.location.origin,
+        webOrigin(),
         fetch,
         existing ? existing.shareId : null,
       )
@@ -7656,6 +7659,12 @@ settingsEl.innerHTML = `
           <span class="setItemValue" data-plan-name>Free</span>
           ${icon('chevron-right', 'ic setChev')}
         </button>
+        ${IS_NATIVE_APP ? `<button class="setItem" data-set="store-manage" data-store-manage-row hidden>
+          ${icon('credit-card')}
+          <span class="setItemLabel">Manage subscription</span>
+          <span class="setItemValue">App Store</span>
+          ${icon('chevron-right', 'ic setChev')}
+        </button>` : ''}
         <button class="setItem" data-goto="assets">
           ${icon('file-plus')}
           <span class="setItemLabel">My assets</span>
@@ -7806,12 +7815,13 @@ settingsEl.innerHTML = `
             <li>Use MCP and WebMCP account access</li>
           </ul>
           <div data-pro-card-cta></div>
-          <p class="proCardNote">Existing Hosted Board License holders keep their access and can upgrade to Pro.</p>
-          <p class="proCardNote">Full refund within 14 days of your first payment or of an automatic yearly renewal.</p>
+          ${IS_NATIVE_APP ? '' : `<p class="proCardNote">Existing Hosted Board License holders keep their access and can upgrade to Pro.</p>
+          <p class="proCardNote">Full refund within 14 days of your first payment or of an automatic yearly renewal.</p>`}
         </div>
 
       </div>
     </div>
+    ${IS_NATIVE_APP ? '<div class="setPane hidden" data-pane="signin"></div>' : ''}
     <div class="setPane hidden" data-pane="agents"></div>
     <div class="setPane hidden" data-pane="skills">
       <div class="skillsSection">
@@ -7996,7 +8006,7 @@ const boardProposals = new BoardProposalsPanel({
 settingsEl.querySelector('[data-proposals-host]')!.appendChild(boardProposals.el)
 
 /** Settings is one list plus push screens; every screen but root has a back arrow. */
-type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'history' | 'proposals' | 'tools' | 'pro' | 'agents' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets' | 'self-host'
+type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'history' | 'proposals' | 'tools' | 'pro' | 'signin' | 'agents' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets' | 'self-host'
 
 const SCREEN_TITLES: Record<SetScreen, string> = {
   root: 'Settings',
@@ -8008,6 +8018,7 @@ const SCREEN_TITLES: Record<SetScreen, string> = {
   tools: 'Tool settings',
   assets: 'My assets',
   pro: 'Plans',
+  signin: 'Account',
   agents: 'Claude and ChatGPT',
   skills: 'Skills',
   skill: 'Skill',
@@ -8647,6 +8658,8 @@ function showScreen(next: SetScreen) {
   if (next === 'official') renderOfficialDetail()
   if (next === 'skill') renderSkillDetail()
   if (next === 'feedback') prefillFeedback()
+  if (next === 'signin') renderAppSignIn()
+  if (next === 'pro' && IS_NATIVE_APP) void loadStorePrices()
 }
 
 let projectsSummaryTimer: number | null = null
@@ -8730,8 +8743,8 @@ function renderRootValues() {
     const backupId = selectedFreeBackup(localStorage, accountBinding)
     const backedUp = saves.projectDocuments().find(row => row.rowId === backupId)
     backupButton.disabled = entitlements.isPro()
-    backupLabel.textContent = entitlements.isPro() ? 'All projects sync with Pro' : 'Back up one project free'
-    backupValue.textContent = entitlements.isPro() ? 'Active' : backedUp ? backedUp.name : authenticated ? 'Choose current' : 'Sign in'
+    backupLabel.textContent = entitlements.isPro() ? IS_NATIVE_APP ? 'Cloud sync' : 'All projects sync with Pro' : 'Back up one project free'
+    backupValue.textContent = entitlements.isPro() ? IS_NATIVE_APP ? 'On' : 'Active' : backedUp ? backedUp.name : authenticated ? 'Choose current' : 'Sign in'
   }
   const toolsSummary = settingsEl.querySelector<HTMLElement>('[data-tools-summary]')
   if (toolsSummary) toolsSummary.textContent = `${visibleTopBar(topBar).length} of ${topBar.order.length}`
@@ -8945,6 +8958,8 @@ settingsEl.addEventListener('click', (e) => {
  */
 let accountEmail: string | null = null
 let accountName: string | null = null
+/** `app_store` when the account's Pro is an App Store subscription. */
+let accountProStore: string | null = null
 
 function renderAccountRow() {
   const label = settingsEl.querySelector('[data-account-label]') as HTMLElement | null
@@ -8952,6 +8967,14 @@ function renderAccountRow() {
   if (!label || !value) return
   const signout = settingsEl.querySelector('[data-account-signout]') as HTMLElement | null
   if (signout) signout.hidden = !accountEmail
+  const manage = settingsEl.querySelector<HTMLElement>('[data-store-manage-row]')
+  if (manage) manage.hidden = !(entitlements.isPro() && accountProStore === 'app_store')
+  if (IS_NATIVE_APP) {
+    // The app has no account panel to open, so the row is the account itself.
+    label.textContent = accountEmail || 'Sign in'
+    value.textContent = ''
+    return
+  }
   if (accountEmail) {
     label.textContent = 'Tactics Journal account'
     value.textContent = accountEmail
@@ -9303,6 +9326,221 @@ window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change',
  * product is not offered to new customers.
  */
 
+/* ----- the app's account and App Store -----
+ *
+ * The app signs in with Sign in with Apple, Google in the system sheet, or an
+ * email code, all in a pane of this sheet, and sells Pro as an App Store
+ * subscription. Tactics Journal checks each with Apple before it counts. See
+ * src/native-account.ts.
+ */
+
+type AppSignInStep =
+  | { kind: 'choose'; message?: string }
+  | { kind: 'code'; email: string; message?: string }
+  | { kind: 'busy'; label: string }
+
+let appSignInStep: AppSignInStep = { kind: 'choose' }
+let appSignInReturn: SetScreen = 'root'
+let storeBusy = false
+let storeNote = ''
+const storePrices = { monthly: '$14.99', yearly: '$155.99' }
+let storePricesLoaded = false
+
+const APPLE_MARK = '<svg viewBox="0 0 14 17" aria-hidden="true"><path fill="currentColor" d="M11.62 9.03c-.02-1.8 1.47-2.67 1.54-2.71-.84-1.23-2.15-1.4-2.61-1.42-1.11-.11-2.17.65-2.73.65-.57 0-1.43-.64-2.36-.62-1.21.02-2.33.71-2.95 1.79-1.26 2.19-.32 5.42.9 7.19.6.87 1.31 1.84 2.24 1.81.9-.04 1.24-.58 2.33-.58 1.09 0 1.39.58 2.34.56.97-.02 1.58-.88 2.17-1.75.69-1 .97-1.98.98-2.03-.02-.01-1.88-.72-1.9-2.86ZM9.84 3.73c.49-.6.83-1.43.74-2.26-.71.03-1.58.48-2.09 1.07-.46.53-.86 1.38-.75 2.19.79.06 1.6-.4 2.1-1Z"/></svg>'
+const GOOGLE_MARK = '<svg viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.33-1.58-5.04-3.71H.94v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.96 10.71A5.41 5.41 0 0 1 3.68 9c0-.59.1-1.16.28-1.71V4.96H.94A9 9 0 0 0 0 9c0 1.45.34 2.82.94 4.04l3.02-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .94 4.96l3.02 2.33C4.67 5.16 6.66 3.58 9 3.58z"/></svg>'
+const TERMS_URL = 'https://tacticsjournal.com/terms/'
+const PRIVACY_URL = 'https://tacticsjournal.com/privacy/'
+
+function renderAppSignIn(): void {
+  const pane = settingsEl.querySelector<HTMLElement>('[data-pane="signin"]')
+  if (!pane) return
+  const step = appSignInStep
+  const message = 'message' in step && step.message ? `<p class="acctError" role="alert">${esc(step.message)}</p>` : ''
+  const legal = `<p class="acctLegal">By continuing, you agree to the <a href="${PRIVACY_URL}" target="_blank" rel="noopener">Privacy Policy</a> and <a href="${TERMS_URL}" target="_blank" rel="noopener">Terms of Service</a>.</p>`
+  if (step.kind === 'busy') {
+    pane.innerHTML = `<div class="acctSignIn"><h2>Sign in</h2><p class="acctSub">${esc(step.label)}</p></div>`
+    return
+  }
+  if (step.kind === 'code') {
+    pane.innerHTML = `<div class="acctSignIn">
+      <h2>Check your email</h2>
+      <p class="acctSub">Enter the 6-digit code sent to ${esc(step.email)}.</p>
+      ${message}
+      <form class="acctEmail" data-acct-code>
+        <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" aria-label="Code" data-acct-code-input required>
+        <button type="submit">Sign in</button>
+      </form>
+      <button type="button" class="acctLink" data-acct="restart">Use a different email</button>
+    </div>`
+    pane.querySelector<HTMLInputElement>('[data-acct-code-input]')?.focus()
+    return
+  }
+  pane.innerHTML = `<div class="acctSignIn">
+    <h2>Sign in</h2>
+    <p class="acctSub">Use your Tactics Journal account to back up projects and unlock Pro on every device.</p>
+    ${message}
+    <button type="button" class="acctBtn acctApple" data-acct="apple">${APPLE_MARK} Sign in with Apple</button>
+    <button type="button" class="acctBtn acctGoogle" data-acct="google">${GOOGLE_MARK} Continue with Google</button>
+    <div class="acctOr">or</div>
+    <form class="acctEmail" data-acct-email>
+      <input type="email" autocomplete="email" placeholder="Email address" aria-label="Email address" data-acct-email-input required>
+      <button type="submit">Send code</button>
+    </form>
+    ${legal}
+    <div class="acctWhy"><b>Without an account</b> everything still works. Projects stay on this device, and you can move them with one file.</div>
+  </div>`
+}
+
+async function finishAppSignIn(): Promise<void> {
+  await tjHeader?.refreshSession()
+  void reportStorePurchases()
+  appSignInStep = { kind: 'choose' }
+  showToast('Signed in.')
+  if (screen === 'signin') showScreen(appSignInReturn)
+}
+
+async function runAppSignIn(label: string, attempt: () => Promise<void>, back: AppSignInStep = { kind: 'choose' }): Promise<void> {
+  appSignInStep = { kind: 'busy', label }
+  renderAppSignIn()
+  try {
+    await attempt()
+    await finishAppSignIn()
+  } catch (error) {
+    const message = appAccount.isCancel(error) ? undefined
+      : error instanceof appAccount.AccountError ? error.message : 'Sign-in did not finish. Try again.'
+    appSignInStep = { ...back, message } as AppSignInStep
+    renderAppSignIn()
+  }
+}
+
+if (IS_NATIVE_APP) {
+  settingsEl.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement
+    const acct = target.closest<HTMLElement>('[data-acct]')?.dataset.acct
+    if (acct === 'apple') void runAppSignIn('Waiting for Apple...', appAccount.signInWithApple)
+    else if (acct === 'google') void runAppSignIn('Waiting for Google...', appAccount.signInWithGoogle)
+    else if (acct === 'restart') { appSignInStep = { kind: 'choose' }; renderAppSignIn() }
+    const store = target.closest<HTMLElement>('[data-store]')?.dataset.store
+    if (store === 'buy') void buyFromStore()
+    else if (store === 'restore') void restoreFromStore()
+    else if (store === 'manage') void manageStoreSubscription()
+  })
+  settingsEl.addEventListener('submit', (e) => {
+    const form = e.target as HTMLFormElement
+    if (form.matches('[data-acct-email]')) {
+      e.preventDefault()
+      const email = (form.querySelector<HTMLInputElement>('[data-acct-email-input]')?.value || '').trim()
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        appSignInStep = { kind: 'choose', message: 'Enter your email address.' }
+        renderAppSignIn()
+        return
+      }
+      appSignInStep = { kind: 'busy', label: 'Sending a code...' }
+      renderAppSignIn()
+      appAccount.sendEmailCode(email).then(() => {
+        appSignInStep = { kind: 'code', email }
+      }, (error) => {
+        appSignInStep = { kind: 'choose', message: error instanceof appAccount.AccountError ? error.message : 'The code could not be sent. Try again.' }
+      }).finally(renderAppSignIn)
+    } else if (form.matches('[data-acct-code]')) {
+      e.preventDefault()
+      if (appSignInStep.kind !== 'code') return
+      const email = appSignInStep.email
+      const code = (form.querySelector<HTMLInputElement>('[data-acct-code-input]')?.value || '').replace(/\D/g, '')
+      void runAppSignIn('Signing in...', () => appAccount.verifyEmailCode(email, code), { kind: 'code', email })
+    }
+  })
+  // A renewal, or a purchase approved later, reaches the account on its own.
+  appAccount.onStoreTransaction((transactionId) => {
+    void appAccount.reportTransaction(transactionId).then(() => tjHeader?.refreshSession())
+  })
+}
+
+/** Purchases this Apple Account already holds, reported once per sign-in. */
+async function reportStorePurchases(): Promise<void> {
+  if (!IS_NATIVE_APP || !authenticated) return
+  await appAccount.reportCurrentEntitlements()
+  await tjHeader?.refreshSession()
+}
+
+async function loadStorePrices(): Promise<void> {
+  if (storePricesLoaded) return
+  storePricesLoaded = true
+  try {
+    for (const product of await appAccount.loadProducts()) {
+      if (product.id === appAccount.PRO_PRODUCTS.yearly) storePrices.yearly = product.displayPrice
+      if (product.id === appAccount.PRO_PRODUCTS.monthly) storePrices.monthly = product.displayPrice
+    }
+    renderProBilling()
+  } catch { storePricesLoaded = false }
+}
+
+function appLicenseNote(): string {
+  if (entitlements.isPro()) return '<p class="proHeroNote">Pro is active.</p>'
+  if (entitlements.hasBoardLicense()) return '<p class="proHeroNote">Your grandfathered Hosted Board License is active.</p>'
+  return '<p class="proHeroNote">Pro belongs to your Tactics Journal account, so it works here and on the web.</p>'
+}
+
+function appProCta(): string {
+  const note = storeNote ? `<p class="proHeroNote" role="status">${esc(storeNote)}</p>` : ''
+  if (entitlements.isPro()) {
+    return accountProStore === 'app_store'
+      ? `<p class="proHeroNote">Pro is active.</p><button type="button" class="acctRestore" data-store="manage">Manage subscription</button>`
+      : '<p class="proHeroNote">Pro is active. This subscription is managed on the Tactics Journal website.</p>'
+  }
+  const yearly = proBillingPeriod === 'yearly'
+  const price = yearly ? `${storePrices.yearly} a year` : `${storePrices.monthly} a month`
+  const action = authenticated
+    ? `<button type="button" class="proBuyBtn" data-store="buy"${storeBusy ? ' disabled' : ''}>${storeBusy ? 'Opening the App Store...' : `Subscribe for ${esc(price)}`}</button>`
+    : '<button type="button" class="proBuyBtn" data-set="signin">Sign in to subscribe</button>'
+  return `${action}
+    <button type="button" class="acctRestore" data-store="restore"${storeBusy ? ' disabled' : ''}>Restore purchases</button>
+    ${note}
+    <p class="acctFine">Payment is charged to your Apple Account. Pro renews automatically unless you cancel at least 24 hours before the end of the current period. Manage or cancel in Settings › Apple Account › Subscriptions.</p>
+    <p class="acctLinks"><a href="${TERMS_URL}" target="_blank" rel="noopener">Terms of Use</a><a href="${PRIVACY_URL}" target="_blank" rel="noopener">Privacy Policy</a></p>`
+}
+
+async function storeAction(run: () => Promise<string>): Promise<void> {
+  if (storeBusy) return
+  storeBusy = true
+  storeNote = ''
+  renderProCta()
+  try {
+    storeNote = await run()
+  } catch (error) {
+    storeNote = appAccount.isCancel(error) ? ''
+      : error instanceof appAccount.AccountError ? error.message : 'The App Store is unavailable right now. Try again.'
+  } finally {
+    storeBusy = false
+    renderLicenseCta()
+    renderProCta()
+  }
+}
+
+function buyFromStore(): Promise<void> {
+  if (!authenticated) { openSignIn(); return Promise.resolve() }
+  const product = proBillingPeriod === 'yearly' ? appAccount.PRO_PRODUCTS.yearly : appAccount.PRO_PRODUCTS.monthly
+  return storeAction(async () => {
+    if (!await appAccount.purchasePro(product)) return ''
+    await tjHeader?.refreshSession()
+    showToast('Pro is active.')
+    return ''
+  })
+}
+
+function restoreFromStore(): Promise<void> {
+  if (!authenticated) { openSignIn(); return Promise.resolve() }
+  return storeAction(async () => {
+    const restored = await appAccount.restorePurchases()
+    await tjHeader?.refreshSession()
+    return restored ? (entitlements.isPro() ? 'Pro is restored.' : 'Your purchase was found, but it has ended.') : 'No Pro purchase was found for this Apple Account.'
+  })
+}
+
+async function manageStoreSubscription(): Promise<void> {
+  try { await appAccount.manageSubscription() } catch { showToast('Subscriptions could not be opened. Open Settings › Apple Account › Subscriptions.') }
+}
+
 const LICENSE_MANAGE_URL = `${TJ_ORIGIN}/settings/`
 
 /**
@@ -9333,6 +9571,7 @@ function manageLink(): string {
 function renderLicenseCta() {
   const area = settingsEl.querySelector('[data-lic-area]') as HTMLElement | null
   if (!area) return
+  if (IS_NATIVE_APP) { area.innerHTML = appLicenseNote(); return }
 
   if (entitlements.isPro()) {
     area.innerHTML = `<p class="proHeroNote">Pro is active.</p>${manageLink()}`
@@ -9360,6 +9599,7 @@ let proBillingPeriod: 'yearly' | 'monthly' = 'yearly'
 function renderProCta() {
   const cta = settingsEl.querySelector('[data-pro-card-cta]') as HTMLElement | null
   if (!cta) return
+  if (IS_NATIVE_APP) { cta.innerHTML = appProCta(); return }
   if (entitlements.isPro()) {
     cta.innerHTML = `
       <p class="proHeroNote">Pro is active.</p>
@@ -9381,9 +9621,19 @@ function renderProBilling() {
   const amount = settingsEl.querySelector('[data-pro-amount]')
   const billed = settingsEl.querySelector('[data-pro-billed]')
   const save = settingsEl.querySelector('[data-pro-save]') as HTMLElement | null
-  if (amount) amount.textContent = yearly ? '$12.99' : '$14.99'
-  if (billed) billed.textContent = yearly ? 'Billed yearly at $155.88' : 'Cancel anytime'
-  if (save) save.hidden = !yearly
+  if (IS_NATIVE_APP) {
+    // App Store prices are whole yearly and monthly amounts, in the person's
+    // own currency once StoreKit has answered.
+    const per = settingsEl.querySelector('[data-pro-amount] + .proCardPer')
+    if (amount) amount.textContent = yearly ? storePrices.yearly : storePrices.monthly
+    if (per) per.textContent = yearly ? '/year' : '/month'
+    if (billed) billed.textContent = yearly ? 'Billed once a year' : 'Billed monthly'
+    if (save) { save.hidden = !yearly; save.textContent = 'Save 13% versus monthly' }
+  } else {
+    if (amount) amount.textContent = yearly ? '$12.99' : '$14.99'
+    if (billed) billed.textContent = yearly ? 'Billed yearly at $155.88' : 'Cancel anytime'
+    if (save) save.hidden = !yearly
+  }
   for (const button of settingsEl.querySelectorAll('[data-period]')) {
     button.setAttribute('aria-pressed', String(button.getAttribute('data-period') === proBillingPeriod))
   }
@@ -9412,6 +9662,14 @@ async function signOutFromSettings(): Promise<void> {
 
 /** Opens the site account panel in the board header, closing settings first. */
 function openSignIn() {
+  if (IS_NATIVE_APP) {
+    if (accountEmail) return
+    appSignInReturn = screen === 'pro' ? 'pro' : 'root'
+    appSignInStep = { kind: 'choose' }
+    if (settingsEl.classList.contains('hidden')) openSettings('signin')
+    else showScreen('signin')
+    return
+  }
   closeSettings()
   // Not a synthetic click on the header icon: that icon is an anchor to the
   // site's account page, and a click on it at desktop width used to navigate
@@ -9905,6 +10163,7 @@ settingsEl.addEventListener('click', (e) => {
   else if (k === 'free-backup') void requestFreeBackup('settings')
   else if (k === 'signin') openSignIn()
   else if (k === 'signout') void signOutFromSettings()
+  else if (k === 'store-manage') void manageStoreSubscription()
 })
 
 settingsEl.addEventListener('submit', (e) => {
@@ -10311,6 +10570,8 @@ window.addEventListener('tacticsjournal:auth-changed', ((event: CustomEvent) => 
   const serverBoardAdmin = Boolean(data && data.authenticated === true && data.board_admin === true)
   accountEmail = data && data.authenticated === true && typeof data.email === 'string' ? data.email : null
   accountName = data && data.authenticated === true && typeof data.name === 'string' && data.name.trim() !== '' ? data.name : null
+  accountProStore = data && data.authenticated === true && data.pro_store === 'app_store' ? 'app_store' : null
+  if (IS_NATIVE_APP && authenticated && accountChanged) void reportStorePurchases()
   renderAccountRow()
   // fills blanks only, so a session landing later never clobbers an edit
   prefillFeedback()

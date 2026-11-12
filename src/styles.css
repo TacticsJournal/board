@@ -5355,6 +5355,51 @@ html[data-theme-resolved="dark"] .editorPlay { background: #000; }
 .transNote { margin: 0 4px; font-size: 12px; color: var(--ink-soft); line-height: 1.4; }
 
 
+/* ---------- the iOS app's sign-in and App Store controls ----------
+   Only the app renders these (src/main.ts, IS_NATIVE_APP). The sheet paints
+   every button with its card colour, so the coloured buttons name the sheet
+   to outrank it. */
+.acctSignIn { padding: 6px 2px 24px; }
+.acctSignIn h2 { margin: 6px 4px; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
+.acctSub { margin: 0 4px 22px; color: var(--ink-soft); font-size: 15px; line-height: 1.4; }
+.acctError { margin: -10px 4px 16px; color: var(--danger, #c0392b); font-size: 14px; line-height: 1.4; }
+.sheet .acctBtn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; height: 50px; margin: 0 0 10px; border-radius: 12px;
+  font-size: 17px; font-weight: 600;
+}
+.acctBtn svg { width: 18px; height: 18px; }
+.sheet .acctApple { background: #000; color: #fff; border: 0; }
+.acctApple svg { width: 15px; margin-top: -2px; }
+[data-theme-resolved="dark"] .sheet .acctApple { background: #fff; color: #000; }
+.sheet .acctGoogle { background: var(--card, #fff); color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+.acctOr { display: flex; align-items: center; gap: 10px; margin: 14px 4px; color: var(--ink-soft); font-size: 13px; }
+.acctOr::before, .acctOr::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.acctEmail { display: flex; gap: 8px; }
+.acctEmail input {
+  flex: 1; min-width: 0; height: 48px; padding: 0 14px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--card, #fff); color: var(--ink); font-size: 16px;
+}
+.sheet .acctEmail button {
+  height: 48px; padding: 0 16px; border-radius: 12px; border: 0;
+  background: var(--ink); color: var(--panel, #fff); font-size: 15px; font-weight: 600;
+}
+.sheet .acctLink { display: block; margin: 14px auto 0; background: none; border: 0; color: var(--action); font-size: 15px; }
+.acctLegal { margin: 16px 4px 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-soft); }
+.acctLegal a, .acctLinks a { color: inherit; text-decoration: underline; }
+.acctWhy {
+  margin: 22px 4px 0; padding: 14px; border-radius: 12px;
+  background: var(--card, #fff); border: 1px solid var(--line);
+  font-size: 13.5px; line-height: 1.45; color: var(--ink-soft);
+}
+.acctWhy b { color: var(--ink); font-weight: 600; }
+.sheet .acctRestore {
+  display: block; width: 100%; height: 36px; margin: 10px 0 0;
+  background: none; border: 0; color: var(--action); font-size: 15px; font-weight: 500;
+}
+.acctFine { margin: 10px 0 0; font-size: 12px; line-height: 1.45; color: var(--ink-soft); }
+.acctLinks { display: flex; gap: 14px; margin: 8px 0 0; font-size: 12px; color: var(--ink-soft); }
+
 /* ---------- wide window: rail, panel, context bar ----------
    A phone stacks board, panel and rooms down the screen. A wide window has
    width to spare and no height, so the same three stand beside the board: a
