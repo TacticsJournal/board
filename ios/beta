@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Builds Board for iPhone and iPad from origin/main and uploads it to
+# TestFlight for internal testers. ./beta upload:false only builds it.
+set -euo pipefail
+cd "$(dirname "$0")"
+export FASTLANE_OPT_OUT_USAGE=YES FASTLANE_SKIP_UPDATE_CHECK=1 FASTLANE_HIDE_CHANGELOG=1
+[[ -d vendor/bundle ]] || bundle install --quiet
+exec bundle exec fastlane ios beta "$@"

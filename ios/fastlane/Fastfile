@@ -1,0 +1,128 @@
+require "tmpdir"
+
+default_platform(:ios)
+
+# board-upload only accepts builds from here.
+BUILDS_DIR = File.expand_path("~/board-builds")
+
+# Divernote's keychain: it holds only the team's Apple Distribution identity, so
+# a build over SSH never needs the login keychain unlocked.
+SIGNING_KEYCHAIN = File.expand_path("~/Library/Keychains/divernote-signing.keychain-db")
+
+TEAM_ID = "45XN58SH64"
+BUNDLE_ID = "com.tacticsjournal.board"
+# Made on developer.apple.com and installed by double-clicking it (see
+# docs/ios.md): automatic signing needs an Apple account in Xcode, and this Mac
+# has none.
+PROFILE = "Board"
+ENTITLEMENTS = "ios/App/App/App.entitlements"
+
+platform :ios do
+  desc "Build Board from origin/main and upload it to TestFlight. upload:false only builds it."
+  lane :beta do |options|
+    upload = options[:upload] != false
+    unless File.exist?(SIGNING_KEYCHAIN)
+      UI.user_error!("#{SIGNING_KEYCHAIN} is missing; see Divernote's ios/README.md")
+    end
+
+    # Build exactly what is on GitHub, whatever the local checkout looks like.
+    repo = sh("git", "rev-parse", "--show-toplevel", log: false).strip
+    sh("git", "-C", repo, "fetch", "origin", "main")
+    commit = sh("git", "-C", repo, "rev-parse", "origin/main", log: false).strip
+
+    # main's commit count only grows, so it is normally a new build number and
+    # traces back to the commit. If App Store Connect already has it, the export
+    # raises it past the latest upload. BUILD_NUMBER overrides it.
+    build = ENV["BUILD_NUMBER"] || sh("git", "-C", repo, "rev-list", "--count", commit, log: false).strip
+
+    FileUtils.mkdir_p(BUILDS_DIR)
+    output_dir = upload ? BUILDS_DIR : Dir.mktmpdir("board-beta-ipa")
+    worktree = Dir.mktmpdir("board-beta")
+    sh("git", "-C", repo, "worktree", "add", "--detach", worktree, commit)
+    entitlements = File.join(worktree, ENTITLEMENTS)
+    signs_in_with_apple = File.exist?(entitlements) && File.read(entitlements).include?("com.apple.developer.applesignin")
+    begin
+      # The app runs the web bundle copied in at sync time, so build it from
+      # this commit's lockfile and copy it into the Xcode project.
+      Dir.chdir(worktree) do
+        sh("npm", "ci", "--no-audit", "--no-fund")
+        sh("npx", "vite", "build")
+        sh("npx", "cap", "sync", "ios")
+      end
+
+      # security prompts on the terminal, so the password never passes through
+      # fastlane. The keychain is locked again below, whatever happens.
+      system("security", "unlock-keychain", SIGNING_KEYCHAIN) or
+        UI.user_error!("Could not unlock #{SIGNING_KEYCHAIN}")
+
+      # Archived unsigned and signed on export, which needs a distribution
+      # profile only, not a registered device.
+      project = File.join(worktree, "ios/App/App.xcodeproj")
+      archive = File.join(worktree, "build/Board.xcarchive")
+      build_app(
+        project: project,
+        scheme: "App",
+        skip_package_ipa: true,
+        skip_profile_detection: true,
+        xcargs: "CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CURRENT_PROJECT_VERSION=#{build}",
+        derived_data_path: File.join(worktree, "build/dd"),
+        archive_path: archive
+      )
+      # Export signs with the entitlements the archived app carries, and an
+      # unsigned app carries none: without this, Sign in with Apple is dropped
+      # and fails on the phone. An ad-hoc signature holds them, as in
+      # Divernote's ios/full.
+      if File.exist?(entitlements)
+        sh("codesign", "--force", "--sign", "-", "--generate-entitlement-der",
+           "--entitlements", entitlements,
+           File.join(archive, "Products/Applications/App.app"))
+      end
+      ipa = build_app(
+        project: project,
+        scheme: "App",
+        skip_build_archive: true,
+        archive_path: archive,
+        export_method: "app-store",
+        export_options: {
+          signingStyle: "manual",
+          teamID: TEAM_ID,
+          signingCertificate: "Apple Distribution",
+          provisioningProfiles: { BUNDLE_ID => PROFILE },
+          manageAppVersionAndBuildNumber: true
+        },
+        skip_profile_detection: true,
+        output_directory: output_dir,
+        output_name: "Board-#{build}"
+      )
+    ensure
+      system("security", "lock-keychain", SIGNING_KEYCHAIN)
+      sh("git", "-C", repo, "worktree", "remove", "--force", worktree)
+    end
+
+    # A build without the entitlement installs and runs, and Sign in with
+    # Apple fails on every phone; refuse to upload it.
+    if signs_in_with_apple
+      signed = Dir.mktmpdir("board-beta-check") do |dir|
+        sh("unzip", "-q", ipa, "-d", dir, log: false)
+        sh("codesign", "-d", "--entitlements", "-", "--xml", Dir[File.join(dir, "Payload/*.app")].first, log: false)
+      end
+      unless signed.include?("com.apple.developer.applesignin")
+        UI.user_error!("#{ipa} is not signed for Sign in with Apple. Turn it on for the App ID #{BUNDLE_ID}, then make the #{PROFILE} profile again.")
+      end
+    end
+
+    # Name the build by the number it actually carries.
+    build = get_ipa_info_plist_value(ipa: ipa, key: "CFBundleVersion")
+    renamed = File.join(File.dirname(ipa), "Board-#{build}.ipa")
+    File.rename(ipa, renamed) unless renamed == ipa
+    ipa = renamed
+
+    if upload
+      # The App Store Connect key stays root-only; the broker uploads with it.
+      sh("board-upload", ipa)
+      UI.success("Board build #{build} (#{commit[0, 7]}) uploaded to TestFlight")
+    else
+      UI.success("Board build #{build} (#{commit[0, 7]}) built at #{ipa}")
+    end
+  end
+end
