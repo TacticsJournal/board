@@ -31,9 +31,9 @@ type TjHeaderOptions = {
   onChangelogClose?: () => void
 }
 
-export function initTjHeader(options: TjHeaderOptions = {}): { closeMenu: () => void; closeInline: () => void; openAccount: () => void; openChangelog: () => void; signOut: () => Promise<void> } {
+export function initTjHeader(options: TjHeaderOptions = {}): { closeMenu: () => void; closeInline: () => void; openAccount: () => void; openChangelog: () => void; signOut: () => Promise<void>; refreshSession: () => Promise<unknown> } {
   const header = document.querySelector<HTMLElement>('.site-header')
-  if (!header) return { closeMenu: () => {}, closeInline: () => {}, openAccount: () => {}, openChangelog: () => {}, signOut: async () => {} }
+  if (!header) return { closeMenu: () => {}, closeInline: () => {}, openAccount: () => {}, openChangelog: () => {}, signOut: async () => {}, refreshSession: async () => null }
   const actions = header.querySelector<HTMLElement>('.site-actions')!
   const toggles = header.querySelectorAll<HTMLElement>('[data-inline-toggle]')
   const searchPanel = header.querySelector<HTMLElement>('#site-search-panel')
@@ -712,5 +712,8 @@ export function initTjHeader(options: TjHeaderOptions = {}): { closeMenu: () => 
     announceSession()
   }
 
-  return { closeMenu, closeInline, openAccount, openChangelog, signOut }
+  // The app signs in natively; this is how it says a session now exists.
+  const refreshSession = () => refreshAccountSession()
+
+  return { closeMenu, closeInline, openAccount, openChangelog, signOut, refreshSession }
 }
