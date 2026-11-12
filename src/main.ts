@@ -1344,14 +1344,17 @@ function arrowPreview(dash: ArrowObj['dash'], head: boolean, color: string, widt
 }
 
 /**
- * A broadcast board turns the new-arrow default white so it reads over video.
- * The deck is pale in both themes, so showing that white would put every arrow
- * choice on a dark plate; the deck is a shape picker, so it draws the dash,
- * head and the pitch's own line weight in the shelf's own ink instead. The
- * arrow you then drag onto the board is still white.
+ * The shelf draws arrows in the panel's own ink, not on a plate of their own:
+ * on the pale light-theme panel the app's white arrow ink shows as near-black,
+ * and on the dark-theme panel its near-black ink shows as white, the way the
+ * board draws it on Dark. A colour you picked is drawn as it is. The arrow you
+ * drag onto the board is still in its own colour.
  */
-const shelfArrowColor = () =>
-  (liveArrows() || sceneIsDark(store.scene)) && defaults.arrow.color === '#ffffff' ? '#111111' : defaults.arrow.color
+const shelfInk = (color: string, darkInk: string) =>
+  themeIsDark
+    ? (color === darkInk ? '#ffffff' : color)
+    : (color === '#ffffff' ? darkInk : color)
+const shelfArrowColor = () => shelfInk(defaults.arrow.color, '#111111')
 
 const img = (src: string, w: number, h: number) =>
   `<img src="${src}" width="${w}" height="${h}" alt="" draggable="false">`
@@ -1396,7 +1399,7 @@ const shelfArt = {
   arrow: (dash: ArrowObj['dash'], head: boolean) =>
     `<img class="cellWide" src="${arrowPreview(dash, head, shelfArrowColor(), defaults.arrow.width, false, liveArrows())}" alt="" draggable="false">`,
   measure: () =>
-    `<img class="cellWide" src="${arrowPreview('solid', false, defaults.measure.color, defaults.measure.width, true)}" alt="" draggable="false">`,
+    `<img class="cellWide" src="${arrowPreview('solid', false, shelfInk(defaults.measure.color, '#111827'), defaults.measure.width, true)}" alt="" draggable="false">`,
   box: (fill: string, opacity: number) =>
     `<svg viewBox="0 0 34 34"><rect x="4" y="10" width="26" height="15" rx="1" fill="${fill}" opacity="${opacity}"/></svg>`,
   /* The shelf draws what it places, and what it places is a circle. */
@@ -9280,6 +9283,8 @@ function setThemeResolved(dark: boolean, selected: 'system' | 'light' | 'dark') 
   board.setDarkSurround(dark)
   themeIsDark = dark
   syncBoardToTheme(!themeApplied)
+  // the shelf's arrows are drawn in the panel's ink, so a theme change redraws them
+  if (themeApplied) renderPanel()
   themeApplied = true
   for (const choice of ['system', 'light', 'dark'] as const) {
     const button = settingsEl.querySelector(`[data-set="theme-${choice}"]`)!

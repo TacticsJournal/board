@@ -115,10 +115,11 @@ test('the shelf, the canvas and the exported SVG share one head scale', () => {
   assert.doesNotMatch(saves, /\(width \/ mediumWidth\) \* 14 \* k/)
 })
 
-test('the broadcast deck shows arrows in shelf ink, but draws them white', () => {
-  // the deck preview swaps the pitch's white for the shelf's own ink, so no
-  // arrow choice arrives on a dark plate
-  assert.match(main, /const shelfArrowColor = \(\) =>\n  \(liveArrows\(\) \|\| sceneIsDark\(store\.scene\)\) && defaults\.arrow\.color === '#ffffff' \? '#111111' : defaults\.arrow\.color/)
+test('the deck shows arrows in the panel ink, but draws them in their own', () => {
+  // the light panel swaps white for near-black, the dark panel near-black for
+  // white, so no arrow choice needs a plate of its own
+  assert.match(main, /themeIsDark\n    \? \(color === darkInk \? '#ffffff' : color\)\n    : \(color === '#ffffff' \? darkInk : color\)/)
+  assert.match(main, /const shelfArrowColor = \(\) => shelfInk\(defaults\.arrow\.color, '#111111'\)/)
   // the arrow that is actually placed still defaults to white on a broadcast
   assert.match(main, /if \(lightInk && defaults\.arrow\.color === '#111111'\) defaults\.arrow\.color = '#ffffff'/)
   // and the preview still draws on the scene's ladder, head scale included
