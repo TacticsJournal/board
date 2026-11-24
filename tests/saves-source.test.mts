@@ -276,7 +276,7 @@ test('user-facing plan copy names Free and Pro exactly', () => {
   assert.doesNotMatch(main, /buyButton\('Get Hosted Board License'|licenseCheckoutOpen/)
   assert.match(main, /grandfathered Hosted Board License/)
   assert.match(main, /LICENSE_MANAGE_URL = `\$\{TJ_ORIGIN\}\/settings\/`/)
-  assert.match(main, /PRO_CHECKOUT_OPEN\s*=\s*true/)
+  assert.match(main, /PRO_CHECKOUT_OPEN\s*=\s*false/)
   assert.match(main, /data-period="yearly" aria-pressed="true"/)
   assert.match(main, /data-period="monthly" aria-pressed="false"/)
   assert.match(main, /proCardName\">Pro<\/span>/)

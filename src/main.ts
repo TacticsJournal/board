@@ -7662,7 +7662,7 @@ settingsEl.innerHTML = `
           ${icon('logout')}
           <span class="setItemLabel">Sign out</span>
         </button>
-        <button class="setItem" data-goto="pro">
+        <button class="setItem" data-goto="pro" data-plan-row>
           ${icon('license')}
           <span class="setItemLabel">Plans</span>
           <span class="setItemValue" data-plan-name>Free</span>
@@ -7783,11 +7783,11 @@ settingsEl.innerHTML = `
     <div class="setPane hidden" data-pane="pro">
       <div class="proHero">
         <h2 class="proTagline">Think it. Draw it. Share it.</h2>
-        <p class="proLede">Every local editing and export feature is free. Pro adds automatic cloud sync, version history, collaboration, sharing controls, and agent access.</p>
+        <p class="proLede" data-pro-sale>Every local editing and export feature is free. Pro adds automatic cloud sync, version history, collaboration, sharing controls, and agent access.</p>
         <div class="proHeroCta" data-lic-area></div>
       </div>
-      <h3 class="proChoose">Choose how you work</h3>
-      <div class="proTiers">
+      <h3 class="proChoose" data-pro-sale>Choose how you work</h3>
+      <div class="proTiers" data-pro-sale>
         <div class="proCard">
           <div class="proCardHead"><span class="proCardName">Free</span><span class="proCardPrice">Always</span></div>
           <ul>
@@ -8770,6 +8770,10 @@ function renderAgentSettings() {
   const pane = settingsEl.querySelector<HTMLElement>('[data-pane="agents"]')
   if (!pane) return
   if (!entitlements.isPro()) {
+    if (!proPlansVisible()) {
+      pane.innerHTML = `<p class="setNote">Connecting Claude or ChatGPT is not available right now.</p>`
+      return
+    }
     pane.innerHTML = `
       <p class="setNote">Connecting Claude or ChatGPT comes with Pro. An agent can read and draw on the boards you choose.</p>
       <div class="setGroup">
@@ -9248,7 +9252,7 @@ function openDeepLinkedPanel() {
   const target = (params.get('pro') || params.get('panel') || params.get('tab') || window.location.hash.slice(1)).toLowerCase()
   // 'waitlist' is kept as an alias so links printed before the licence went
   // on sale still land on the same panel.
-  if (target === 'waitlist' || target === 'pro') openSettings('pro')
+  if (target === 'waitlist' || target === 'pro') { if (proPlansVisible()) openSettings('pro') }
   else if (target === 'feedback') openSettings('feedback')
 }
 
@@ -9350,10 +9354,17 @@ window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change',
 const LICENSE_MANAGE_URL = `${TJ_ORIGIN}/settings/`
 
 /**
- * Pro is live. Preview and development builds keep its purchase surface
- * available for review. Opening the sale also requires server configuration.
+ * Pro is not on sale on the website. Existing subscribers and License holders
+ * keep their access and management link; everyone else sees no plans or
+ * prices. Preview and development builds keep the purchase surface available
+ * for review. Opening the sale again also requires server configuration.
  */
-const PRO_CHECKOUT_OPEN = true
+const PRO_CHECKOUT_OPEN = false
+
+/** Pro surfaces show only while the sale is open or to someone who already holds a plan. */
+function proPlansVisible(): boolean {
+  return proCheckoutOpen() || entitlements.isPro() || entitlements.hasBoardLicense()
+}
 
 function proCheckoutOpen(): boolean {
   // The App Store takes payment in the app. Polar checkout never opens there;
@@ -9377,6 +9388,10 @@ function manageLink(): string {
 function renderLicenseCta() {
   const area = settingsEl.querySelector('[data-lic-area]') as HTMLElement | null
   if (!area) return
+  const onSale = proCheckoutOpen()
+  for (const el of settingsEl.querySelectorAll<HTMLElement>('[data-pro-sale]')) el.hidden = !onSale
+  const planRow = settingsEl.querySelector<HTMLElement>('[data-plan-row]')
+  if (planRow) planRow.hidden = !proPlansVisible()
 
   if (entitlements.isPro()) {
     area.innerHTML = `<p class="proHeroNote">Pro is active.</p>${manageLink()}`
@@ -9389,6 +9404,10 @@ function renderLicenseCta() {
     return
   }
 
+  if (!onSale) {
+    area.innerHTML = `<p class="proHeroNote">Pro is not available right now. Every local editing and export feature stays free.</p>`
+    return
+  }
   area.innerHTML = `<p class="proHeroNote" data-buy-note>${usingBillingSandbox()
     ? 'This build is pointed at the Polar sandbox. Nothing here charges a real card, and the account it signs into is the sandbox one, not your real Tactics Journal account.'
     : 'Pro belongs to your Tactics Journal account and unlocks as soon as checkout finishes.'}</p>`
@@ -10612,8 +10631,10 @@ async function syncFreeBackupProject(boardId: string, source: FreeBackupSource):
   }
   if (result.status !== 'ok') {
     if (result.reason === 'free_backup_creation_cap') {
-      showToast('This account has used its three free backup records. Pro backs up every project; your local work is unchanged.')
-      openSettings('pro')
+      if (proPlansVisible()) {
+        showToast('This account has used its three free backup records. Pro backs up every project; your local work is unchanged.')
+        openSettings('pro')
+      } else showToast('This account has used its three free backup records. Your local work is unchanged.')
     } else showToast('The project stayed on this device, but backup did not finish. Try again.')
     return
   }
@@ -11154,6 +11175,7 @@ if (!BOARD_SELF_HOSTED) startAgentImport({
   isPro: () => entitlements.isPro(),
   openSignIn,
   openPro: () => openSettings('pro'),
+  plansVisible: proPlansVisible,
   openProjects: () => openProjectsScreen(),
   boardDestinations: () => {
     const readOnly = new Set(saves.projectDocuments().filter(row => row.readOnly).map(row => row.project.id))

@@ -317,12 +317,12 @@ test('billing is not managed anywhere that cannot manage it', () => {
   assert.match(main, /href="\$\{LICENSE_MANAGE_URL\}" target="_blank" rel="noopener">Manage or cancel on Tactics Journal/)
 })
 
-test('production sells only Pro', () => {
+test('production sells nothing while Pro is off the website', () => {
   const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
   const checkout = readFileSync(new URL('../src/checkout.ts', import.meta.url), 'utf8')
 
   assert.doesNotMatch(main, /LICENSE_CHECKOUT_OPEN|licenseCheckoutOpen/)
-  assert.match(main, /PRO_CHECKOUT_OPEN\s*=\s*true/)
+  assert.match(main, /PRO_CHECKOUT_OPEN\s*=\s*false/)
   const pro = main.match(/function renderProCta\(\)[\s\S]*?\n}/)?.[0] ?? ''
   assert.doesNotMatch(checkout, /license-checkout|CheckoutProduct = 'license'/)
   assert.match(pro, /proCheckoutOpen\(\)/)
