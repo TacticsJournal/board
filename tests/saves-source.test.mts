@@ -217,17 +217,6 @@ test('an invitation link is read before it is spent, and never left in the addre
   assert.match(main, /back\.searchParams\.set\('invite', token\)/)
 })
 
-test('a place on a shared project is claimed on a heartbeat and given back', () => {
-  assert.match(main, /const PRESENCE_HEARTBEAT_MS = 30_000/)
-  assert.match(main, /action: 'claim'/)
-  assert.match(main, /action: 'release'/)
-  // a closing tab cannot wait for fetch
-  assert.match(main, /navigator\.sendBeacon\?\.\(boardPresenceUrl\(\)/)
-  assert.match(main, /window\.addEventListener\('pagehide'/)
-  // being refused a place is a read-only board, not a disconnection
-  assert.match(main, /const crowded = response\.status === 409/)
-})
-
 test('a read-only shared board says so where it is listed', () => {
   assert.match(saves, /isCurrentReadOnly\(\): boolean/)
   assert.match(saves, /const readOnly = isShared && project\.readOnly === true/)
@@ -261,7 +250,7 @@ test('free local scheduling receives whether the changed record is shared', () =
   assert.match(saves, /onLocalChange: \(change\?: SavesLocalChange\)/)
   assert.match(saves, /this\.onLocalChange\(\{ shared: sharedChanged \}\)/)
   assert.match(main, /if \(authenticated && !entitlements\.isPro\(\) && !change\.shared[\s\S]*?!selectedFreeBackup\(localStorage, accountBinding\)\) return/)
-  assert.match(main, /saves\.onLocalChange = \(change\) => \{\s*updatePresence\(\)\s*scheduleSync\(SYNC_DEBOUNCE, change \?\? \{ shared: false \}\)/)
+  assert.match(main, /saves\.onLocalChange = \(change\) => \{\s*scheduleSync\(SYNC_DEBOUNCE, change \?\? \{ shared: false \}\)/)
 })
 
 test('rename and overwrite paths protect locked records and retain confirmation', () => {

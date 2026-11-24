@@ -1,6 +1,6 @@
 import { accountOrigin, boardDraftOrigin, boardOrigin } from '../../lib/board-origin.js';
 
-const ALLOWED = new Set(['sync', 'skills', 'assets', 'libraries', 'shares', 'user-search', 'invitations', 'invitation', 'presence', 'transfer', 'agent-links', 'agent', 'live', 'collaboration', 'history', 'proposals', 'import-drafts', 'community-posts', 'events']);
+const ALLOWED = new Set(['sync', 'skills', 'assets', 'libraries', 'shares', 'user-search', 'invitations', 'invitation', 'transfer', 'agent-links', 'agent', 'live', 'collaboration', 'history', 'proposals', 'import-drafts', 'community-posts']);
 const IMPORT_PAYLOAD = /^[A-Za-z0-9_-]+$/;
 const IMPORT_PREVIEW = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/;
 const MAX_IMPORT_BODY_BYTES = 512 * 1024;
