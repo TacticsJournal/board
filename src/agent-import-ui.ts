@@ -24,6 +24,8 @@ type Options = {
   isPro: () => boolean
   openSignIn: () => void
   openPro: () => void
+  /** False while Pro is not on sale and the visitor holds no plan. */
+  plansVisible?: () => boolean
   openProjects: () => void
   boardDestinations: () => BoardImportDestination[]
   canCreateProject: () => boolean
@@ -313,6 +315,11 @@ export function startAgentImport(options: Options): boolean {
       return
     }
     if (access === 'locked') {
+      if (options.plansVisible && !options.plansVisible()) {
+        copy.textContent = 'Adding projects from Claude or ChatGPT is not available right now.'
+        setActions(button('Cancel', 'close'))
+        return
+      }
       copy.textContent = 'Adding projects from Claude or ChatGPT comes with Pro.'
       setActions(button('Cancel', 'close'), button('See Pro', 'pro', true))
       return
