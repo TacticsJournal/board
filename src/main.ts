@@ -80,7 +80,6 @@ import { STILL_COPY, dropDecision, dropLabel, imageFiles, isTypingTarget, pasteD
 import { openComposer } from './composer'
 import { CATEGORY_SCENES_RECOVERED_SUFFIX, planCategorySnapshotRecovery } from './category-recovery'
 import { exportAnimation } from './animate-export'
-import { saveFreeBackupIntent, selectedFreeBackup, setSelectedFreeBackup, takeFreeBackupIntent, type FreeBackupSource } from './free-backup'
 import { downloadProjectImage, exportProjectImages, type ProjectImageFile } from './project-image-export'
 import { startAgentImport, type BoardImportResult } from './agent-import-ui'
 import { createBoardImportUrl, createProjectImportUrl, createStoredProjectImportUrl, isAgentImportTooLarge, MAX_COMMUNITY_POST_CAPTION_CHARS, postBoardToCommunity, type AgentImportDraft, type BoardImportMode } from './agent-import'
@@ -7620,11 +7619,6 @@ settingsEl.innerHTML = `
           </span>
           ${icon('chevron-right', 'ic setChev')}
         </button>
-        ${BOARD_SELF_HOSTED ? '' : `<button class="setItem" data-set="free-backup">
-          ${icon('arrows-exchange')}
-          <span class="setItemLabel" data-free-backup-label>Back up one project free</span>
-          <span class="setItemValue" data-free-backup-value></span>
-        </button>`}
         <button class="setItem" data-goto="boards">
           ${icon('arrows-exchange')}
           <span class="setItemLabel">Move to another device</span>
@@ -7799,7 +7793,7 @@ settingsEl.innerHTML = `
             <li>Keep unlimited local projects and saved boards</li>
             <li>Import screenshots, backgrounds, and custom assets</li>
             <li>Export PNG, GIF, and video</li>
-            <li>Back up one project to a free account</li>
+            <li>Projects stay in this browser only</li>
             <li>Move every project with one file</li>
           </ul>
         </div>
@@ -8738,16 +8732,6 @@ function renderRootValues() {
   ;(settingsEl.querySelector('[data-bg-count]') as HTMLElement).textContent = bgCount ? ` · ${bgCount} saved` : ''
   const planName = settingsEl.querySelector<HTMLElement>('[data-plan-name]')
   if (planName) planName.textContent = entitlements.isPro() ? 'Pro' : entitlements.hasBoardLicense() ? 'License' : 'Free'
-  const backupButton = settingsEl.querySelector<HTMLButtonElement>('[data-set="free-backup"]')
-  const backupLabel = settingsEl.querySelector<HTMLElement>('[data-free-backup-label]')
-  const backupValue = settingsEl.querySelector<HTMLElement>('[data-free-backup-value]')
-  if (backupButton && backupLabel && backupValue) {
-    const backupId = selectedFreeBackup(localStorage, accountBinding)
-    const backedUp = saves.projectDocuments().find(row => row.rowId === backupId)
-    backupButton.disabled = entitlements.isPro()
-    backupLabel.textContent = entitlements.isPro() ? 'All projects sync with Pro' : 'Back up one project free'
-    backupValue.textContent = entitlements.isPro() ? 'Active' : backedUp ? backedUp.name : authenticated ? 'Choose current' : 'Sign in'
-  }
   const toolsSummary = settingsEl.querySelector<HTMLElement>('[data-tools-summary]')
   if (toolsSummary) toolsSummary.textContent = `${visibleTopBar(topBar).length} of ${topBar.order.length}`
   const matchSummary = settingsEl.querySelector<HTMLElement>('[data-match-summary]')
@@ -9908,7 +9892,6 @@ settingsEl.addEventListener('click', (e) => {
   else if (k === 'styles-reset') resetPitchDefaults()
   else if (k === 'boards-export') exportBoardsFile()
   else if (k === 'projects') openProjectsScreen()
-  else if (k === 'free-backup') void requestFreeBackup('settings')
   else if (k === 'signin') openSignIn()
   else if (k === 'signout') void signOutFromSettings()
 })
@@ -10218,9 +10201,6 @@ appBanner.addEventListener('click', (e) => {
   } else if (action === 'conflict-keep') {
     saves.keepCurrentConflict()
     hideBanner()
-  } else if (action === 'free-backup') {
-    hideBanner()
-    void requestFreeBackup('fourth_save')
   }
 })
 
@@ -10239,16 +10219,6 @@ if (changelogAnnouncement) {
     label: "See what's new",
     run: () => { tjHeader?.openChangelog() },
   })
-}
-
-saves.onFreeLimit = () => {
-  if (BOARD_SELF_HOSTED || entitlements.isPro()) return
-  showBanner(`
-    <p>Local projects are unlimited. Back up one project to your Tactics Journal account free, or use Pro to sync every project.</p>
-    <span class="appBannerActions">
-      <button data-banner="dismiss">Not now</button>
-      <button data-banner="free-backup">Back up one project</button>
-    </span>`)
 }
 
 // Multi-tab conflict: another tab saved a newer version of the board this
@@ -10319,10 +10289,6 @@ window.addEventListener('tacticsjournal:auth-changed', ((event: CustomEvent) => 
   // fills blanks only, so a session landing later never clobbers an edit
   prefillFeedback()
   entitlements.setServerEntitlement(serverPro, serverLicense, serverBoardAdmin)
-  if (authenticated && !previousAuthenticated) {
-    const intent = takeFreeBackupIntent(sessionStorage)
-    if (intent) queueMicrotask(() => { void requestFreeBackup(intent.source, intent.boardId) })
-  }
   renderPitchSeg()
   // the tags say what is still to buy, so they answer to the new access at once
   syncLockTags()
@@ -10467,20 +10433,16 @@ async function runSyncPass(): Promise<void> {
   const rowsBeforeSync = saves.projectDocuments()
   const passGeneration = requestedGeneration
   const passStore = syncStore
-  const freeBackupId = !entitlements.isPro() ? selectedFreeBackup(localStorage, requestedBinding) : null
+  // Free projects live only in this browser: no owned row is pushed, and no
+  // owned row from the account is pulled in. Only shared work moves.
   const result = await sync.syncOnce(passStore, syncApi, new Date().toISOString(), undefined, {
-    includeOwned: entitlements.isPro() || !!freeBackupId,
-    ...(freeBackupId ? { ownedId: freeBackupId, freeBackupId } : {}),
+    includeOwned: entitlements.isPro(),
     stillCurrent: () => passGeneration === syncGeneration && requestedBinding === accountBinding,
   })
   // A response started under another account may update its account-scoped
   // local records, but it must not replace the board now on screen.
   if (passGeneration !== syncGeneration) return
   const openConflict = reconcileProjectSync(rowsBeforeSync, result)
-  if (!entitlements.isPro() && !freeBackupId && requestedBinding) {
-    const restored = saves.projectDocuments().find(row => row.access !== 'shared' && result.remoteIds.includes(row.rowId))
-    if (restored) setSelectedFreeBackup(localStorage, requestedBinding, restored.rowId)
-  }
   await personalSync
   if (passGeneration !== syncGeneration) return
   // Only speak up for an accepted server conflict, never a network failure.
@@ -10501,84 +10463,6 @@ function serializeProjectSync<T>(work: () => Promise<T>): Promise<T> {
   const run = projectSyncQueue.then(() => work(), () => work())
   projectSyncQueue = run.then(() => undefined, () => undefined)
   return run
-}
-
-function freeBackupCandidate(requestedId?: string) {
-  const rows = saves.projectDocuments().filter(row => row.access !== 'shared')
-  if (requestedId) return rows.find(row => row.rowId === requestedId) ?? null
-  const currentId = saves.currentBoardId()
-  return rows.find(row => row.rowId === currentId)
-    ?? rows.sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))[0]
-    ?? null
-}
-
-async function requestFreeBackup(source: FreeBackupSource, requestedId?: string): Promise<void> {
-  if (BOARD_SELF_HOSTED) return
-  if (entitlements.isPro()) { showToast('Pro already backs up every project.'); return }
-  const row = freeBackupCandidate(requestedId)
-  if (!row) { showToast('Save a project on this device before turning on backup.'); return }
-  if (!authenticated || !accountBinding) {
-    if (!saveFreeBackupIntent(sessionStorage, { boardId: row.rowId, source })) {
-      showToast('This browser could not preserve the backup request. Sign in, then try again.')
-      return
-    }
-    showToast('Sign in to back up this project free.')
-    openSignIn()
-    return
-  }
-  const previous = selectedFreeBackup(localStorage, accountBinding)
-  if (previous && previous !== row.rowId) {
-    const old = freeBackupCandidate(previous)
-    if (!window.confirm(`Replace ${old?.name || 'your current free backup'} with ${row.name}? The old project stays on this device.`)) return
-  }
-  await serializeProjectSync(() => syncFreeBackupProject(row.rowId, source))
-}
-
-async function syncFreeBackupProject(boardId: string, source: FreeBackupSource): Promise<void> {
-  const requestedGeneration = syncGeneration
-  const requestedBinding = accountBinding
-  if (!authenticated || !requestedBinding || entitlements.isPro()) return
-  boardSessionReady = await ensureBoardSession(requestedBinding)
-  if (!boardSessionReady || requestedGeneration !== syncGeneration || requestedBinding !== accountBinding) {
-    showToast('Could not connect this backup to your account. Try again.')
-    return
-  }
-  if (!saves.flushCurrentForSync()) {
-    showToast('Could not save the current project on this device. Nothing was uploaded.')
-    return
-  }
-  const row = freeBackupCandidate(boardId)
-  if (!row) { showToast('That project is no longer saved on this device.'); return }
-  const rowsBeforeSync = saves.projectDocuments()
-  const result = await sync.syncOnce(syncStore, syncApi, new Date().toISOString(), undefined, {
-    includeOwned: true,
-    ownedId: boardId,
-    targetId: boardId,
-    freeBackupId: boardId,
-    advanceMarkers: false,
-    stillCurrent: () => requestedGeneration === syncGeneration && requestedBinding === accountBinding,
-  })
-  if (requestedGeneration !== syncGeneration || requestedBinding !== accountBinding) return
-  reconcileProjectSync(rowsBeforeSync, result)
-  if (result.status === 'ok' && result.conflicts > 0) {
-    showToast('Another version was already backed up. Both versions stay on this device; choose the project again after reviewing them.')
-    return
-  }
-  if (result.status !== 'ok') {
-    if (result.reason === 'free_backup_creation_cap') {
-      if (proPlansVisible()) {
-        showToast('This account has used its three free backup records. Pro backs up every project; your local work is unchanged.')
-        openSettings('pro')
-      } else showToast('This account has used its three free backup records. Your local work is unchanged.')
-    } else showToast('The project stayed on this device, but backup did not finish. Try again.')
-    return
-  }
-  if (!setSelectedFreeBackup(localStorage, requestedBinding, boardId)) {
-    showToast('Backup finished, but this browser could not remember the selection.')
-    return
-  }
-  renderRootValues()
-  showToast(`${row.name} is backed up to your account.`)
 }
 
 async function runTargetedSyncPass(
@@ -10707,10 +10591,9 @@ saves.onCreateAgentLink = async (boardId: string, mode: AgentAccessMode = 'propo
 const SYNC_DEBOUNCE = 700
 function scheduleSync(delay = SYNC_DEBOUNCE, change: { shared: boolean } = { shared: false }): void {
   if (!(authenticated || entitlements.isPro())) return
-  // A signed-in Free user pushes shared edits and, when chosen, one personal
-  // backup. Other owned projects never leave the device.
-  if (authenticated && !entitlements.isPro() && !change.shared
-    && !selectedFreeBackup(localStorage, accountBinding)) return
+  // A signed-in Free user pushes shared edits only. Owned projects never
+  // leave this browser.
+  if (authenticated && !entitlements.isPro() && !change.shared) return
   if (syncTimer !== null) clearTimeout(syncTimer)
   syncTimer = window.setTimeout(() => { syncTimer = null; void runSync() }, delay)
 }

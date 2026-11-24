@@ -249,7 +249,7 @@ test('email-code sign-in loads the canonical account before board sync starts', 
 test('free local scheduling receives whether the changed record is shared', () => {
   assert.match(saves, /onLocalChange: \(change\?: SavesLocalChange\)/)
   assert.match(saves, /this\.onLocalChange\(\{ shared: sharedChanged \}\)/)
-  assert.match(main, /if \(authenticated && !entitlements\.isPro\(\) && !change\.shared[\s\S]*?!selectedFreeBackup\(localStorage, accountBinding\)\) return/)
+  assert.match(main, /if \(authenticated && !entitlements\.isPro\(\) && !change\.shared\) return/)
   assert.match(main, /saves\.onLocalChange = \(change\) => \{\s*scheduleSync\(SYNC_DEBOUNCE, change \?\? \{ shared: false \}\)/)
 })
 
@@ -285,7 +285,8 @@ test('plan copy assigns local features to Free and hosted services to Pro', () =
   assert.match(free, /unlimited local projects and saved boards/i)
   assert.match(free, /Import screenshots, backgrounds, and custom assets/)
   assert.match(free, /Export PNG, GIF, and video/)
-  assert.match(free, /Back up one project/)
+  assert.match(free, /stay in this browser only/)
+  assert.doesNotMatch(free, /Back up/)
 
   const pro = main.match(/proCardName">Pro[\s\S]*?<\/ul>/)?.[0] ?? ''
   assert.match(pro, /sync every project across devices/)
