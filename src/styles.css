@@ -132,8 +132,7 @@ html[data-theme-resolved="dark"] .impRow select {
 html[data-theme-resolved="dark"] .textEdit { background: rgba(17, 18, 20, 0.94); color: var(--ink); }
 html[data-theme-resolved="dark"] .saveItem .savePrev { background: #161617; }
 html[data-theme-resolved="dark"] .setTutorial p,
-html[data-theme-resolved="dark"] .mobileHomeHint p,
-html[data-theme-resolved="dark"] .proCard li { color: #d4d4d4; } /* TJ --text-secondary */
+html[data-theme-resolved="dark"] .mobileHomeHint p { color: #d4d4d4; } /* TJ --text-secondary */
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 html, body { margin: 0; height: 100%; overscroll-behavior: none; touch-action: manipulation; }
@@ -148,7 +147,11 @@ body {
 
 /* Tracking is size-specific or it is wrong somewhere: large text reads too
    loose at the default, small labels too tight. */
-.libTitle, .libTitleInput, .setHead, .sheetHead, .shareDialog h2, .agentImportHead h2 { letter-spacing: -0.02em; }
+.libTitle,
+.libTitleInput,
+.setHead,
+.sheetHead,
+.agentImportHead h2 { letter-spacing: -0.02em; }
 .libCount, .options .hint, .options .lbl, .band, .expStatus { letter-spacing: 0.005em; }
 #app, .app { height: 100dvh; display: flex; flex-direction: column; position: relative; }
 /* The bottom panel floats over the pitch: opening a room must never resize or
@@ -322,24 +325,6 @@ header.site-header {
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-/* The account control keeps one fixed box so the header spacing does not move
-   when the outline icon is replaced by the signed-in reader's picture. */
-.site-action-account-toggle {
-  width: 24px;
-  height: 24px;
-}
-.site-action-account-toggle.has-avatar svg { display: none; }
-.site-action-avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  object-fit: cover;
-  display: block;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
-}
-html[data-theme-resolved="dark"] .site-action-avatar {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 .site-menu {
   position: relative;
@@ -1092,24 +1077,6 @@ html[data-theme-resolved="dark"] .setToolSwitch[aria-checked="true"] .mTrack { b
 @media (prefers-reduced-motion: reduce) {
   .boardHint { transition: none; }
 }
-.liveEditChip {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  z-index: 2;
-  transform: translateX(-50%);
-  padding: 4px 8px;
-  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
-  border-radius: 999px;
-  background: var(--bar);
-  color: var(--ink-soft);
-  opacity: 0;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.2;
-  pointer-events: none;
-}
-.liveEditChip.isVisible { opacity: 1; }
 button, a, summary, .toolbar, .options, .actionRow { touch-action: manipulation; }
 
 .fab {
@@ -1373,7 +1340,6 @@ html[data-theme-resolved="dark"] .seg button.active { box-shadow: 0 1px 2px rgba
   padding: 5px 8px;
 }
 
-
 /* ---------- the styles shelf ---------- */
 /* Styles is pictures, not words: the same 40px cell the shapes shelf uses, two
    rows deep, with a hairline between one setting and the next. The only words
@@ -1535,8 +1501,6 @@ html[data-theme-resolved="dark"] .seg button.active { box-shadow: 0 1px 2px rgba
 .markSpin { display: inline-flex; transition: transform 120ms ease; }
 @media (prefers-reduced-motion: reduce) { .markSpin { transition: none; } }
 /* the facing pill draws the head it is turning on, pointing where it points */
-
-
 
 .rosterBtn {
   flex: none; width: 40px; height: 34px; min-height: 34px; padding: 0;
@@ -1744,7 +1708,7 @@ html[data-theme-resolved="dark"] .seg button.active { box-shadow: 0 1px 2px rgba
   margin: 4px 3px;
 }
 
-/* ---------- the licensed user's own assets ---------- */
+/* ---------- the user's own assets ---------- */
 .cell img.cellAsset { max-width: 32px; max-height: 32px; }
 .cell.cellAdd { border: 1px dashed var(--line); color: var(--orange); }
 .cell.cellAdd svg { color: var(--orange); }
@@ -2097,7 +2061,7 @@ textarea {
 }
 /* ---------- settings: one grouped list, push screens underneath ----------
    No tab grid and no glow: selection reads through weight and ground, the
-   accent is grey, and blue is reserved for Pro. Icons are Tabler (MIT). */
+   accent is grey. Icons are Tabler (MIT). */
 .setPane, .tmPane, .svPane { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .setPane[data-pane] { gap: 4px; }
 /* Drilling in and coming back are the same swap without this: the screen
@@ -2181,7 +2145,7 @@ textarea {
 .sheet .setItemStatic { cursor: default; }
 /* A row is a button and has to say so when pressed. The tint lands at once and
    releases slowly: the press is the finger's, the release is the system's.
-   Grey, not blue — blue is reserved for Pro. Rows are full-bleed inside a
+   Grey, not blue. Rows are full-bleed inside a
    rounded group, so this is a tint and never a scale. */
 .sheet .setItem:not(.setItemStatic):not([disabled]) {
   transition: background-color var(--dur-press-out) var(--ease-out);
@@ -2351,30 +2315,7 @@ textarea {
   .selfHostCode { flex-wrap: wrap; }
   .selfHostCode .setItemAction { margin-left: auto; }
 }
-.sheet .setProviderAction {
-  min-height: 46px;
-  padding-left: 45px;
-  color: var(--action);
-  font-weight: 600;
-  text-decoration: none;
-}
-.sheet .setProviderAction > .ic { width: 16px; height: 16px; color: var(--ink-soft); }
-.sheet .setProviderAction .setItemLabel { white-space: normal; text-overflow: clip; }
-.sheet .setProviderAction [data-provider-label] .ic {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  margin-right: 5px;
-  color: var(--action);
-  vertical-align: -3px;
-}
-.setStepNum {
-  flex: none;
-  width: 19px;
-  color: var(--ink-soft);
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-}
+
 .setNoteStrong { color: var(--ink); }
 /* the board's own player dot, so a row shows the colour its dots will be */
 .setDot {
@@ -2393,8 +2334,7 @@ textarea {
   border-radius: 999px;
   padding: 2px 8px;
 }
-.setTagLicense { background: var(--bar); color: var(--ink-soft); }
-.setTagPro { background: #2f6fb0; color: #ffffff; }
+
 .setSeg {
   position: relative;
   display: flex;
@@ -2456,8 +2396,7 @@ textarea {
 /* the seg needs its own track in dark: --bar and --card resolve to the same grey */
 html[data-theme-resolved="dark"] .sheet .setSeg { background: #1C1C1E; --tabs-pill-bg: #3A3A3C; }
 html[data-theme-resolved="dark"] .sheet .setSeg button.active { background: #3A3A3C; }
-html[data-theme-resolved="dark"] .setTagPro { background: #3d7ec4; }
-html[data-theme-resolved="dark"] .setTagLicense { background: #2C2C2E; }
+
 .setUpload input { display: none; }
 .bgAddInput { display: none; }
 /* Two answers, each saying what you get to draw rather than naming a mode. */
@@ -2634,343 +2573,6 @@ html[data-theme-resolved="dark"] .setSheet {
    they were written against. */
 .setSheet button.active { color: #ffffff; }
 
-/* Pro tab: tagline hero + tier cards */
-.proHero { padding: 6px 2px 14px; }
-.proTagline {
-  margin: 0;
-  padding-bottom: 8px;
-  font-size: clamp(1.9rem, 9vw, 2.7rem);
-  line-height: 1.04;
-  font-weight: 700;
-  letter-spacing: -0.022em;
-  color: var(--ink);
-}
-.proTagline br { display: block; }
-.proLede {
-  margin: 12px 0 0;
-  font-size: 0.95rem;
-  line-height: 1.5;
-  color: var(--ink-soft);
-  max-width: 40ch;
-}
-.proChoose {
-  margin: 0 0 12px;
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--ink);
-}
-.proTiers {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-}
-@media (min-width: 640px) {
-  .proTiers { grid-template-columns: repeat(3, 1fr); align-items: stretch; }
-}
-/* Cards are equal weight, and the one on sale is marked by a border rather
-   than a second accent colour. Blue means "this is the action" everywhere on
-   this pane; nothing else competes with it. */
-.proCard {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  padding: 18px 16px 16px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: var(--card);
-  overflow-wrap: anywhere;
-}
-.proCardAccent {
-  border: 2px solid var(--action);
-  padding: 17px 15px 15px;
-}
-.proCardHead {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding-bottom: 2px;
-}
-.proCardName { font-size: 1.12rem; font-weight: 700; color: var(--ink); letter-spacing: -0.015em; }
-.proCardPrice {
-  font-size: 0.95rem;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  text-transform: none;
-  color: var(--ink);
-}
-.proCardAccent .proCardPrice { font-weight: 600; }
-/* Pro names one price at a time. The toggle sits with the card's title so the
-   choice reads as part of that card, not as a page-wide switch. */
-.proCardHeadRow {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.proBilling {
-  position: relative;
-  display: inline-flex;
-  flex: none;
-  gap: 2px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  --tabs-pill-inset: 0px;
-  --tabs-pill-radius: 999px;
-  --tabs-pill-bg: var(--ink);
-}
-/* Only the selected side is drawn. The global button rule sets a 40px tap
-   target, which is too tall next to the card title, so these reset it. */
-.proBilling button {
-  position: relative;
-  z-index: 1;
-  min-height: 0;
-  transition: color var(--tabs-dur) var(--tabs-ease);
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--ink-soft);
-  background: transparent;
-}
-.proBilling button[aria-pressed="true"] {
-  background: var(--ink);
-  color: var(--card);
-}
-.proBilling.is-measured button[aria-pressed="true"] { background: none; }
-.proCardAmount {
-  margin: 6px 0 0;
-  font-size: 1.7rem;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.03em;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-.proCardPer {
-  margin-left: 4px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--ink-soft);
-}
-.proCardBilled {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin: 6px 0 0;
-  font-size: 0.82rem;
-  color: var(--ink-soft);
-  font-variant-numeric: tabular-nums;
-}
-.proSavePill {
-  font-size: 0.74rem;
-  font-weight: 700;
-  color: #2f7d55;
-}
-html[data-theme-resolved="dark"] .proSavePill { color: #61c08a; }
-/* The buy button sits at the foot of the card whatever the list length, so the
-   three cards line up along the bottom instead of stepping. */
-.proCard ul { margin: 4px 0 0; padding-left: 16px; line-height: 1.5; display: flex; flex-direction: column; gap: 5px; font-size: 0.84rem; color: var(--ink); }
-.proCard li { min-width: 0; overflow-wrap: anywhere; }
-.proCardSoon {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 6px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-  white-space: nowrap;
-  vertical-align: 1px;
-}
-.proCardNote { margin: 12px 0 0; font-size: 0.76rem; line-height: 1.45; color: var(--ink-soft); }
-.proHeroCta { margin-top: 14px; }
-/* The repeat button sits under the card's list, so it needs its own top gap
-   and the full card width rather than the hero's inline sizing. */
-/* Both cards' buttons, so Pro's looks like the licence's rather than an inline
-   link: pushed to the foot of the card, full width, centred. */
-[data-lic-card-cta],
-[data-pro-card-cta] { margin-top: auto; }
-[data-lic-card-cta]:not(:empty),
-[data-pro-card-cta]:not(:empty) { padding-top: 14px; }
-[data-lic-card-cta] .proBuyBtn,
-[data-pro-card-cta] .proBuyBtn { display: block; text-align: center; }
-/* "Pro is active" replaces the button in the same slot, so it should not
-   inherit the button's top gap on top of its own. */
-[data-pro-card-cta] .proHeroNote { margin-top: 0; }
-.proBuyBtn {
-  display: inline-block;
-  padding: 11px 20px;
-  border-radius: 999px;
-  background: var(--action);
-  color: #fff;
-  font-weight: 500;
-  font-size: 0.95rem;
-  letter-spacing: -0.01em;
-  text-decoration: none;
-}
-.proBuyBtn:hover { filter: brightness(1.08); }
-/* Buying is a real <button>, and `.sheet button` paints every button in the
-   sheet with the card background. That outranks a lone class, so without this
-   the buy button is a white pill with white text on it. The sheet's own action
-   colour is used rather than --action, so it tracks the sheet in dark mode. */
-.sheet .proBuyBtn {
-  background: var(--orange);
-  color: #fff;
-  border: 0;
-  white-space: normal;
-}
-.proManageLink {
-  display: inline-block;
-  margin-top: 10px;
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--action);
-  text-decoration: none;
-}
-.proManageLink:hover { text-decoration: underline; }
-.proHeroNote { margin: 10px 0 0; font-size: 0.82rem; line-height: 1.5; color: var(--ink-soft); }
-
-/* waitlist form: copy of the tacticsjournal.com .email-form pill
-   (style.scss .email-form), values inlined for the board's variables */
-.email-form {
-  --r-border: var(--field-border, #ddd);
-  --r-border-focus: #3c3c3c;
-  --r-text: var(--ink, #111);
-  --r-text-muted: var(--ink-soft, #8b8b8b);
-  --r-btn-bg: #0071E3;
-  --r-btn-text: #fff;
-}
-html[data-theme-resolved="dark"] .email-form {
-  --r-border: var(--field-border, rgba(255,255,255,0.16));
-  --r-border-focus: #d4d4d4;
-  --r-text: var(--ink, #fafafa);
-  --r-text-muted: var(--ink-soft, #a3a3a3);
-}
-.email-form form,
-form.email-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  width: min(100%, var(--site-form-width, 360px));
-  max-width: var(--site-form-width, 360px);
-  margin: 0 auto;
-  border: 1px solid var(--r-border, var(--line));
-  border-radius: 9999px;
-  padding: 6px;
-  box-sizing: border-box;
-  font-family: inherit;
-  transition: border-color 0.15s ease, box-shadow 0.3s ease;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
-}
-.email-form form:focus-within,
-form.email-form:focus-within {
-  border-color: var(--r-border-focus, var(--ink));
-  box-shadow: 0 0 0 4px rgba(17, 17, 17, 0.06);
-}
-.email-form form input[type="email"],
-.email-form form input[type="text"],
-form.email-form input[type="email"],
-form.email-form input[type="text"] {
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  color: var(--r-text, var(--ink));
-  font-size: 1.05rem;
-  padding: 12px 0 12px 24px;
-  width: 100%;
-  max-width: none;
-  min-width: 0;
-  outline: none;
-}
-.email-form form input::placeholder,
-form.email-form input::placeholder { color: var(--r-text-muted, var(--ink-soft)); }
-.email-form form button,
-form.email-form button {
-  padding: 14px 30px;
-  background: var(--r-btn-bg, #0071E3);
-  color: var(--r-btn-text, #fff);
-  border: none;
-  border-radius: 9999px;
-  font-size: 1.05rem;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: opacity 0.15s ease, box-shadow 0.3s ease, transform 0.2s ease;
-}
-.email-form form button:hover,
-form.email-form button:hover { opacity: 0.95; transform: translateY(-1px); }
-.email-form form button:active,
-form.email-form button:active { transform: translateY(0); }
-.email-form form button:disabled,
-form.email-form button:disabled { opacity: 0.6; transform: none; cursor: default; }
-@media (min-width: 768px) {
-  .email-form form,
-  form.email-form {
-    width: min(100%, var(--site-form-width, 360px));
-    max-width: var(--site-form-width, 360px);
-    gap: 6px;
-    padding: 5px;
-  }
-  .email-form form input[type="email"],
-  .email-form form input[type="text"],
-  form.email-form input[type="email"],
-  form.email-form input[type="text"] {
-    font-size: 0.95rem;
-    padding: 10px 0 10px 22px;
-  }
-  .email-form form button,
-  form.email-form button {
-    font-size: 0.95rem;
-    padding: 11px 24px;
-  }
-}
-@media (max-width: 569px) {
-  .email-form form,
-  form.email-form {
-    width: 100%;
-    gap: 6px;
-    padding: 5px;
-  }
-  .email-form form input[type="email"],
-  .email-form form input[type="text"],
-  form.email-form input[type="email"],
-  form.email-form input[type="text"] {
-    font-size: 0.95rem;
-    padding: 11px 0 11px 18px;
-  }
-  .email-form form button,
-  form.email-form button {
-    font-size: 0.95rem;
-    padding: 11px 18px;
-  }
-}
-p.research-gate-note.research-gate-legal a,
-p.research-gate-note.research-gate-legal a:visited,
-p.research-gate-note.research-gate-legal a:hover {
-  color: inherit;
-  text-decoration: none;
-}
-.email-form .research-gate-note {
-  max-width: var(--site-form-width, 360px);
-  font-size: 0.7rem;
-  color: var(--ink-soft);
-  text-align: center;
-  line-height: 1.4;
-  margin: 6px auto 0;
-}
-@media (max-width: 480px) {
-  .email-form .research-gate-note { font-size: 0.75rem; }
-}
-.email-form [data-wl-note] { text-align: center; margin-top: 4px; }
 .mobileHomeHint {
   display: none;
   flex-direction: column;
@@ -3099,16 +2701,7 @@ html[data-theme-resolved="dark"] .mThumb { background: #0a0a0a; }
 .saveItem .saveMeta { flex: 1 1 120px; display: flex; flex-direction: column; gap: 1px; min-width: 0; cursor: pointer; }
 .saveItem .saveMeta strong { font-weight: 400; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .saveItem .saveMeta span { font-size: 12.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.saveItemLocked .savePrev { opacity: 0.72; }
-.saveReadOnly {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: none;
-  color: var(--ink-soft);
-  font-size: 12.5px;
-}
-.saveReadOnly .ic { width: 15px; height: 15px; }
+
 .saveStatus:empty { display: none; }
 .saveItem button { flex: 0 0 auto; }
 .saveItem button.danger { color: #c2554b; }
@@ -3159,26 +2752,13 @@ html[data-theme-resolved="dark"] .mThumb { background: #0a0a0a; }
 .carryMenu.t-dropdown { visibility: hidden; }
 .carryMenu.t-dropdown.is-open, .carryMenu.t-dropdown.is-closing { visibility: visible; }
 
-.shareDialog {
-  width: min(420px, calc(100vw - 28px));
-  max-height: min(620px, calc(100dvh - 28px));
-  overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--card);
-  color: var(--ink);
-  padding: 20px;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.24);
-}
-.shareDialog::backdrop { background: rgba(0, 0, 0, 0.48); }
-.shareForm { display: grid; gap: 14px; }
-.shareDialog h2, .shareDialog h3, .shareBody h3 { margin: 0; font-size: 17px; line-height: 1.25; }
-.shareDialog h3, .shareBody h3 { margin-top: 4px; font-size: 14px; }
-.shareDialog label, .shareBody label { display: grid; gap: 7px; font-size: 13px; color: var(--ink-soft); }
+.shareBody h3 { margin: 0; font-size: 17px; line-height: 1.25; }
+.shareBody h3 { margin-top: 4px; font-size: 14px; }
+.shareBody label { display: grid; gap: 7px; font-size: 13px; color: var(--ink-soft); }
 /* One way of naming someone is asked at a time, so the others are not there.
    The display rule above outranks the hidden attribute on its own. */
-.shareDialog label[hidden], .shareBody label[hidden] { display: none; }
-.shareDialog input, .shareBody input {
+.shareBody label[hidden] { display: none; }
+.shareBody input {
   width: 100%;
   min-width: 0;
   min-height: 44px;
@@ -3191,21 +2771,8 @@ html[data-theme-resolved="dark"] .mThumb { background: #0a0a0a; }
   -webkit-user-select: text;
   user-select: text;
 }
-.shareDialog input:focus, .shareBody input:focus { border-color: var(--action); outline: 2px solid rgba(0, 113, 227, 0.24); }
-.shareActions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
-.shareActions button, .shareList button { min-height: 44px; padding: 0 2px; border: 0; background: none; color: var(--ink-soft); font-size: 14px; }
-.shareActions button[type="submit"] {
-  flex: 1 1 auto;
-  min-height: 44px;
-  padding: 12px 20px;
-  border-radius: 999px;
-  background: var(--action);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 600;
-}
-.shareActions button:disabled { opacity: 0.45; }
-.shareActions button:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+.shareBody input:focus { border-color: var(--action); outline: 2px solid rgba(0, 113, 227, 0.24); }
+
 .shareStatus { min-height: 1.25em; margin: -4px 0 0; font-size: 13px; color: var(--ink-soft); }
 .shareStatus:empty { display: none; }
 /* The caption borrows the share field's look, with room for more than a line. */
@@ -3224,55 +2791,6 @@ html[data-theme-resolved="dark"] .mThumb { background: #0a0a0a; }
   user-select: text;
 }
 .shareBody textarea:focus { border-color: var(--action); outline: 2px solid rgba(0, 113, 227, 0.24); }
-/* The board the post will carry, shown before anything is sent. */
-.communityPreview {
-  display: block;
-  width: 100%;
-  height: auto;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--bg);
-}
-
-/* The one-time line under a copy link or an export. It sits at the bottom of
-   the step it is offered in, never over it, and carries its own dismissal. */
-.communityHint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 14px;
-  padding: 10px 12px;
-  border-radius: 9px;
-  background: var(--track);
-  color: var(--ink);
-  font-size: 13px;
-  line-height: 1.4;
-}
-.communityHint button { min-height: 32px; padding: 0; background: none; color: var(--action); font: inherit; }
-.communityHint button:hover { text-decoration: underline; }
-.communityHint__close { margin-left: auto; color: var(--ink-soft); font-size: 17px; line-height: 1; }
-.communityHint__close:hover { text-decoration: none; }
-
-.communityPostLink {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  color: var(--action);
-  font-size: 14px;
-  text-decoration: none;
-}
-.communityPostLink:hover { text-decoration: underline; }
-.communityPostLink:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; border-radius: 6px; }
-.shareList { margin: 0; padding: 0; list-style: none; border-bottom: 1px solid var(--line); }
-.shareList li { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 48px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; }
-.shareList .shareEmpty { color: var(--ink-soft); }
-.shareList button { min-height: 34px; padding: 2px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: #c2554b; }
-.shareList button:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
-.agentLinkDialog { width: min(420px, calc(100vw - 32px)); padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink); }
-.agentLinkDialog::backdrop { background: rgba(0, 0, 0, 0.35); }
-.agentLinkDialog form { display: grid; gap: 12px; }
-.agentLinkDialog input { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); user-select: text; -webkit-user-select: text; }
-.agentLinkDialog button { justify-self: end; min-height: 38px; padding: 0 2px; border: 0; background: none; color: var(--action); font-size: 14px; font-weight: 600; }
 .agentImportDialog {
   width: min(520px, calc(100vw - 32px));
   max-height: min(760px, calc(100dvh - 32px));
@@ -3452,15 +2970,6 @@ html[data-theme-resolved="dark"] .mThumb { background: #0a0a0a; }
 .agentImportRowPrimary .agentImportRowText span { color: var(--bg); opacity: 0.66; }
 .agentImportRowPrimary:hover, .agentImportRowPrimary:active { background: var(--ink); opacity: 0.92; }
 .agentImportChev { flex: none; color: var(--ink-soft); }
-.agentImportRowDanger { border-color: #c2554b; color: #c2554b; }
-.agentImportRowDanger .agentImportRowText span { color: #c2554b; opacity: 0.8; }
-.agentImportRowDanger.agentImportRowPrimary { border-color: #c2554b; background: #c2554b; color: #fff; }
-.agentImportRowDanger.agentImportRowPrimary .agentImportRowText span { color: #fff; opacity: 0.78; }
-.agentImportRowDanger.agentImportRowPrimary:hover, .agentImportRowDanger.agentImportRowPrimary:active { background: #c2554b; opacity: 0.92; }
-html[data-theme-resolved="dark"] .agentImportRowDanger { border-color: #e0765c; color: #e0765c; }
-html[data-theme-resolved="dark"] .agentImportRowDanger .agentImportRowText span { color: #e0765c; }
-html[data-theme-resolved="dark"] .agentImportRowDanger.agentImportRowPrimary { border-color: #e0765c; background: #e0765c; color: #1b1b1b; }
-html[data-theme-resolved="dark"] .agentImportRowDanger.agentImportRowPrimary .agentImportRowText span { color: #1b1b1b; opacity: 0.72; }
 .agentImportBoard .agentImportProjects {
   flex: 1 1 auto;
   min-height: 0;
@@ -3491,108 +3000,7 @@ html[data-theme-resolved="dark"] .agentImportRowDanger.agentImportRowPrimary .ag
   .saveItem .saveMeta { flex-basis: calc(100% - 90px); }
 }
 
-/* version history: a date, what it was called, and one way back to it. The
-   endpoint sends no scenes, so a row has no thumbnail to keep -- the time is
-   the row's own heading and carries the weight the name carries elsewhere. */
-.histItem { gap: 11px; align-items: center; }
-.histItem .histMeta { flex: 1 1 120px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.histItem .histMeta strong { font-weight: 400; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.histItem .histMeta span { font-size: 12.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.histCurrent .histMeta strong { font-weight: 500; }
-.histTag {
-  flex: none;
-  font-size: 12.5px;
-  color: var(--ink-soft);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 1px 8px;
-}
-/* the confirmation replaces the row's action rather than covering the screen:
-   the version being replaced stays in sight while the question is asked */
-.histConfirm { display: flex; align-items: center; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
-.histConfirmText { font-size: 12.5px; color: var(--ink-soft); }
-.sheet .setItemAction.histDo { color: #c2554b; }
 .sheet .setItemAction[disabled] { opacity: 0.5; cursor: default; }
-.histEmpty { font-size: 13px; color: var(--ink-soft); display: block; }
-.histPane .saveStatus:empty { display: none; }
-@media (max-width: 430px) {
-  /* a row with no thumbnail still fits its date and one action side by side;
-     only the confirmation, which is a question and two answers, takes a line */
-  .histItem { flex-wrap: wrap; }
-  .histItem .histMeta { flex: 1 1 60%; }
-  .histConfirm { flex-basis: 100%; justify-content: flex-start; margin-top: 2px; }
-}
-
-/* proposals: one project, two versions of it, one decision. The list is the
-   same shape as the version-history list; the review below it is the only
-   place in Settings that draws boards, because a version nobody can see is
-   not something anyone should be asked to accept. */
-.propItem { gap: 11px; align-items: center; }
-.propItem .propMeta { flex: 1 1 120px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.propItem .propMeta strong { font-weight: 400; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.propItem .propMeta span { font-size: 12.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.propTag {
-  flex: none;
-  font-size: 12.5px;
-  color: var(--ink-soft);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 1px 8px;
-}
-.propStale { color: var(--propose); border-color: var(--propose); }
-.propEmpty { font-size: 13px; color: var(--ink-soft); display: block; }
-.propPane .saveStatus:empty { display: none; }
-
-.propHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-/* the three views are one control: which of the two versions is on screen */
-.propViews { flex-wrap: wrap; }
-.propSummary { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--ink-soft); margin-bottom: 12px; }
-.propRenamed { color: var(--ink); }
-.propStaleNote { color: var(--propose); }
-
-.propBoards { display: flex; flex-direction: column; gap: 14px; }
-.propBoardHead {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin: 0 0 6px; font-size: 13px; font-weight: 500;
-}
-.propPanes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.propPanes:has(> :only-child) { grid-template-columns: 1fr; }
-.propSide { margin: 0; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.propSide figcaption { font-size: 11.5px; color: var(--ink-soft); }
-.propPrev { display: block; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--settings-bg); }
-.propPrev svg { display: block; width: 100%; height: auto; }
-/* a board the other version does not have: the gap is the information */
-.propGone {
-  display: grid; place-items: center; min-height: 72px;
-  font-size: 12px; color: var(--ink-soft); border-style: dashed;
-}
-.propSideProposed .propPrev { border-color: var(--propose); }
-/* the decision is two buttons, not two rows: they sit together at the end of
-   the boards, and on a phone they share the width rather than stacking into
-   something that reads like more list */
-.propActions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; padding: 12px 0 0; }
-.propConfirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; flex: 1 1 auto; }
-.propConfirmText { flex: 1 1 100%; font-size: 12.5px; color: var(--ink-soft); text-align: right; }
-.sheet .propActions .setItemAction {
-  min-height: 44px;
-  padding: 10px 18px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card);
-  color: var(--ink);
-  font-size: 15px;
-}
-.sheet .setItemAction.propDo { color: #c2554b; }
-/* the mode a link is issued with, chosen before the link exists */
-.agentModes .setItemNote { display: block; font-size: 12px; color: var(--ink-soft); }
-@media (max-width: 430px) {
-  .propPanes { grid-template-columns: 1fr; }
-  .propItem { flex-wrap: wrap; }
-  .propItem .propMeta { flex: 1 1 60%; }
-  /* one row, two equal buttons, thumb-sized */
-  .sheet .propActions .setItemAction { flex: 1 1 0; padding: 10px 12px; }
-  .propConfirmText { text-align: left; }
-}
 
 /* team sheet: side switch + one editor */
 .tmSides { display: flex; flex-direction: column; gap: 0; min-width: 0; }
@@ -3986,19 +3394,6 @@ button.libTitle:focus-visible { outline: 2px solid var(--grip); outline-offset: 
 .projMore { min-height: 26px; padding: 2px 4px; color: var(--ink-soft); }
 .projMore svg { width: 15px; height: 15px; display: block; }
 .projMore:disabled { opacity: 0.28; }
-/* the one thing on a card that is news: a version somebody proposed and
-   nobody has answered. It sits with the name, not with the actions. */
-.projWait {
-  flex: none;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--propose);
-  border: 1px solid var(--propose);
-  border-radius: 999px;
-  padding: 0 7px;
-  line-height: 17px;
-  white-space: nowrap;
-}
 /* one menu instead of a row of icons: the actions get words, and a card in a
    scrolling grid keeps a sheet rather than a menu hung off its corner */
 .projSheetBody { gap: 6px; }
@@ -4019,12 +3414,6 @@ button.libTitle:focus-visible { outline: 2px solid var(--grip); outline-offset: 
 .projOpt svg { width: 18px; height: 18px; flex: none; color: var(--ink-soft); }
 .projOpt:disabled { opacity: 0.4; }
 .projOptDanger, .projOptDanger svg { color: #c2554b; }
-.projSheetCount {
-  margin-left: auto;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--propose);
-}
 
 .projStrip { display: flex; gap: 5px; align-items: flex-start; }
 .projStrip span { flex: 1 1 0; max-width: 92px; }
@@ -4589,9 +3978,8 @@ body.composer-open { overflow: hidden; }
 }
 .composer__preview-btn--active { border-color: var(--btn-bg); background: var(--btn-bg); color: var(--btn-text); }
 
-
 /* ---------- feedback form ----------
-   Plain stacked fields in the same card language as the Pro cards. Not the
+   Plain stacked fields in the same card language as the settings cards. Not the
    .email-form pill: that one is a single-line capture, this is a real form. */
 .feedbackIntro { display: flex; flex-direction: column; gap: 6px; max-width: 620px; }
 .feedbackIntro h3 { margin: 0; font-size: 1.05rem; font-weight: 700; letter-spacing: -0.015em; color: var(--ink); }
@@ -4867,9 +4255,6 @@ body.composer-open { overflow: hidden; }
 .shareSheet .sheetHead button { display: flex; align-items: center; gap: 3px; }
 .shareSheet .sheetHead button svg { width: 16px; height: 16px; display: block; }
 .shareBody { display: flex; flex-direction: column; padding: 2px 6px 4px; }
-.shareBody .shareForm { display: grid; gap: 12px; }
-.shareBody .shareForm h2 { display: none; }
-.shareBody .shareList { border-bottom: 0; }
 
 /* the toast: says one thing and leaves, so it never needs dismissing. The
    band across the bottom does the centring so the toast itself owns its
@@ -4983,18 +4368,10 @@ html[data-theme-resolved="dark"] .toastAction { background: rgba(0, 0, 0, 0.18);
   .angleReadout, .angleReadout.is-up { transform: translate(-50%, 0); }
 }
 
-/* a row this account cannot reach yet: still readable, plainly not ready, and
-   carrying the word that opens it */
-.shareSheet .shareRow.is-locked { grid-template-columns: 26px minmax(0, 1fr) auto; }
-.shareSheet .shareRow.is-locked > span { min-width: 0; }
 /* buttons in this app default to nowrap, which a two-line row cannot use */
 .shareSheet .shareRow b,
 .shareSheet .shareRow small { white-space: normal; }
-.shareSheet .shareRow.is-locked b,
-.shareSheet .shareRow.is-locked small { min-width: 0; overflow-wrap: anywhere; }
-.shareSheet .shareRow.is-locked b,
-.shareSheet .shareRow.is-locked small,
-.shareSheet .shareRow.is-locked svg { opacity: 0.5; }
+
 .shareSheet .shareRow .setTag { align-self: center; }
 
 /* ---------- a saved combination ---------- */
@@ -5076,99 +4453,6 @@ html[data-theme-resolved="dark"] .shareWays { background: #1c1c1e; --tabs-pill-b
 html[data-theme-resolved="dark"] .shareWays button[aria-selected="true"],
 html[data-theme-resolved="dark"] .shareWays button[aria-checked="true"] { background: #3a3a3c; }
 
-/* Username search remains one field. Results continue its border and take up
-   their own room, rather than covering the permission choice below. */
-.shareUserCombo { display: block; min-width: 0; }
-.shareUserCombo.is-open input {
-  border-color: var(--action);
-  border-radius: 9px 9px 0 0;
-}
-.shareUserPanel {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--action);
-  border-top: 0;
-  border-radius: 0 0 9px 9px;
-  background: var(--card);
-}
-.shareUserPanel[hidden], .shareUserEmpty[hidden] { display: none; }
-.shareUserOptions { display: block; max-height: 216px; overflow-y: auto; }
-.shareUserPanel .shareUserOption {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 48px;
-  margin: 0;
-  padding: 7px 10px;
-  border: 0;
-  border-top: 1px solid var(--line);
-  border-radius: 0;
-  background: var(--card);
-  color: var(--ink);
-  text-align: left;
-  touch-action: manipulation;
-}
-.shareUserPanel .shareUserOption:first-child { border-top: 0; }
-.shareUserPanel .shareUserOption:hover,
-.shareUserPanel .shareUserOption.is-active { background: #eaf3ff; }
-.shareUserAvatar {
-  display: grid;
-  place-items: center;
-  flex: 0 0 32px;
-  width: 32px;
-  height: 32px;
-  overflow: hidden;
-  border-radius: 50%;
-  background: var(--bar);
-  color: var(--ink-soft);
-  font-size: 11px;
-  font-weight: 700;
-}
-.shareUserAvatar img { width: 100%; height: 100%; object-fit: cover; }
-.shareUserMain { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
-.shareUserIdentity { display: flex; min-width: 0; align-items: baseline; gap: 6px; white-space: nowrap; }
-.shareUserIdentity strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
-.shareUserIdentity > span { flex: 0 1 auto; overflow: hidden; color: var(--ink-soft); font-size: 11.5px; text-overflow: ellipsis; }
-.shareUserMain small { overflow: hidden; color: var(--ink-soft); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
-.shareUserEmpty { display: block; min-height: 48px; padding: 15px 10px; color: var(--ink-soft); font-size: 12.5px; text-align: center; }
-.shareUserLive {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  border: 0;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-html[data-theme-resolved="dark"] .shareUserPanel .shareUserOption:hover,
-html[data-theme-resolved="dark"] .shareUserPanel .shareUserOption.is-active { background: #24364b; }
-
-/* What they may do is the same kind of question as how they are named, so it
-   is asked with the same control rather than a pair of loose radios. */
-.shareRole { display: grid; gap: 7px; }
-.shareRoleLabel { font-size: 13px; color: var(--ink-soft); }
-
-.shareList .shareWho { display: flex; flex-direction: column; gap: 1px; min-width: 0; overflow-wrap: anywhere; }
-.shareList .shareWho small { color: var(--ink-soft); font-size: 11.5px; }
-/* the listed permission is the control: tapping it is what changes it */
-.shareList .shareRoleBtn {
-  min-height: 30px;
-  padding: 2px 9px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: none;
-  color: var(--ink-soft);
-  font-size: 11.5px;
-  white-space: nowrap;
-}
-.shareList .shareRoleBtn.is-fixed { display: inline-block; line-height: 26px; }
-/* The link is copied where it is read: one press makes it, copies it, and
-   leaves it in the field, in the same field an agent link is handed over in. */
-.shareLinkField:not([hidden]) { display: grid; gap: 7px; }
 .linkField input { font-size: 12px; user-select: text; -webkit-user-select: text; }
 
 /* ---------- match stills: the empty frame, a drop, and the Slides room ----------
@@ -5326,7 +4610,6 @@ html[data-theme-resolved="dark"] .editorPlay { background: #000; }
 .transPreview__svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .transCap { align-self: center; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 .transNote { margin: 0 4px; font-size: 12px; color: var(--ink-soft); line-height: 1.4; }
-
 
 /* ---------- wide window: rail, panel, context bar ----------
    A phone stacks board, panel and rooms down the screen. A wide window has

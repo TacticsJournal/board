@@ -74,7 +74,7 @@ test('a valid batch renames, copies, updates, and adds an object', async () => {
   assert.equal(result.results[3].boardId, project.boards[1].id)
 })
 
-test('stale, read-only, and invalid batches leave the project untouched', async () => {
+test('stale, uneditable, and invalid batches leave the project untouched', async () => {
   const { project, registered, setRevision, setEditable } = setup()
   const read = await registered.read_current_project.execute({})
   const before = JSON.stringify(project)
@@ -83,7 +83,7 @@ test('stale, read-only, and invalid batches leave the project untouched', async 
 
   setRevision(read.revision)
   setEditable(false)
-  await assert.rejects(() => registered.edit_current_project.execute({ revision: read.revision, edits: [{ type: 'rename_project', name: 'bad' }] }), /read-only/)
+  await assert.rejects(() => registered.edit_current_project.execute({ revision: read.revision, edits: [{ type: 'rename_project', name: 'bad' }] }), /cannot be edited/)
   assert.equal(JSON.stringify(project), before)
 
   setEditable(true)

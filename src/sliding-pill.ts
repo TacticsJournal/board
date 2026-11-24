@@ -14,7 +14,7 @@
  */
 
 /** Every segmented control on the board that reads as a track plus options. */
-const PILL_BARS = '.shareWays, .setSeg, .proBilling'
+const PILL_BARS = '.shareWays, .setSeg'
 const mountedBars = new WeakMap<HTMLElement, () => void>()
 let removalObserver: MutationObserver | null = null
 

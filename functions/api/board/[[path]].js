@@ -1,14 +1,28 @@
-import { accountOrigin, boardDraftOrigin, boardOrigin } from '../../lib/board-origin.js';
+import { boardOrigin, upstreamOrigin } from '../../lib/board-origin.js';
 
-const ALLOWED = new Set(['sync', 'skills', 'assets', 'libraries', 'shares', 'user-search', 'invitations', 'invitation', 'presence', 'transfer', 'agent-links', 'agent', 'live', 'collaboration', 'history', 'proposals', 'import-drafts', 'community-posts', 'events']);
+/**
+ * The fixed Board proxy to tacticsjournal.com. Board has no accounts, so only
+ * two paths remain:
+ *
+ * - `import-drafts`: the anonymous Copy link. A browser stores one board (with
+ *   a JPEG preview) or one project, and anyone with the link reads it back.
+ *   tacticsjournal.com keeps each draft for 24 hours.
+ * - `events`: aggregate product counters.
+ *
+ * Upstream headers are built from an allowlist. Cookies and Authorization are
+ * never forwarded. Import drafts forward the client IP so tacticsjournal.com
+ * can rate-limit link creation; events carry no IP and a fixed User-Agent.
+ */
+const ALLOWED = new Set(['import-drafts', 'events']);
 const IMPORT_PAYLOAD = /^[A-Za-z0-9_-]+$/;
 const IMPORT_PREVIEW = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/;
 const MAX_IMPORT_BODY_BYTES = 512 * 1024;
-const MAX_IMPORT_PAYLOAD_CHARS = 4000;
-const MAX_STORED_IMPORT_PAYLOAD_CHARS = 350_000;
+const MAX_BOARD_PAYLOAD_CHARS = 4000;
+const MAX_PROJECT_PAYLOAD_CHARS = 350_000;
 const MAX_IMPORT_PREVIEW_CHARS = 500_000;
-const PROJECT_COPY_SCOPE_HEADER = 'X-Tactics-Board-Link-Scope';
-const CAPABILITY_PATTERN = /^[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/;
+const MAX_EVENT_BODY_BYTES = 2048;
+const DRAFT_USER_AGENT = 'TacticsBoardAgent/1.0';
+const EVENTS_USER_AGENT = 'TacticsBoard/1.0';
 
 function boardPath(params) {
   const value = params?.path;
@@ -16,48 +30,52 @@ function boardPath(params) {
   return path.replace(/^\/+|\/+$/g, '');
 }
 
-/** A capability-authenticated agent request does not rely on browser cookies. */
-function hasAgentCapability(request, path) {
-  if (path !== 'agent') return false;
-  const authorization = request.headers.get('Authorization') || '';
-  return CAPABILITY_PATTERN.test(authorization.replace(/^Bearer /, ''));
-}
-
-function hasAllowedWriteOrigin(request, path) {
+function isRead(request) {
   const method = request.method.toUpperCase();
-  if (method === 'GET' || method === 'HEAD' || hasAgentCapability(request, path)) return true;
-  return request.headers.get('Origin') === boardOrigin(request);
+  return method === 'GET' || method === 'HEAD';
 }
 
-/** Build the fixed upstream request without ever accepting a target from input. */
-export function upstreamRequest(request, params = {}) {
+function hasAllowedWriteOrigin(request) {
+  return isRead(request) || request.headers.get('Origin') === boardOrigin(request);
+}
+
+/** Only these request headers ever reach tacticsjournal.com. */
+function upstreamHeaders(request, path) {
+  const headers = new Headers();
+  for (const name of ['Accept', 'Content-Type']) {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  headers.set('Origin', boardOrigin(request));
+  if (path === 'import-drafts') {
+    // tacticsjournal.com rate-limits link creation and reads by client IP.
+    const ip = request.headers.get('CF-Connecting-IP');
+    if (ip) headers.set('CF-Connecting-IP', ip);
+    headers.set('User-Agent', DRAFT_USER_AGENT);
+  } else {
+    headers.set('User-Agent', EVENTS_USER_AGENT);
+  }
+  return headers;
+}
+
+/**
+ * Build the fixed upstream request without ever accepting a target from input.
+ * `body` replaces the incoming body when the proxy has already read and
+ * validated it.
+ */
+export function upstreamRequest(request, params = {}, body = undefined) {
   const path = boardPath(params);
-  if (!ALLOWED.has(path) || !hasAllowedWriteOrigin(request, path)) return null;
+  if (!ALLOWED.has(path) || !hasAllowedWriteOrigin(request)) return null;
+  if (path === 'events' && request.method.toUpperCase() !== 'POST') return null;
 
   const incoming = new URL(request.url);
-  // User discovery already has one privacy boundary on the account site: its
-  // public Community search. Keep Board on that endpoint rather than adding a
-  // second query with subtly different visibility rules.
-  const upstreamPath = path === 'user-search' ? '/api/community/user-search' : `/api/board/${path}`;
-  // The billing sandbox does not own shared-link storage. Preview builds use
-  // the production draft store, whose entries are bounded and expire in 24 hours.
-  const upstreamOrigin = path === 'import-drafts' || path === 'community-posts' ? boardDraftOrigin() : accountOrigin(request);
-  const target = new URL(upstreamPath, upstreamOrigin);
+  const target = new URL(`/api/board/${path}`, upstreamOrigin());
   target.search = incoming.search;
-  const headers = new Headers(request.headers);
-  headers.delete('Host');
-  // Same-origin GETs often omit Origin, but the legacy compatibility handlers
-  // still use it to identify the Board product. Never invent an Origin for a
-  // write. Agent writes authenticate with their capability instead.
-  if (!headers.has('Origin') && (request.method === 'GET' || request.method === 'HEAD')) {
-    headers.set('Origin', boardOrigin(request));
-  }
-  if (path === 'agent') headers.set('User-Agent', 'TacticsBoardAgent/1.0');
-
+  const read = isRead(request);
   return new Request(target, {
     method: request.method,
-    headers,
-    body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
+    headers: upstreamHeaders(request, path),
+    body: read ? undefined : body !== undefined ? body : request.body,
     // Required by Node's Request implementation; ignored by the Workers runtime.
     duplex: 'half',
     redirect: 'manual',
@@ -71,15 +89,21 @@ function unavailable() {
   });
 }
 
-function importError(message, status) {
+function jsonError(message, status) {
   return Response.json({ error: message }, {
     status,
     headers: { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' },
   });
 }
 
+function isJson(request) {
+  return (request.headers.get('Content-Type') || '').split(';', 1)[0].trim().toLowerCase() === 'application/json';
+}
+
 async function boundedText(request, limit) {
-  const stream = request.clone().body;
+  const length = Number(request.headers.get('Content-Length'));
+  if (Number.isFinite(length) && length > limit) return null;
+  const stream = request.body;
   if (!stream) return '';
   const reader = stream.getReader();
   const chunks = [];
@@ -103,100 +127,70 @@ async function boundedText(request, limit) {
   catch { return null; }
 }
 
-async function browserImportPayload(request) {
-  if ((request.headers.get('Content-Type') || '').split(';', 1)[0].trim().toLowerCase() !== 'application/json') return null;
-  const length = Number(request.headers.get('Content-Length'));
-  if (Number.isFinite(length) && length > MAX_IMPORT_BODY_BYTES) return null;
+/**
+ * Two exact shapes: one board with its preview, or one project without one.
+ * Returns the body to forward, or null.
+ */
+async function importDraftBody(request) {
+  if (!isJson(request)) return null;
   const text = await boundedText(request, MAX_IMPORT_BODY_BYTES);
   if (text === null) return null;
   let body;
   try { body = JSON.parse(text); } catch { return null; }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
   const keys = Object.keys(body).sort().join(',');
+  if (typeof body.payload !== 'string' || !IMPORT_PAYLOAD.test(body.payload)) return null;
   if (keys === 'payload') {
-    const scope = request.headers.get(PROJECT_COPY_SCOPE_HEADER);
-    const limit = scope === 'project-copy' ? MAX_STORED_IMPORT_PAYLOAD_CHARS : MAX_IMPORT_PAYLOAD_CHARS;
-    if (typeof body.payload !== 'string' || body.payload.length > limit || !IMPORT_PAYLOAD.test(body.payload)) return null;
-    return { payload: body.payload };
+    if (body.payload.length > MAX_PROJECT_PAYLOAD_CHARS) return null;
+    return JSON.stringify({ payload: body.payload });
   }
   if (keys !== 'payload,preview') return null;
-  if (typeof body.payload !== 'string' || body.payload.length > MAX_IMPORT_PAYLOAD_CHARS || !IMPORT_PAYLOAD.test(body.payload)) return null;
+  if (body.payload.length > MAX_BOARD_PAYLOAD_CHARS) return null;
   if (typeof body.preview !== 'string' || body.preview.length > MAX_IMPORT_PREVIEW_CHARS || !IMPORT_PREVIEW.test(body.preview)) return null;
-  return { payload: body.payload, preview: body.preview };
+  return JSON.stringify({ payload: body.payload, preview: body.preview });
 }
 
-async function authorizeBrowserImport(request) {
-  if (request.headers.get('Origin') !== boardOrigin(request)) {
-    return importError('Request not allowed.', 403);
-  }
-  const scope = request.headers.get(PROJECT_COPY_SCOPE_HEADER);
-  if (scope !== null && scope !== 'project-copy') return importError('Send one bounded project payload.', 400);
-  const draft = await browserImportPayload(request);
-  if (!draft || (scope === 'project-copy' && 'preview' in draft)) {
-    return importError('Send one bounded project payload.', 400);
-  }
-  return true;
-}
-
-async function authorizeCommunityPost(request) {
-  if (request.headers.get('Origin') !== boardOrigin(request)) {
-    return importError('Request not allowed.', 403);
-  }
-  if ((request.headers.get('Content-Type') || '').split(';', 1)[0].trim().toLowerCase() !== 'application/json') {
-    return importError('Send one board and an optional caption.', 400);
-  }
-  const length = Number(request.headers.get('Content-Length'));
-  if (Number.isFinite(length) && length > MAX_IMPORT_BODY_BYTES) {
-    return importError('Send one board and an optional caption.', 400);
-  }
-  const text = await boundedText(request, MAX_IMPORT_BODY_BYTES);
-  if (text === null) return importError('Send one board and an optional caption.', 400);
-  let body;
-  try { body = JSON.parse(text); } catch { return importError('Send one board and an optional caption.', 400); }
-  const shape = body && typeof body === 'object' && !Array.isArray(body) ? Object.keys(body).sort().join(',') : '';
-  // Two exact shapes and no others: a new post, and the same board sent again
-  // for the post it already has, which carries that post's board copy id.
-  if (shape !== 'caption,payload,preview' && shape !== 'caption,id,payload,preview') {
-    return importError('Send one board and an optional caption.', 400);
-  }
-  if (shape.includes('id') && (typeof body.id !== 'string' || !/^[A-Za-z0-9_-]{22}$/.test(body.id))) {
-    return importError('Send one board and an optional caption.', 400);
-  }
-  if (typeof body.caption !== 'string' || body.caption.length > 5000
-    || typeof body.payload !== 'string' || body.payload.length > MAX_IMPORT_PAYLOAD_CHARS || !IMPORT_PAYLOAD.test(body.payload)
-    || typeof body.preview !== 'string' || body.preview.length > MAX_IMPORT_PREVIEW_CHARS || !IMPORT_PREVIEW.test(body.preview)) {
-    return importError('Send one board and an optional caption.', 400);
-  }
-  return true;
+async function eventBody(request) {
+  if (!isJson(request)) return null;
+  const text = await boundedText(request, MAX_EVENT_BODY_BYTES);
+  if (text === null) return null;
+  try {
+    const body = JSON.parse(text);
+    return body && typeof body === 'object' && !Array.isArray(body) ? JSON.stringify(body) : null;
+  } catch { return null; }
 }
 
 export async function onRequest(context) {
+  const request = context.request;
   const path = boardPath(context.params);
   if (!ALLOWED.has(path)) return new Response('Not found.', { status: 404, headers: { 'Cache-Control': 'no-store' } });
-  if (!hasAllowedWriteOrigin(context.request, path)) {
+  if (!hasAllowedWriteOrigin(request)) {
     return new Response('Request not allowed.', { status: 403, headers: { 'Cache-Control': 'no-store' } });
   }
-  const authorization = context.request.method !== 'POST' ? null
-    : path === 'import-drafts' ? await authorizeBrowserImport(context.request)
-    : path === 'community-posts' ? await authorizeCommunityPost(context.request)
-    : null;
-  if (authorization instanceof Response) return authorization;
-  const upstream = upstreamRequest(context.request, context.params);
+  const method = request.method.toUpperCase();
+  let body;
+  if (path === 'import-drafts' && method === 'POST') {
+    body = await importDraftBody(request);
+    if (body === null) return jsonError('Send one bounded board or project payload.', 400);
+  } else if (path === 'events') {
+    if (method !== 'POST') return new Response('Method not allowed.', { status: 405, headers: { 'Cache-Control': 'no-store', Allow: 'POST' } });
+    body = await eventBody(request);
+    if (body === null) return jsonError('Send one event.', 400);
+  } else if (!isRead(request)) {
+    return new Response('Method not allowed.', { status: 405, headers: { 'Cache-Control': 'no-store', Allow: 'GET, HEAD, POST' } });
+  }
+  const upstream = upstreamRequest(request, context.params, body);
   if (!upstream) return new Response('Not found.', { status: 404, headers: { 'Cache-Control': 'no-store' } });
-  if (authorization && path === 'import-drafts') upstream.headers.set('User-Agent', 'TacticsBoardAgent/1.0');
   let response;
   try {
-    // Fetch preserves Upgrade and a 101 WebSocket response in the Pages runtime.
     response = await fetch(upstream);
   } catch {
     return unavailable();
   }
   // An upstream Location would turn this fixed proxy into a redirect to TJ.
-  if (response.status >= 300 && response.status < 400) return unavailable();
-  // A WebSocket handshake cannot be rebuilt without losing its socket. Reject
-  // an upstream that tries to attach a cookie instead of forwarding it.
-  if (response.status === 101) return response.headers.has('Set-Cookie') ? unavailable() : response;
-  // Only the dedicated session handoff may place a cookie on the Board host.
+  // Nothing here upgrades to a WebSocket, so a 1xx answer is never valid.
+  if (response.status < 200 || (response.status >= 300 && response.status < 400)) return unavailable();
+  // Board never sets a cookie, whatever the upstream sends.
   const headers = new Headers(response.headers);
   headers.delete('Set-Cookie');
   return new Response(response.body, {

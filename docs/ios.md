@@ -21,11 +21,8 @@ Run `npm run ios:sync` after every web change. The app does not load the website
 `src/native.ts` exposes `IS_NATIVE_APP`.
 
 - **Exports.** The app has no downloads. PNG, GIF, video, project images and JSON backups open the iOS share sheet, which offers Save Image, Save to Files and AirDrop.
-- **Purchases.** Pro is sold through App Store in-app purchase. Polar checkout never opens in the app.
+- **Purchases.** There are none. Every feature is free, and the app has no accounts.
 
 ## Not done yet
 
-- Accounts: an absolute API origin and token sessions. Cookies do not cross from `capacitor://localhost`.
-- Google sign-in through the system browser (`ASWebAuthenticationSession`) with a return deep link.
-- StoreKit purchase of Pro, verified by the server and attached to the Tactics Journal account.
 - App icon, launch screen, signing and TestFlight.

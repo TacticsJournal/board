@@ -24,7 +24,6 @@ The app requests current squad information from Wikipedia at runtime. That data 
 
 The direct packages listed by the release lockfile keep their upstream licenses. `npm ci` obtains them from npm and does not relicense them under this repository's MIT notice.
 
-- [Polar checkout](https://github.com/polarsource/polar) uses Apache-2.0.
 - [Konva](https://github.com/konvajs/konva) uses MIT.
 - [TypeScript](https://github.com/microsoft/TypeScript) uses Apache-2.0.
 - [Vite](https://github.com/vitejs/vite) uses MIT.

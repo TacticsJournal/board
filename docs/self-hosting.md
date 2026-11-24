@@ -1,6 +1,6 @@
 # Self-hosting
 
-Tactics Journal Board is a static site. The self-host build removes the hosted account header and enables local extension packaging. It stores boards and uploaded assets in the browser, not on the web server.
+Tactics Journal Board is a static site. The self-host build removes the hosted site header and enables local extension packaging. It stores boards and uploaded assets in the browser, not on the web server.
 
 ## Docker
 
@@ -86,7 +86,7 @@ Only the packaged wrapper is copied into `dist/extensions/`. The build ignores u
 
 ## What a static copy does not include
 
-A static copy has no Tactics Journal account or server. It does not provide cloud sync, collaboration, billing, Pro entitlements, hosted agent links, or hosted service APIs. Local boards and uploaded assets belong to the browser profile that created them. A container restart cannot recover them.
+A static copy has no Tactics Journal server. It does not provide Copy link, Feedback, site search, or the aggregate counters, which use Tactics Journal-operated APIs. Board has no accounts, plans, or purchases in either build. Local boards and uploaded assets belong to the browser profile that created them. A container restart cannot recover them.
 
 The app can call external team data services from the browser. `public/teams-index.json` is a generated team index, while current squad data is fetched from Wikipedia at runtime. Those services can be unavailable or can change their terms.
 

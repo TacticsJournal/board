@@ -13,14 +13,11 @@ import { ArrowObj, BallObj, BoardSizes, BoxObj, GoalObj, ImageObj, MarkerObj, Pl
 import type { NodeCurve, PathNode } from './path-nodes'
 import { ImportPanel } from './importer'
 import { SavesPanel } from './saves'
-import { BoardHistoryPanel, createBoardHistoryApi, type BoardHistoryTarget, type RestoredBoard } from './board-history'
-import { BoardProposalsPanel, createBoardProposalsApi, type AcceptedBoard, type BoardProposalsTarget } from './board-proposals'
 import { formatElapsedSince } from './last-updated'
 import { mountSlidingPills } from './sliding-pill'
 import { TeamPanel, teamCode, type TeamSide } from './teams'
 import {
-  DEFAULT_PITCH, PITCHES, clearActiveSharedPitches, customPitches, pitchArt, pitchById, pitchPaper, paperIsDark, BOARD_PAPERS, type BoardPaper,
-  setActiveSharedPitch, setActiveSharedPitches, sharedPitchPlaceholder,
+  DEFAULT_PITCH, PITCHES, customPitches, pitchArt, pitchById, pitchPaper, paperIsDark, BOARD_PAPERS, type BoardPaper,
 } from './pitches'
 import {
   attackAngle as attackAngleFor, formationSlotPoint, pitchLayout, remapObjects,
@@ -32,33 +29,20 @@ import { backgrounds } from './background-library.ts'
 import {
   addBackgroundFromFile, addBackgroundFromImage, loadBackgrounds, loadImage, migrateLegacyBackgrounds, nameFromFile,
 } from './background-library.ts'
-import { isBackgroundId, type BackgroundKind, type BackgroundMeta } from './backgrounds.ts'
+import type { BackgroundKind, BackgroundMeta } from './backgrounds.ts'
 import { decodeImageFile, importBroadcastShots, shotImportMessage } from './broadcast-import.ts'
-import * as sync from './sync'
-import * as assetSync from './asset-sync'
-import * as librarySync from './library-sync'
-import type { LibrarySyncStore, SyncedLibraryRecord } from './library-sync'
-import {
-  createSharedBackgroundResolver, sharedBackgroundPitchStyle,
-  type SharedBackgroundResolver,
-} from './shared-backgrounds.ts'
-import * as live from './live'
-import * as collaboration from './collaboration'
 import { createTabPresence } from './tab-presence'
-import { TJ_ORIGIN, usingBillingSandbox } from './origin'
-import { boardAgentLinksUrl, boardInvitationUrl, boardPresenceUrl, boardSkillsUrl, ensureBoardSession, resetBoardSession, type AgentAccessMode } from './board-api'
-import { startCheckout, type CheckoutProduct } from './checkout'
 import { IS_NATIVE_APP, nativeShareFile } from './native'
 import * as entitlements from './entitlements'
 import {
   AssetQuotaError, ASSET_BUDGET_BYTES, ASSET_CATEGORIES, AssetCategory, UserAsset,
-  addAsset, assetSyncStore, getAsset, listAssets, readImageFile, removeAsset, subscribe as subscribeAssets, updateAsset, usedBytes,
+  addAsset, getAsset, listAssets, readImageFile, removeAsset, updateAsset, usedBytes,
 } from './assets'
 import {
   MAX_CAT_LENGTH, MAX_STAMP_OBJECTS, Stamp, StampQuotaError,
-  addStamp, customCats, listStamps, normalizeCat, removeStamp, updateStamp, stampLibrarySyncStore, subscribe as subscribeStamps,
+  addStamp, customCats, listStamps, normalizeCat, removeStamp, updateStamp,
 } from './stamps'
-import { previewSvg, sceneShapesSvg } from './saves'
+import { sceneShapesSvg } from './saves'
 import { icon } from './icons'
 import { ExtensionRuntime, type ExtensionManifest } from './extension-runtime'
 import { OfficialExtensions } from './extensions/official/manager.ts'
@@ -74,26 +58,22 @@ import { loadTopBarState, moveTopBarItem, normalizeTopBarState, saveTopBarState,
 import { BOARD_EXTENSION_PATHS, BOARD_SELF_HOSTED } from './build-mode.ts'
 import { entries as changelogEntries, entryDate, markAllSeen as markChangelogSeen, unreadEntries, type ChangelogEntry } from './changelog.ts'
 import { registerWebMcp } from './webmcp.ts'
-import { addUserSkill, deleteSkill, installExtension, loadProjectSkillsState, mergeSyncedSkills, newUserSkill, removeExtension, saveProjectSkillsState, saveSkill, setExtensionEnabled, skillsForSync, type ProjectSkillsState, type Skill } from './skills-extensions'
-import { BoardsView, LINK_STYLE_ICON, LINK_STYLE_LABEL, linkLength, type AddBoardUpload, type InlinePlay, type ProjectActions } from './boards-view'
+import { addUserSkill, deleteSkill, installExtension, loadProjectSkillsState, newUserSkill, removeExtension, saveProjectSkillsState, saveSkill, setExtensionEnabled, type ProjectSkillsState, type Skill } from './skills-extensions'
+import { BoardsView, LINK_STYLE_ICON, LINK_STYLE_LABEL, linkLength, type AddBoardUpload, type InlinePlay } from './boards-view'
 import { STILL_COPY, dropDecision, dropLabel, imageFiles, isTypingTarget, pasteDecision, stillRoute } from './still-intake'
 import { openComposer } from './composer'
 import { CATEGORY_SCENES_RECOVERED_SUFFIX, planCategorySnapshotRecovery } from './category-recovery'
 import { exportAnimation } from './animate-export'
 import { recordProductEvent } from './product-events'
-import { saveFreeBackupIntent, selectedFreeBackup, setSelectedFreeBackup, takeFreeBackupIntent, type FreeBackupSource } from './free-backup'
 import { downloadProjectImage, exportProjectImages, type ProjectImageFile } from './project-image-export'
 import { startAgentImport, type BoardImportResult } from './agent-import-ui'
-import { createBoardImportUrl, createProjectImportUrl, createStoredProjectImportUrl, isAgentImportTooLarge, MAX_COMMUNITY_POST_CAPTION_CHARS, postBoardToCommunity, type AgentImportDraft, type BoardImportMode } from './agent-import'
-import { boardPostKey, communityHintDue, communityPostFor, postedAgo, rememberCommunityPost, retireCommunityHint } from './community-post-state'
+import { createBoardImportUrl, createProjectImportUrl, isAgentImportTooLarge, type AgentImportDraft, type BoardImportMode } from './agent-import'
 import {
-  addBoard, appendBoardCopy, appendProjectCopy, boardName, canAnimate, canCreateProject, carryObjects, currentProject, documentScene, freshDeviceDestination, linkStyle, loadLibrary, migrateProject, newProject, newProjectFromBoard, newProjectFromProjectCopy, orderedProjects, reconcileProjectLibrary, rememberBoard, removeBoard, saveLibrary, stillGroups, storedBoardIndex, touch, undoCarry, viewAfterScene,
+  addBoard, appendBoardCopy, appendProjectCopy, boardName, canAnimate, canCreateProject, carryObjects, currentProject, documentScene, linkStyle, loadLibrary, migrateProject, newProject, newProjectFromBoard, newProjectFromProjectCopy, orderedProjects, reconcileProjectLibrary, rememberBoard, removeBoard, saveLibrary, stillGroups, storedBoardIndex, touch, undoCarry, viewAfterScene,
   type BoardDocument, type CarryAddition, type CarryResult, type CarrySelection, type Library, type Project,
 } from './projects'
 
 let extensionRuntime: ExtensionRuntime | null = null
-let authenticated = false
-let accountBinding: string | null = null
 
 // same image the tacticsjournal.com header uses (site avatar IMG_5503.png),
 // downscaled from 4096px for the 24px logo slot
@@ -430,111 +410,36 @@ function blankSceneLike(pitchId: string | undefined): Scene {
   return followThemePaper(scene)
 }
 
+// Legacy per-category scenes. Board no longer writes this key; it is read once
+// below and recovered into ordinary Projects.
 const CATEGORY_SCENES_KEY = 'tbm-category-scenes-v1'
-const CATEGORY_SCENES_SYNC_KEY = 'tbm-category-scenes-sync-v1'
-let activeCategoryScenesKey = CATEGORY_SCENES_KEY
-let activeCategoryScenesSyncKey = CATEGORY_SCENES_SYNC_KEY
-let categoryScenesAccount: string | null = null
-type CategoryScenes = Record<string, Scene>
-type CategoryScenesMeta = { updatedAt: string; syncAccount?: string }
-const categorySceneListeners = new Set<() => void>()
-const EMPTY_CATEGORY_META: CategoryScenesMeta = { updatedAt: new Date(Date.UTC(2000, 0, 1)).toISOString() }
+const activeCategoryScenesKey = CATEGORY_SCENES_KEY
 
-function categoryScenesMetaAt(key: string): { meta: CategoryScenesMeta; initialized: boolean } {
+/**
+ * Board once kept category scenes per signed-in account, under
+ * `tbm-category-scenes-v1:<account>`. There are no accounts now, so a browser
+ * that has no base record yet adopts the most recently changed account copy
+ * once. The old keys are left where they are.
+ */
+function adoptAccountCategoryScenes() {
   try {
-    const raw = JSON.parse(localStorage.getItem(key) ?? '{}')
-    if (typeof raw.updatedAt === 'string' && Number.isFinite(Date.parse(raw.updatedAt))) {
-      return {
-        initialized: true,
-        meta: { updatedAt: raw.updatedAt, ...(typeof raw.syncAccount === 'string' && raw.syncAccount ? { syncAccount: raw.syncAccount } : {}) },
-      }
+    if (localStorage.getItem(CATEGORY_SCENES_KEY) !== null) return
+    let best: { data: string; at: number } | null = null
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (!key || !key.startsWith(`${CATEGORY_SCENES_KEY}:`) || key.endsWith(CATEGORY_SCENES_RECOVERED_SUFFIX)) continue
+      const data = localStorage.getItem(key)
+      if (!data) continue
+      const account = key.slice(CATEGORY_SCENES_KEY.length + 1)
+      let at = 0
+      try { at = Date.parse(JSON.parse(localStorage.getItem(`tbm-category-scenes-sync-v1:${account}`) ?? '{}').updatedAt) || 0 } catch { /* no meta */ }
+      if (!best || at > best.at) best = { data, at }
     }
-  } catch { /* old local setup */ }
-  return { meta: EMPTY_CATEGORY_META, initialized: false }
+    if (best) localStorage.setItem(CATEGORY_SCENES_KEY, best.data)
+  } catch { /* private mode */ }
 }
-function categoryScenesMeta(): CategoryScenesMeta { return categoryScenesMetaAt(activeCategoryScenesSyncKey).meta }
-function hasCategoryScenesMeta(): boolean { return categoryScenesMetaAt(activeCategoryScenesSyncKey).initialized }
-function saveCategoryScenesMeta(meta: CategoryScenesMeta) {
-  try { localStorage.setItem(activeCategoryScenesSyncKey, JSON.stringify(meta)) } catch { /* private mode */ }
-}
-function readCategoryScenes(): CategoryScenes {
-  try {
-    const raw = JSON.parse(localStorage.getItem(activeCategoryScenesKey) ?? '{}')
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-    return raw as CategoryScenes
-  } catch { return {} }
-}
-function writeCategoryScenes(all: CategoryScenes, source: 'local' | 'remote' = 'local', meta?: CategoryScenesMeta) {
-  try { localStorage.setItem(activeCategoryScenesKey, JSON.stringify(all)) } catch { return }
-  if (source === 'local') {
-    const previous = categoryScenesMeta()
-    const prior = Date.parse(previous.updatedAt)
-    saveCategoryScenesMeta({ ...previous, updatedAt: new Date(Math.max(Date.now(), Number.isFinite(prior) ? prior + 1 : 0)).toISOString() })
-    for (const fn of categorySceneListeners) fn()
-  } else if (meta) saveCategoryScenesMeta(meta)
-}
+adoptAccountCategoryScenes()
 
-/** Keep the fixed category-scenes record separate for each account on this browser. */
-function activateCategoryScenesAccount(account: string | null) {
-  if (!account || account === categoryScenesAccount) return
-  const dataKey = `${CATEGORY_SCENES_KEY}:${account}`
-  const syncKey = `${CATEGORY_SCENES_SYNC_KEY}:${account}`
-  let scopedExists = false
-  try { scopedExists = localStorage.getItem(dataKey) !== null } catch { /* private mode */ }
-  if (!scopedExists) {
-    const baseState = categoryScenesMetaAt(CATEGORY_SCENES_SYNC_KEY)
-    const baseScenes = (() => {
-      try {
-        const raw = JSON.parse(localStorage.getItem(CATEGORY_SCENES_KEY) ?? '{}')
-        return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as CategoryScenes : {}
-      } catch { return {} }
-    })()
-    const canClaim = !baseState.meta.syncAccount || baseState.meta.syncAccount === account
-    if (canClaim && (baseState.initialized || Object.keys(baseScenes).length > 0)) {
-      const claimed = { ...baseState.meta, syncAccount: account }
-      try {
-        localStorage.setItem(dataKey, JSON.stringify(baseScenes))
-        localStorage.setItem(syncKey, JSON.stringify(claimed))
-        localStorage.setItem(CATEGORY_SCENES_SYNC_KEY, JSON.stringify(claimed))
-      } catch { /* private mode */ }
-    }
-  }
-  activeCategoryScenesKey = dataKey
-  activeCategoryScenesSyncKey = syncKey
-  categoryScenesAccount = account
-  recoverCategorySnapshots(dataKey)
-}
-
-const categoryScenesLibraryStore: LibrarySyncStore = {
-  list() {
-    const scenes: CategoryScenes = {}
-    for (const [category, scene] of Object.entries(readCategoryScenes())) {
-      try { scenes[category] = migrate(scene) } catch { /* corrupt scene stays local, never uploads */ }
-    }
-    if (!Object.keys(scenes).length && !hasCategoryScenesMeta()) return []
-    const meta = categoryScenesMeta()
-    return [{ id: 'category-scenes', kind: 'category_scenes', name: 'Category scenes', payload: { scenes }, updatedAt: meta.updatedAt,
-      ...(meta.syncAccount ? { syncAccount: meta.syncAccount } : {}) }]
-  },
-  apply(record: SyncedLibraryRecord) {
-    if (record.kind !== 'category_scenes' || record.id !== 'category-scenes') return
-    const current = categoryScenesMeta()
-    if (hasCategoryScenesMeta() && Date.parse(current.updatedAt) >= Date.parse(record.updatedAt)) return
-    const raw = record.deleted ? {} : record.payload && typeof record.payload === 'object'
-      ? (record.payload as Record<string, unknown>).scenes : null
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return
-    const scenes: CategoryScenes = {}
-    for (const [category, scene] of Object.entries(raw as Record<string, unknown>)) {
-      try { scenes[category] = migrate(scene) } catch { /* one bad category cannot poison the rest */ }
-    }
-    writeCategoryScenes(scenes, 'remote', { updatedAt: record.updatedAt, ...(record.syncAccount ? { syncAccount: record.syncAccount } : {}) })
-    recoverCategorySnapshots(activeCategoryScenesKey)
-  },
-  bind(ids, account) {
-    const meta = categoryScenesMeta()
-    if (ids.includes('category-scenes') && (!meta.syncAccount || meta.syncAccount === account)) saveCategoryScenesMeta({ ...meta, syncAccount: account })
-  },
-}
 function recoverCategorySnapshots(key = activeCategoryScenesKey) {
   const doneKey = `${key}${CATEGORY_SCENES_RECOVERED_SUFFIX}`
   let stored: string | null
@@ -754,7 +659,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div class="appBanner hidden" id="appBanner" role="status" aria-live="polite"></div>
   <header class="site-header"${BOARD_SELF_HOSTED || IS_NATIVE_APP ? ' hidden' : ''}>
     <a href="https://tacticsjournal.com/" class="site-logo" aria-label="Tactics Journal home">
-      <img src="${BOARD_SELF_HOSTED ? tjLogoSrc : 'https://tacticsjournal.com/assets/IMG_5503.png'}" alt="Tactics Journal" />
+      <img src="${tjLogoSrc}" alt="Tactics Journal" />
     </a>
     <nav class="site-nav" aria-label="Primary">
       <a href="https://tacticsjournal.com/">Home</a>
@@ -785,124 +690,9 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <ul class="search-results" data-search-results hidden></ul>
         </div>
       </div>
-      <div id="site-account-panel" class="site-overlay-panel site-account-panel" hidden>
-        <div class="site-account-loading" hidden></div>
-        <div class="site-account-logged-out signin-card" hidden>
-          <div class="signin-card__header site-panel-animate">
-            <h2 class="post-title signin-card__title">Sign in</h2>
-            <p class="signin-card__subtitle">Continue to your Tactics Journal account.</p>
-          </div>
-          <div class="site-account-error account-message account-message--error site-panel-animate" hidden></div>
-          <div class="site-account-notice account-message site-panel-animate" role="status" aria-live="polite" hidden></div>
-          <div class="site-account-google signin-google site-panel-animate">
-            <a href="${TJ_ORIGIN}/api/account/google/start?next=/account/" class="signin-google-button">
-              <span class="signin-google-button__logo" aria-hidden="true">
-                <svg viewBox="0 0 18 18" focusable="false"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.33-1.58-5.04-3.71H.94v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.96 10.71A5.41 5.41 0 0 1 3.68 9c0-.59.1-1.16.28-1.71V4.96H.94A9 9 0 0 0 0 9c0 1.45.34 2.82.94 4.04l3.02-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .94 4.96l3.02 2.33C4.67 5.16 6.66 3.58 9 3.58z"/></svg>
-              </span>
-              <span>Continue with Google</span>
-            </a>
-          </div>
-          <div class="signin-divider site-panel-animate" aria-hidden="true"><span>or</span></div>
-          <form class="email-form site-account-start-form site-panel-animate">
-            <input type="email" name="email" placeholder="Enter your email..." aria-label="Email address" autocomplete="email" required />
-            <button type="submit">Send code</button>
-          </form>
-          <p class="research-gate-note research-gate-legal signin-card__hint site-panel-animate site-account-start-hint">No credit card required. By continuing, you agree to our <a href="https://tacticsjournal.com/privacy/">Privacy Policy</a> and <a href="https://tacticsjournal.com/terms/">Terms of Service</a>.</p>
-          <button type="button" class="site-account-change-email site-panel-animate" hidden>Use a different email</button>
-          <form class="email-form site-account-verify-form site-panel-animate" hidden>
-            <input type="text" name="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="6-digit code" aria-label="6-digit sign-in code" autocomplete="one-time-code" required />
-            <button type="submit">Sign in</button>
-          </form>
-        </div>
-        <div class="site-account-logged-in" hidden>
-          <div class="notif-header site-panel-animate">
-            <h2 class="notif-title">Notifications</h2>
-            <div class="notif-header-actions">
-              <a href="${TJ_ORIGIN}/account/" class="notif-header-icon" aria-label="Your account">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1.5-3.5 4.1-5.25 7-5.25S17.5 16.5 19 20"/></svg>
-              </a>
-              <button type="button" class="notif-header-icon site-notif-settings-toggle" aria-label="Notification settings" aria-expanded="false">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              </button>
-            </div>
-          </div>
-          <div class="notif-settings site-notif-settings" hidden>
-            <label class="notif-settings-row">
-              <svg class="notif-settings-icon notif-settings-icon--upvote" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 4l-8 8h5v8h6v-8h5z"/></svg>
-              <span class="notif-settings-label">
-                <strong>Upvotes</strong>
-                <span class="notif-settings-desc">When someone upvotes your post</span>
-              </span>
-              <input type="checkbox" class="notif-settings-toggle" data-notif-pref="upvotes" checked />
-            </label>
-            <label class="notif-settings-row">
-              <svg class="notif-settings-icon notif-settings-icon--downvote" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 20l8-8h-5V4H9v8H4z"/></svg>
-              <span class="notif-settings-label">
-                <strong>Downvotes</strong>
-                <span class="notif-settings-desc">When someone downvotes your post</span>
-              </span>
-              <input type="checkbox" class="notif-settings-toggle" data-notif-pref="downvotes" checked />
-            </label>
-            <label class="notif-settings-row">
-              <svg class="notif-settings-icon notif-settings-icon--reply" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              <span class="notif-settings-label">
-                <strong>Replies</strong>
-                <span class="notif-settings-desc">When someone replies to your post</span>
-              </span>
-              <input type="checkbox" class="notif-settings-toggle" data-notif-pref="replies" checked />
-            </label>
-            <label class="notif-settings-row">
-              <svg class="notif-settings-icon notif-settings-icon--following" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9Z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-              <span class="notif-settings-label">
-                <strong>Posts you follow</strong>
-                <span class="notif-settings-desc">Activity on posts you're following</span>
-              </span>
-              <input type="checkbox" class="notif-settings-toggle" data-notif-pref="following" checked />
-            </label>
-            <label class="notif-settings-row">
-              <img class="notif-settings-icon notif-settings-icon--avatar" src="${BOARD_SELF_HOSTED ? tjLogoSrc : `${TJ_ORIGIN}/assets/kyleboas.jpeg`}" alt="" aria-hidden="true" />
-              <span class="notif-settings-label">
-                <strong>Opinion</strong>
-                <span class="notif-settings-desc">New opinion posts</span>
-              </span>
-              <input type="checkbox" class="notif-settings-toggle" data-notif-pref="opinion" checked />
-            </label>
-            <label class="notif-settings-row">
-              <img class="notif-settings-icon notif-settings-icon--avatar" src="${BOARD_SELF_HOSTED ? tjLogoSrc : `${TJ_ORIGIN}/assets/IMG_5503.png`}" alt="" aria-hidden="true" />
-              <span class="notif-settings-label">
-                <strong>Research</strong>
-                <span class="notif-settings-desc">New research reports</span>
-              </span>
-              <input type="checkbox" class="notif-settings-toggle" data-notif-pref="research" checked />
-            </label>
-          </div>
-          <div class="notif-feed site-account-notif-feed site-panel-animate">
-            <div class="notif-empty site-account-notif-empty">
-              <svg class="notif-empty-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              <p class="notif-empty-text">No notifications yet</p>
-            </div>
-          </div>
-        </div>
-        <div class="account-theme-section site-panel-animate">
-          <div class="theme-setting" data-theme-setting>
-            <label class="theme-setting-label" for="account-panel-theme-select">Theme</label>
-            <select id="account-panel-theme-select" class="theme-setting-select" data-theme-select aria-label="Theme">
-              <option value="system">System</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </div>
-        </div>
-      </div>
       ${changelogPanelMarkup()}
       <a href="https://tacticsjournal.com/search/" class="site-action site-action-toggle" data-inline-toggle="search" aria-label="Search" aria-expanded="false" aria-controls="site-search-panel">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16L21 21"/></svg>
-      </a>
-      <a href="https://tacticsjournal.com/account/" class="site-action site-action-toggle site-action-account-toggle" data-inline-toggle="account" aria-label="Account" aria-expanded="false" aria-controls="site-account-panel">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1.5-3.5 4.1-5.25 7-5.25S17.5 16.5 19 20"/></svg>
       </a>
       <details class="site-menu">
         <summary class="site-action" aria-label="Menu">
@@ -974,7 +764,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div class="dropVeil" id="dropVeil" hidden><div class="toast"><span data-veil-title></span><small data-veil-hint hidden></small></div></div>
         <button class="boardReset" id="boardReset" type="button" aria-label="Reset 3D camera" title="Reset 3D camera">Reset</button>
         <p class="boardHint" id="boardHint" role="status" aria-live="polite"></p>
-        <div class="liveEditChip" role="status" aria-live="polite" aria-atomic="true"></div>
       </div>
       <div class="fabCol hidden" id="fabCol">
         <span class="fabPair">
@@ -1107,7 +896,6 @@ document.addEventListener('focusin', (e) => {
 })
 
 const stageEl = document.querySelector<HTMLDivElement>('#stage')!
-const liveEditChipEl = document.querySelector<HTMLElement>('.liveEditChip')!
 const stageWrap = document.querySelector<HTMLDivElement>('.stageWrap')!
 const optionsEl = document.querySelector<HTMLDivElement>('#options')!
 /**
@@ -1186,40 +974,12 @@ window.addEventListener('orientationchange', () => {
   refitBoard()
   window.setTimeout(refitBoard, 300)
 })
-/** Installed after saved-board/session setup; keeping these no-ops makes board switches safe during boot. */
-let collaborationBoardChanged = () => {}
-let clearCollaborationPreview = () => {}
+/** Installed once the two-tab notice is set up; a no-op keeps board switches safe during boot. */
+let tabBoardChanged = () => {}
 const importer = new ImportPanel(store, document.body)
 const saves = new SavesPanel(store, document.body)
 recoverCategorySnapshots()
 const teams = new TeamPanel(store, defaults, document.body, () => renderPanel())
-
-// One pass reconciles each durable personal library while Project sync remains
-// the sole owner of the current editor scene.
-const librarySyncStore: LibrarySyncStore = {
-  async list() {
-    return [
-      ...await backgrounds.librarySyncStore().list(),
-      ...await stampLibrarySyncStore().list(),
-      ...await teams.librarySyncStore().list(),
-      ...await categoryScenesLibraryStore.list(),
-    ]
-  },
-  async apply(record) {
-    if (record.syncAccount && record.syncAccount !== accountBinding) return
-    if (record.kind === 'background') await backgrounds.librarySyncStore().apply(record)
-    else if (record.kind === 'stamp') await stampLibrarySyncStore().apply(record)
-    else if (record.kind === 'team_setup') await teams.librarySyncStore().apply(record)
-    else if (record.kind === 'category_scenes') await categoryScenesLibraryStore.apply(record)
-  },
-  async bind(ids, account) {
-    if (account !== accountBinding) return
-    await backgrounds.librarySyncStore().bind(ids, account)
-    await stampLibrarySyncStore().bind(ids, account)
-    await teams.librarySyncStore().bind(ids, account)
-    await categoryScenesLibraryStore.bind(ids, account)
-  },
-}
 
 /**
  * Apply one tool-default control. Shared by the options strip and the shapes
@@ -5259,8 +5019,8 @@ if (!library.projects.length) {
   const first = newProject(store.scene)
   library = { version: 2, currentId: first.id, projects: [first] }
 }
-// A clean browser needs a temporary canvas, not a durable account record. If
-// account Projects arrive before it is edited, they replace this placeholder.
+// A clean browser needs a temporary canvas. It becomes a saved Project once it
+// is edited.
 let freshStarter = loadedProjectLibrary ? null : { id: library.currentId, updated: currentProject(library).updated }
 /** Board the editor is holding. */
 let editingBoard = Math.max(0, storedBoardIndex(library, currentProject(library)))
@@ -5296,24 +5056,6 @@ function saveProjectChanges(project: Project = currentProject(library)) {
   else if (saves.persistProjectDocuments([project])) saveLibrary(library)
 }
 
-let proposalCounts: Record<string, number> = {}
-
-function projectActionsFor(projectIds: readonly string[]): Map<string, ProjectActions> {
-  if (!Object.keys(proposalCounts).length) {
-    return new Map(projectIds.map(projectId => [projectId, { history: false, proposals: false, waiting: 0 }]))
-  }
-  const actions = saves.projectActionsFor(projectIds)
-  return new Map(projectIds.map(projectId => {
-    const action = actions.get(projectId)
-    const waiting = action?.target ? proposalCounts[action.target.id] || 0 : 0
-    return [projectId, {
-      history: action?.history ?? false,
-      proposals: action?.proposals ?? false,
-      waiting,
-    }] as const
-  }))
-}
-
 const boardsView = new BoardsView(document.querySelector<HTMLElement>('#libRoot')!, {
   changed: saveProjectChanges,
   carryObjects: (sourceBoardId, targetBoardIds, scope) => {
@@ -5330,15 +5072,8 @@ const boardsView = new BoardsView(document.querySelector<HTMLElement>('#libRoot'
   uploadBackground: () => pickBackgroundForNewBoard(),
   currentIndex: () => editingBoard,
   stashBoard: () => stashEditedBoard(false),
-  paid: () => entitlements.hasPaidBoardAccess(),
-  openPro: () => openSettings('pro'),
-  // A shared Project's backgrounds come off the server through its own scope;
-  // every other Project's come out of this device's shelf.
-  resolveBackground: (id, projectId) => (
-    sharedBackgroundScope && projectId === sharedBackgroundProjectId
-      ? sharedBackgroundScope(id)
-      : backgrounds.image(id)
-  ),
+  // Every Project's backgrounds come out of this browser's shelf.
+  resolveBackground: (id) => backgrounds.image(id),
   openBoard: (index, options) => {
     const project = currentProject(library)
     const board = project.boards[index]
@@ -5350,51 +5085,9 @@ const boardsView = new BoardsView(document.querySelector<HTMLElement>('#libRoot'
     loadBoardIntoEditor(board.scene)
   },
   openProject: openLibraryProject,
-  projectActions: (projectId) => projectActionsFor([projectId]).get(projectId)!,
-  projectActionsFor,
-  openProjectHistory: (projectId) => openProjectScreen(projectId, 'history'),
-  openProjectProposals: (projectId) => openProjectScreen(projectId, 'proposals'),
   transitionClosed: () => { openSlideLink = -1; renderSlidesShelf() },
 })
 boardsView.setLibrary(library)
-
-/**
- * How many proposed versions wait on each synced project, by the server's
- * board id. Read once when the library opens, so a card can say that
- * something is waiting without a request of its own. An account that cannot
- * have proposals never asks, and a failed read simply says nothing.
- */
-async function refreshProposalCounts(): Promise<void> {
-  if (BOARD_SELF_HOSTED || !authenticated || !entitlements.isPro() || !accountBinding) {
-    proposalCounts = {}
-    return
-  }
-  try {
-    proposalCounts = await createBoardProposalsApi().counts()
-  } catch {
-    proposalCounts = {}
-    return
-  }
-  boardsView.refreshProjects()
-}
-
-/**
- * Leave the library for one project's own screen in Settings.
- *
- * The two screens already exist and already own one project at a time, so
- * this opens Settings on the screen and hands the project over. Back goes to
- * the saved list, which is where those screens have always returned to.
- */
-function openProjectScreen(projectId: string, screen: 'history' | 'proposals'): void {
-  const actions = saves.projectActions(projectId)
-  if (!actions.target) return
-  if (screen === 'history' ? !actions.history : !actions.proposals) return
-  boardsView.close()
-  openSettings(screen)
-  if (screen === 'history') boardHistory.open(actions.target)
-  else boardProposals.start(actions.target)
-  settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
-}
 
 /**
  * What a carry moves. A selection is the answer when there is one; with
@@ -5600,67 +5293,19 @@ saves.defaultBoardName = () => {
   return `${project.name} \u2014 ${boardName(project, editingBoard)}`
 }
 
-let sharedBackgroundScope: SharedBackgroundResolver | null = null
-let sharedBackgroundRowId: string | null = null
-/** The Project the shared scope belongs to, for views that show several. */
-let sharedBackgroundProjectId: string | null = null
-const invitationPreviewTokens = new Map<string, string>()
-
-function selectProjectBackgroundResolver(project: Project): void {
-  const activeRowId = saves.currentBoardId()
-  const row = activeRowId
-    ? saves.projectDocuments().find(item => item.rowId === activeRowId && item.project.id === project.id && item.access === 'shared')
-    : undefined
-  if (!row) {
-    sharedBackgroundScope?.clear()
-    sharedBackgroundScope = null
-    sharedBackgroundRowId = null
-    sharedBackgroundProjectId = null
-    clearActiveSharedPitches()
-    board.setBackgroundResolver(id => backgrounds.image(id))
-    return
-  }
-
-  if (!sharedBackgroundScope || sharedBackgroundRowId !== row.rowId) {
-    sharedBackgroundScope?.clear()
-    sharedBackgroundRowId = row.rowId
-    let scope: SharedBackgroundResolver
-    scope = createSharedBackgroundResolver(row.rowId, {
-      invitationToken: invitationPreviewTokens.get(row.rowId),
-      onResolved: background => {
-        if (scope !== sharedBackgroundScope) return
-        setActiveSharedPitch(sharedBackgroundPitchStyle(background))
-        board.rebuild()
-        syncPanelPitchMode()
-      },
-      onMissing: id => {
-        if (scope !== sharedBackgroundScope) return
-        setActiveSharedPitch(sharedPitchPlaceholder(id, pitchById(id).boardH))
-        board.rebuild()
-        syncPanelPitchMode()
-      },
-    })
-    sharedBackgroundScope = scope
-    sharedBackgroundProjectId = row.project.id
-    // the Boards and Projects views hold bytes read through the old scope
-    boardsView.clearBackgroundCache()
-    const ids = row.project.boards
-      .map(item => item.scene.pitch)
-      .filter((id): id is string => isBackgroundId(id))
-    setActiveSharedPitches(ids.map(id => sharedPitchPlaceholder(id, row.project.boards.find(item => item.scene.pitch === id)?.scene.board.h)))
-  }
-  board.setBackgroundResolver(sharedBackgroundScope)
+/** Every background lives in this browser's own shelf. */
+function selectProjectBackgroundResolver(_project: Project): void {
+  board.setBackgroundResolver(id => backgrounds.image(id))
 }
 
 function loadBoardIntoEditor(scene: Scene) {
   selectProjectBackgroundResolver(currentProject(library))
-  clearCollaborationPreview()
   swappingScene = true
   store.loadScene(followThemePaper(migrate(JSON.parse(JSON.stringify(scene)))))
   swappingScene = false
   renderBoardNote()
   syncPreviousBoard()
-  collaborationBoardChanged()
+  tabBoardChanged()
   syncSlides()
 }
 
@@ -5721,16 +5366,15 @@ function openProjectsScreen(): void {
   reconcileLibraryProjectDocuments()
   closeSettings()
   boardsView.open('projects')
-  void refreshProposalCounts()
   document.querySelector<HTMLElement>('#libRoot .libClose')?.focus()
 }
 
-// Existing libraries predate account sync. Seed all full Projects once, so a
-// later Pro pass sees durable rows even though no project is currently open.
+// Existing libraries predate saved Project rows. Seed all full Projects once,
+// so every Project has a durable local row even when it is not open.
 reconcileLibraryProjectDocuments({ seedMissing: !freshStarter })
 
 // Bind the editor to the current durable row. Without this, the first edit
-// after startup creates a duplicate sync row instead of updating the one just
+// after startup creates a duplicate row instead of updating the one just
 // seeded above.
 if (!saves.activateDocument(library.currentId)) {
   loadBoardIntoEditor(currentProject(library).boards[Math.min(editingBoard, currentProject(library).boards.length - 1)].scene)
@@ -5846,102 +5490,32 @@ renderBoardNote()
    Three things to export: this board as an image, or the project as a GIF or
    a video. Notes are a switch on all three. */
 
-/* The share icon is where a board leaves this device: to a person, to an
-   agent, or as a file. Each entry is listed only when the build can honour it,
-   so the menu never offers something that answers with an apology. */
+/* The share icon is where a board leaves this device: as a 24-hour copy link
+   or as a file. Each entry is listed only when the build can honour it, so the
+   menu never offers something that answers with an apology. */
 
 const shareButton = document.querySelector<HTMLButtonElement>('[data-top="export"]')!
 const shareMenu = document.querySelector<HTMLElement>('#shareMenu')!
 const shareSheet = shareMenu.querySelector<HTMLElement>('[data-share-sheet]')!
-
-const UPGRADE_TOAST = 'Go to settings to upgrade to a Pro subscription.'
 
 type ShareEntry = {
   key: string
   label: string
   note: string
   ic: Parameters<typeof icon>[0]
-  /** Why this row cannot be used, and what to say when it is tapped. Every
-      locked row is marked, and every locked row answers. */
-  locked?: { tag: string; toast: string }
   run: () => void
-}
-
-/* The Community row reads as the state the board is in rather than asking the
-   same question twice: a board with a post says when it was posted, and the
-   step behind the row updates that post instead of making a second one. */
-function communityRowLabel(): string {
-  const record = currentCommunityPost()
-  return record ? `Posted ${postedAgo(record.at)}` : 'Post to Community'
-}
-
-function communityRowNote(): string {
-  return currentCommunityPost()
-    ? 'Update the post with this board'
-    : 'Share this board as a normal Community post'
-}
-
-function currentCommunityPost() {
-  const project = currentProject(library)
-  const source = currentBoard()
-  if (!project || !source) return null
-  return communityPostFor(boardPostKey(project.id, source.id))
 }
 
 function shareEntries(): ShareEntry[] {
   if (BOARD_SELF_HOSTED) return [
     { key: 'export', label: 'Export\u2026', note: 'This board or the project as images, a GIF, or a video', ic: 'download', run: openExportSheet },
   ]
-  // Everything the sheet can do is listed, including what this account cannot
-  // reach yet: a row nobody can see is a feature nobody knows they could buy.
-  // The two invitations first, then the export.
-  const pro = entitlements.isPro()
   return [
     {
       key: 'board-link', label: 'Copy link', ic: 'link',
       note: 'A copy of this board, or of the whole project',
       run: () => shareStep('Copy link', (body) => {
         makeCopyLink(body)
-        return true
-      }),
-    },
-    {
-      key: 'community', label: communityRowLabel(), ic: 'users',
-      // Not a Pro row: whether an account may post is the Community's answer
-      // to give, and the endpoint gives it.
-      note: communityRowNote(),
-      run: () => shareStep('Post to Community', (body) => {
-        makeCommunityPost(body)
-        return true
-      }),
-    },
-    {
-      key: 'agent', label: 'Invite an agent', ic: 'prompt',
-      // a preview build shares the billing sandbox and must never mint a real
-      // credential, so a Pro account here is told why rather than sold to
-      note: 'A link that can read and draw on this board for 24 hours, proposing or editing as you choose',
-      // a preview build shares the billing sandbox and grants Pro to everyone
-      // on it, so it must never mint a real credential: that is a different
-      // reason from not having bought Pro, and it gets a different answer
-      locked: entitlements.canCreateAgentLink()
-        ? undefined
-        : pro
-          ? { tag: 'Board', toast: 'Agent links are issued only from board.tacticsjournal.com.' }
-          : { tag: 'Pro', toast: UPGRADE_TOAST },
-      run: () => shareStep('Invite an agent', (body) => {
-        makeAgentLink(body)
-        return true
-      }),
-    },
-    {
-      key: 'username', label: 'Invite a person', note: 'By email, by @username, or with a link you can paste', ic: 'at',
-      locked: pro ? undefined : { tag: 'Pro', toast: UPGRADE_TOAST },
-      run: () => shareStep('Share this board', (body) => {
-        const outcome = saves.embedShareForm(body)
-        if (outcome === 'ok') return true
-        body.innerHTML = `<p class="shareStatus">${outcome === 'save-first'
-          ? 'This board could not be saved on this device, so there is nothing to share yet.'
-          : 'Only the board owner can invite someone.'}</p>`
         return true
       }),
     },
@@ -6041,21 +5615,16 @@ function makeCopyLink(body: HTMLElement) {
     status.textContent = scope === 'board' ? `Making a link for “${boardTitle}”…` : `Making a link for all ${project.boards.length} boards…`
     try {
       let url: string
-      const permanentProjectLink = scope === 'project'
-        && window.location.hostname === 'board.tacticsjournal.com'
-        && entitlements.isPro()
       try {
         if (scope === 'board') {
           await board.imagesReady()
           url = await createBoardImportUrl(boardLinkName, newProjectFromBoard(source, boardLinkName), boardLinkPreview())
         } else {
-          url = permanentProjectLink
-            ? await createStoredProjectImportUrl(projectName, projectCopy)
-            : await createProjectImportUrl(projectName, projectCopy)
+          url = await createProjectImportUrl(projectName, projectCopy)
         }
       } catch (error) {
-        if (scope !== 'project' || permanentProjectLink || !isAgentImportTooLarge(error)) throw error
-        if (request === generation) status.textContent = 'Large whole-project links require Pro.'
+        if (scope !== 'project' || !isAgentImportTooLarge(error)) throw error
+        if (request === generation) status.textContent = 'This project is too large for a link. Export it as a file instead.'
         return
       }
       if (request !== generation) return
@@ -6064,7 +5633,7 @@ function makeCopyLink(body: HTMLElement) {
       input.setAttribute('aria-label', scope === 'board' ? 'Board link' : 'Project link')
       status.textContent = scope === 'board'
         ? `Copies “${boardTitle}” only. It can be added to a new or existing project. The link expires after 24 hours.`
-        : `Copies all ${project.boards.length} board${project.boards.length === 1 ? '' : 's'} in “${projectName}” as a new project. ${permanentProjectLink ? 'The link does not expire.' : 'The link expires after 24 hours.'}`
+        : `Copies all ${project.boards.length} board${project.boards.length === 1 ? '' : 's'} in “${projectName}” as a new project. The link expires after 24 hours.`
       field.hidden = false
     } catch (error) {
       if (request !== generation) return
@@ -6097,194 +5666,7 @@ function makeCopyLink(body: HTMLElement) {
       status.textContent = 'The link is selected. Copy it with your keyboard.'
     }
   })
-  appendCommunityHint(body)
   void generate('board')
-}
-
-/* The one-time line that tells a member boards can go to Community.
-   It appears under a copy link or an export, after that action has done its
-   own job, and it never blocks either. Posting a board, or dismissing it,
-   retires it for good. */
-function appendCommunityHint(body: HTMLElement) {
-  if (BOARD_SELF_HOSTED || !communityHintDue()) return
-  const hint = document.createElement('div')
-  hint.className = 'communityHint'
-  hint.innerHTML = `<span>Boards can go to Community too.</span>
-    <button type="button" data-community-hint-open>Post this board</button>
-    <button type="button" class="communityHint__close" data-community-hint-dismiss aria-label="Dismiss">&times;</button>`
-  body.appendChild(hint)
-  hint.querySelector('[data-community-hint-dismiss]')!.addEventListener('click', () => {
-    retireCommunityHint()
-    hint.remove()
-  })
-  hint.querySelector('[data-community-hint-open]')!.addEventListener('click', () => {
-    retireCommunityHint()
-    shareStep('Post to Community', (stepBody) => { makeCommunityPost(stepBody); return true })
-  })
-}
-
-/* Posting is the same board a copy link carries, with a caption in front of
-   it. The post is the board, so the caption may be empty, and the sheet says
-   what happened without leaving the editor. */
-function makeCommunityPost(body: HTMLElement) {
-  const project = currentProject(library)
-  const source = currentBoard()
-  if (!source) {
-    body.innerHTML = '<p class="shareStatus">This board could not be posted.</p>'
-    return
-  }
-  const boardTitle = boardName(project, editingBoard)
-  const postName = (project.name === 'Untitled project' ? boardTitle : `${project.name} — ${boardTitle}`).slice(0, 40)
-  // What this device knows about the board already having a post. The server
-  // is the authority: a stale record is corrected by the answer it gives.
-  const key = boardPostKey(project.id, source.id)
-  const existing = communityPostFor(key)
-
-  // The picture the post will carry, shown before anything is sent so the
-  // member confirms the board rather than the board's name.
-  let preview = ''
-  try { preview = boardLinkPreview() } catch { preview = '' }
-
-  body.innerHTML = `<form class="shareForm" data-community-form>
-      ${preview ? `<img class="communityPreview" src="${esc(preview)}" alt="">` : ''}
-      <label for="communityCaption">Caption (optional)
-        <textarea id="communityCaption" rows="3" maxlength="${MAX_COMMUNITY_POST_CAPTION_CHARS}" data-community-caption
-          placeholder="Say something about this board"></textarea>
-      </label>
-      <p class="shareStatus" data-community-status role="status" aria-live="polite">${existing
-        ? `Posted ${esc(postedAgo(existing.at))}. Posting again replaces the board on that post.`
-        : `Posts “${esc(boardTitle)}” to Community. The post is this board.`}</p>
-      <div class="shareActions">
-        <button type="submit" data-community-submit>${existing ? 'Update the post' : 'Post'}</button>
-        ${existing ? `<a class="communityPostLink" href="${esc(existing.communityUrl)}" target="_blank" rel="noopener noreferrer">View post</a>` : ''}
-      </div>
-    </form>`
-
-  const form = body.querySelector<HTMLFormElement>('[data-community-form]')!
-  const caption = body.querySelector<HTMLTextAreaElement>('[data-community-caption]')!
-  const status = body.querySelector<HTMLElement>('[data-community-status]')!
-  const submit = body.querySelector<HTMLButtonElement>('[data-community-submit]')!
-  let working = false
-  let posted = false
-
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault()
-    // one board, one post: a second click while the first is in flight, or
-    // after it landed, would publish the same board twice
-    if (working || posted) return
-    working = true
-    submit.disabled = true
-    status.textContent = existing ? 'Updating the post…' : 'Posting to Community…'
-    try {
-      stashEditedBoard()
-      const current = currentBoard()
-      if (!current) throw new Error('This board could not be posted.')
-      await board.imagesReady()
-      const result = await postBoardToCommunity(
-        postName,
-        newProjectFromBoard(current, postName),
-        boardLinkPreview(),
-        caption.value,
-        window.location.origin,
-        fetch,
-        existing ? existing.shareId : null,
-      )
-      posted = true
-      caption.readOnly = true
-      // The board's own copy id, which a later update rewrites in place.
-      const shareId = new URL(result.boardUrl).searchParams.get('community') || ''
-      if (shareId) {
-        rememberCommunityPost(key, {
-          shareId,
-          postId: result.postId,
-          communityUrl: result.communityUrl,
-          at: new Date().toISOString(),
-        })
-      }
-      // A member who has posted a board does not need to be told they can.
-      retireCommunityHint()
-      submit.textContent = result.moderationPending ? 'Sent' : (existing ? 'Updated' : 'Posted')
-      status.textContent = result.moderationPending ? result.message : (existing ? 'Post updated.' : 'Posted to Community.')
-      if (!result.moderationPending && !existing) {
-        const link = document.createElement('a')
-        link.className = 'communityPostLink'
-        link.href = result.communityUrl
-        link.target = '_blank'
-        link.rel = 'noopener noreferrer'
-        link.textContent = 'View post'
-        status.after(link)
-        link.focus()
-      }
-    } catch (error) {
-      submit.disabled = false
-      status.textContent = error instanceof Error ? error.message : 'This board could not be posted. Try again.'
-    } finally {
-      working = false
-    }
-  })
-
-  caption.focus()
-}
-
-/**
- * The one thing to decide before an agent gets a link: whether what it saves
- * lands on the project or waits for you. The choice is made here, before any
- * credential exists, because it cannot be changed on a link already issued.
- */
-function makeAgentLink(body: HTMLElement) {
-  body.innerHTML = `<p class="shareStatus">What may this agent do with the project?</p>
-    <div class="setGroup agentModes">
-      <button class="setItem" data-agent-mode="propose">
-        <span class="setItemLabel">Propose changes<span class="setItemNote">Its work waits in Proposals until you accept it</span></span>
-      </button>
-      <button class="setItem" data-agent-mode="edit">
-        <span class="setItemLabel">Edit directly<span class="setItemNote">It changes the project as you would; earlier versions stay in History</span></span>
-      </button>
-    </div>`
-  body.querySelectorAll<HTMLButtonElement>('[data-agent-mode]').forEach(button => {
-    button.addEventListener('click', () => {
-      void issueAgentLink(body, button.dataset.agentMode === 'edit' ? 'edit' : 'propose')
-    })
-  })
-  body.querySelector<HTMLButtonElement>('[data-agent-mode]')?.focus()
-}
-
-async function issueAgentLink(body: HTMLElement, mode: AgentAccessMode) {
-  body.innerHTML = '<p class="shareStatus">Saving and creating agent link…</p>'
-  try {
-    const result = await saves.currentAgentLink(mode)
-    if (result.status !== 'ok') {
-      body.innerHTML = `<p class="shareStatus">${result.status === 'save-first'
-        ? 'This board could not be saved on this device, so there is nothing to give an agent yet.'
-        : 'Agent links are a Pro feature.'}</p>`
-      return
-    }
-    const url = result.url
-    body.innerHTML = `<p class="shareStatus">Paste this link into your coding agent. It expires after 24 hours and can only read and draw on this project.
-      ${mode === 'propose'
-        ? 'What it saves waits for you in Proposals.'
-        : 'What it saves changes the project straight away.'}</p>
-      <span class="linkField">
-        <input type="text" readonly data-agent-link aria-label="Agent link">
-        <button type="button" class="copyIconButton" data-agent-link-copy aria-label="Copy agent link">${copyButtonIcons()}</button>
-      </span>`
-    const input = body.querySelector<HTMLInputElement>('[data-agent-link]')!
-    const copy = body.querySelector<HTMLButtonElement>('[data-agent-link-copy]')!
-    input.value = url
-    copy.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(url)
-        showCopySuccess(copy, 'Copy agent link')
-      } catch {
-        input.focus()
-        input.select()
-        copy.setAttribute('aria-label', 'Copy the selected link with your keyboard')
-      }
-    })
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : 'The request failed.'
-    body.innerHTML = `<p class="shareStatus">Could not create agent link: ${esc(reason)} Your saved work was kept locally.</p>`
-  }
 }
 
 /* A choice made in the sheet is answered in the sheet. The rows are replaced
@@ -6309,10 +5691,9 @@ function closeShareMenu() {
 function drawShareRows() {
   shareSheet.innerHTML = `<div class="sheetHead"><strong>Share</strong><button data-share="close">Close</button></div>`
     + shareEntries().map(e =>
-      `<button type="button" class="shareRow${e.locked ? ' is-locked' : ''}" data-share="${e.key}">
+      `<button type="button" class="shareRow" data-share="${e.key}">
         ${icon(e.ic)}
         <span><b>${e.label}</b><small>${e.note}</small></span>
-        ${e.locked ? `<span class="setTag ${e.locked.tag === 'Pro' ? 'setTagPro' : 'setTagLicense'}">${e.locked.tag}</span>` : ''}
       </button>`).join('')
 }
 
@@ -6334,11 +5715,8 @@ shareMenu.addEventListener('click', (e) => {
   if (key === 'back') { drawShareRows(); return }
   const entry = shareEntries().find(item => item.key === key)
   if (!entry) return
-  // a locked row says where to go rather than moving the reader somewhere
-  // they did not ask to be
-  if (entry.locked) { showToast(entry.locked.toast); return }
   // a step stays in the sheet; anything else is finished with it
-  if (entry.key !== 'username' && entry.key !== 'board-link' && entry.key !== 'agent' && entry.key !== 'community') closeShareMenu()
+  if (entry.key !== 'board-link') closeShareMenu()
   entry.run()
 })
 
@@ -6581,7 +5959,7 @@ async function openExportSheet() {
       try {
         await exportProjectImages(styled(), defaults, (done, total) => {
           status.textContent = `Building the project images\u2026 ${done} of ${total}`
-        }, sharedBackgroundScope ?? undefined, individualFallback)
+        }, undefined, individualFallback)
         void recordProductEvent('board_exported', 'png')
         if (!fellBack) close()
       } catch (err) {
@@ -6596,7 +5974,7 @@ async function openExportSheet() {
       await exportAnimation(kind, styled(), defaults, withNotes, (done, total) => {
         const pct = Math.round(done * 100 / total)
         status.textContent = kind === 'gif' ? `Building the GIF\u2026 ${pct}%` : `Recording the video\u2026 ${pct}%`
-      }, sharedBackgroundScope ?? undefined)
+      })
       void recordProductEvent('board_exported', kind)
       close()
     } catch (err) {
@@ -7518,8 +6896,8 @@ matchEl.addEventListener('input', (e) => {
   syncSwitches()
 })
 
-// The managed service uses the Tactics Journal account header. A self-host
-// build stays local and does not contact or advertise the hosted account API.
+// The managed service uses the Tactics Journal site header (menu, search and
+// What's new). It has no account controls. A self-host build has no header.
 const tjHeader = BOARD_SELF_HOSTED ? null : initTjHeader({
   onChangelogClose: () => { markChangelogSeen(changelog); clearChangelogBadge() },
 })
@@ -7579,12 +6957,12 @@ settingsEl.innerHTML = `
           <span class="setItemValue setPitchSummary"><span data-pitch-name>Pitch</span><span data-bg-count></span></span>
           ${icon('chevron-right', 'ic setChev')}
         </button>
-        ${BOARD_SELF_HOSTED ? `<button class="setItem" data-goto="assets">
+        <button class="setItem" data-goto="assets">
           ${icon('file-plus')}
           <span class="setItemLabel">My assets</span>
           <span class="setItemValue" data-assets-count></span>
           ${icon('chevron-right', 'ic setChev')}
-        </button>` : ''}
+        </button>
         <div class="setItem setItemStatic">
           ${icon('sun-moon')}
           <span class="setItemLabel">Theme</span>
@@ -7624,11 +7002,6 @@ settingsEl.innerHTML = `
           </span>
           ${icon('chevron-right', 'ic setChev')}
         </button>
-        ${BOARD_SELF_HOSTED ? '' : `<button class="setItem" data-set="free-backup">
-          ${icon('arrows-exchange')}
-          <span class="setItemLabel" data-free-backup-label>Back up one project free</span>
-          <span class="setItemValue" data-free-backup-value></span>
-        </button>`}
         <button class="setItem" data-goto="boards">
           ${icon('arrows-exchange')}
           <span class="setItemLabel">Move to another device</span>
@@ -7643,12 +7016,6 @@ settingsEl.innerHTML = `
           <span class="setItemLabel">Skills and Extensions</span>
           ${icon('chevron-right', 'ic setChev')}
         </button>
-        ${BOARD_SELF_HOSTED ? '' : `<button class="setItem" data-goto="agents">
-          ${icon('prompt')}
-          <span class="setItemLabel">Connect Claude or ChatGPT</span>
-          <span class="setTag setTagPro" data-lock-tag="agents">Pro</span>
-          ${icon('chevron-right', 'ic setChev')}
-        </button>`}
       </div>
 
       ${BOARD_SELF_HOSTED ? `<div class="setGroupHead">Hosting</div>
@@ -7658,31 +7025,7 @@ settingsEl.innerHTML = `
           <span class="setItemLabel">Self-hosted</span>
           <span class="setItemValue">Local features enabled</span>
         </div>
-      </div>` : `<div class="setGroupHead">Account</div>
-      <div class="setGroup">
-        <button class="setItem" data-set="signin">
-          ${icon('user-circle')}
-          <span class="setItemLabel" data-account-label>Sign in to Tactics Journal</span>
-          <span class="setItemValue" data-account-email></span>
-          ${icon('chevron-right', 'ic setChev')}
-        </button>
-        <button class="setItem" data-set="signout" data-account-signout hidden>
-          ${icon('logout')}
-          <span class="setItemLabel">Sign out</span>
-        </button>
-        <button class="setItem" data-goto="pro" data-plan-row>
-          ${icon('license')}
-          <span class="setItemLabel">Plans</span>
-          <span class="setItemValue" data-plan-name>Free</span>
-          ${icon('chevron-right', 'ic setChev')}
-        </button>
-        <button class="setItem" data-goto="assets">
-          ${icon('file-plus')}
-          <span class="setItemLabel">My assets</span>
-          <span class="setItemValue" data-assets-count></span>
-          ${icon('chevron-right', 'ic setChev')}
-        </button>
-      </div>`}
+      </div>` : ''}
 
       <div class="setGroupHead">Help</div>
       <div class="setGroup">
@@ -7725,7 +7068,8 @@ settingsEl.innerHTML = `
     <div class="setPane hidden" data-pane="about">
       <div class="setTutorial">
         <strong>Privacy, data, copyright and use</strong>
-        ${BOARD_SELF_HOSTED ? '' : '<p><b>Privacy.</b> Board sends first-party aggregate counters for editor opens, exports, pricing, checkout starts, and free backup. These counters contain no IP address, account ID, visitor ID, URL, referrer, cookies, or arbitrary text and are kept for 14 months. We use no advertising, third-party analytics, or cross-site tracking cookies.</p>'}
+        <p><b>Your boards stay here.</b> Board is free and has no accounts. Projects, boards, backgrounds, fonts, assets and settings are kept in this browser's own storage and are never sent to Tactics Journal. Clearing this site's data in your browser deletes them, so use Move to another device to keep a copy as a file.</p>
+        ${BOARD_SELF_HOSTED ? '' : '<p><b>What leaves this browser.</b> Copy link sends the board or project you chose, with a preview image for a board, to Tactics Journal, which keeps it for 24 hours so the link can open. Feedback sends the name, email, issue, device, browser and page you submit. Board sends first-party aggregate counters for editor opens and exports by format. These counters contain no IP address, account ID, visitor ID, URL, referrer, cookies, or arbitrary text and are kept for 14 months. None of these requests carry cookies, and Board sets no cookies of its own. We use no advertising, third-party analytics, or cross-site tracking cookies.</p>'}
         <p><b>Data sources.</b> Team search and kit colors use TheSportsDB public API. Squad names, shirt numbers and positions are read from current squad sections on Wikipedia through the Wikipedia API. Third-party data may be incomplete, delayed or inaccurate; verify it before publishing.</p>
         <p><b>Copyright.</b> Except for identified third-party materials, the software and bundled assets are available under the MIT license. Club names, player names, colors and other source data remain the property of their respective owners and data providers. Tactics Journal and Tactics Board names and logos are reserved trademarks.</p>
         <p><b>Interface icons.</b> The icons in Settings and the menus are <a href="https://tabler.io/icons" target="_blank" rel="noopener">Tabler Icons</a>, copyright Paweł Kuna, used under the MIT license. The full license text is served at <a href="/LICENSE-icons" target="_blank" rel="noopener">/LICENSE-icons</a>.</p>
@@ -7760,7 +7104,7 @@ settingsEl.innerHTML = `
         </div>
         <div class="setItem setItemStatic selfHostFact">
           ${icon('lock')}
-          <span class="setItemLabel">Cloud sync, collaboration and agent links need Tactics Journal-operated services, so a self-host build does not provide them.</span>
+          <span class="setItemLabel">Copy link and Feedback use Tactics Journal-operated services, so a self-host build does not provide them. Export and Move to another device work the same.</span>
         </div>
         <div class="setItem setItemStatic selfHostFact">
           ${icon('copyright')}
@@ -7788,51 +7132,6 @@ settingsEl.innerHTML = `
         </button>
       </div>
     </div>
-    <div class="setPane hidden" data-pane="pro">
-      <div class="proHero">
-        <h2 class="proTagline">Think it. Draw it. Share it.</h2>
-        <p class="proLede" data-pro-sale>Every local editing and export feature is free. Pro adds automatic cloud sync, version history, collaboration, sharing controls, and agent access.</p>
-        <div class="proHeroCta" data-lic-area></div>
-      </div>
-      <h3 class="proChoose" data-pro-sale>Choose how you work</h3>
-      <div class="proTiers" data-pro-sale>
-        <div class="proCard">
-          <div class="proCardHead"><span class="proCardName">Free</span><span class="proCardPrice">Always</span></div>
-          <ul>
-            <li>Use every drawing tool and pitch style</li>
-            <li>Keep unlimited local projects and saved boards</li>
-            <li>Import screenshots, backgrounds, and custom assets</li>
-            <li>Export PNG, GIF, and video</li>
-            <li>Back up one project to a free account</li>
-            <li>Move every project with one file</li>
-          </ul>
-        </div>
-        <div class="proCard proCardAccent">
-          <div class="proCardHead proCardHeadRow">
-            <span class="proCardName">Pro</span>
-            <div class="proBilling" role="group" aria-label="Billing period">
-              <button type="button" data-period="yearly" aria-pressed="true">Yearly</button>
-              <button type="button" data-period="monthly" aria-pressed="false">Monthly</button>
-            </div>
-          </div>
-          <p class="proCardAmount"><span data-pro-amount>$12.99</span><span class="proCardPer">/month</span></p>
-          <p class="proCardBilled"><span data-pro-billed>Billed yearly at $155.88</span><span class="proSavePill" data-pro-save>Save $24 versus monthly</span></p>
-          <ul>
-            <li>Back up and sync every project across devices</li>
-            <li>Restore earlier project versions</li>
-            <li>See edits appear in real time for people you invite</li>
-            <li>Control hosted project sharing and invitations</li>
-            <li>Give ChatGPT, Claude, or another AI agent 24-hour access by link</li>
-            <li>Use MCP and WebMCP account access</li>
-          </ul>
-          <div data-pro-card-cta></div>
-          <p class="proCardNote">Existing Hosted Board License holders keep their access and can upgrade to Pro.</p>
-          <p class="proCardNote">Full refund within 14 days of your first payment or of an automatic yearly renewal.</p>
-        </div>
-
-      </div>
-    </div>
-    <div class="setPane hidden" data-pane="agents"></div>
     <div class="setPane hidden" data-pane="skills">
       <div class="skillsSection">
         <h3 class="skillsHeading">Skills</h3>
@@ -7951,12 +7250,6 @@ settingsEl.innerHTML = `
       <div class="setGroupHead">Boards on this device</div>
       <div data-saves-host></div>
     </div>
-    <div class="setPane hidden" data-pane="history">
-      <div data-history-host></div>
-    </div>
-    <div class="setPane hidden" data-pane="proposals">
-      <div data-proposals-host></div>
-    </div>
     <div class="setPane hidden" data-pane="tools">
       <p class="setNote setToolsIntro">The controls above the board, in the order they appear there. Anything switched off moves into the menu rather than away, and the menu itself stays put.</p>
       <div class="setGroup" data-tools-list></div>
@@ -7969,66 +7262,23 @@ settingsEl.innerHTML = `
     <div class="impStatus" data-set-note role="status" aria-live="polite"></div>
   </div>`
 document.body.appendChild(settingsEl)
-// Theme and the Pro billing period are segmented controls: give them the pill.
+// Theme is a segmented control: give it the pill.
 mountSlidingPills(settingsEl)
 
 // the Teams and Saves panels render inside their own screens
 settingsEl.querySelector('[data-pane="teams"]')!.appendChild(teams.el)
 settingsEl.querySelector('[data-saves-host]')!.appendChild(saves.el)
 
-/**
- * Version history stands on its own Settings screen, opened from one saved
- * project and returning to the list it came from. Restoring goes through the
- * ordinary sync store and the ordinary post-sync reconciliation, so a restored
- * project reaches the canvas and the Projects library the same way a version
- * pulled from another device does.
- */
-const boardHistory = new BoardHistoryPanel({
-  api: createBoardHistoryApi(),
-  onRestore: (board, target) => applyRestoredVersion(board, target),
-  onDone: (message, boardId) => {
-    showScreen('boards')
-    saves.refresh()
-    saves.announce(message)
-    if (!saves.focusHistoryAction(boardId)) settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
-  },
-})
-settingsEl.querySelector('[data-history-host]')!.appendChild(boardHistory.el)
-
-/**
- * Proposals is Version history's twin: one project, opened from the saved
- * list, returning to it. Where history looks backwards at versions this
- * account made, proposals looks at versions an agent link suggested and never
- * applied. Accepting one takes the same path a restore takes, so an accepted
- * version reaches the canvas and the Projects library like any other change.
- */
-const boardProposals = new BoardProposalsPanel({
-  api: createBoardProposalsApi(),
-  renderScene: (scene) => previewSvg(scene ?? undefined),
-  onAccepted: (board: AcceptedBoard, target: BoardProposalsTarget) => applyRestoredVersion(board, { ...target, savedAt: board.updatedAt }),
-  onDone: (message, boardId) => {
-    showScreen('boards')
-    saves.refresh()
-    saves.announce(message)
-    if (!saves.focusProposalsAction(boardId)) settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
-  },
-})
-settingsEl.querySelector('[data-proposals-host]')!.appendChild(boardProposals.el)
-
 /** Settings is one list plus push screens; every screen but root has a back arrow. */
-type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'history' | 'proposals' | 'tools' | 'pro' | 'agents' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets' | 'self-host'
+type SetScreen = 'root' | 'teams' | 'pitch' | 'boards' | 'tools' | 'skills' | 'skill' | 'official' | 'extension' | 'howto' | 'about' | 'feedback' | 'assets' | 'self-host'
 
 const SCREEN_TITLES: Record<SetScreen, string> = {
   root: 'Settings',
   teams: 'Teams',
   pitch: 'Pitch',
   boards: 'Move to another device',
-  history: 'Version history',
-  proposals: 'Proposals',
   tools: 'Tool settings',
   assets: 'My assets',
-  pro: 'Plans',
-  agents: 'Claude and ChatGPT',
   skills: 'Skills',
   skill: 'Skill',
   official: 'Official extension',
@@ -8050,9 +7300,8 @@ let editingExtensionId: string | null = null
 let pendingExtensionPath: string | null = null
 let pendingExtensionManifest: ExtensionManifest | null = null
 function projectSkills(): ProjectSkillsState { return loadProjectSkillsState(currentProject(library).id) }
-function saveSkills(next: ProjectSkillsState, sync = true): void {
+function saveSkills(next: ProjectSkillsState): void {
   saveProjectSkillsState(currentProject(library).id, next)
-  if (sync && !BOARD_SELF_HOSTED) void syncCurrentSkills().catch(() => { setNote('Skills stay on this device until the project can sync.') })
 }
 function disposeExtensionRuntime(): void { extensionRuntime?.dispose(); extensionRuntime = null }
 
@@ -8069,15 +7318,14 @@ function renderSkillsScreen(): void {
     const available = BOARD_EXTENSION_PATHS.filter(path => !installed.has(path))
     paths.innerHTML = available.length ? `<p class="skillsIntro">Available on this deployment</p>${available.map(path => `<button class="setItem" data-extension-path="${esc(path)}"><span class="setItemLabel">${esc(path)}</span>${icon('chevron-right', 'ic setChev')}</button>`).join('')}` : '<div class="skillsEmpty">No extension directories in this build.</div>'
   }
-  void pullCurrentSkills().then(changed => { if (changed && screen === 'skills') renderSkillsScreen() })
 }
 
 /* ---------- appearance ----------
    How the open board is drawn. Every property the board has, divided by the
    piece it belongs to, over the board it is being done to.
 
-   Free, like every local edit. Pro is what carries a styled board to another
-   device, and it does that already: the appearance rides on the scene. */
+   Free, like every local edit. The appearance rides on the scene, so a styled
+   board moves to another device in the same export file. */
 
 /** What the board is wearing, filled in. */
 function boardLook(): ResolvedAppearance { return sceneLook(store.scene) }
@@ -8546,81 +7794,10 @@ function openExtensionDetail(extensionId: string | null = null, path: string | n
   showScreen('extension')
 }
 
-function remoteSkillsResponse(value: unknown): value is { skills: unknown[]; revision: string | null } {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const response = value as { skills?: unknown; revision?: unknown }
-  return Array.isArray(response.skills)
-    && (response.revision === null || typeof response.revision === 'string')
-}
-
-async function pullCurrentSkills(): Promise<boolean> {
-  if (BOARD_SELF_HOSTED) return false
-  const boardId = saves.currentBoardId()
-  const local = projectSkills()
-  if (!boardId || local.dirty || saves.isCurrentShared() || !await ensureBoardSession(accountBinding)) return false
-  const response = await fetch(`${boardSkillsUrl()}?board_id=${encodeURIComponent(boardId)}`, { credentials: 'include' })
-  if (!response.ok) return false
-  const remote: unknown = await response.json()
-  if (!remoteSkillsResponse(remote)) return false
-  const next = mergeSyncedSkills(local, remote.skills, remote.revision)
-  if (!next || JSON.stringify(next) === JSON.stringify(local)) return false
-  saveProjectSkillsState(currentProject(library).id, next)
-  return true
-}
-
-async function syncProjectSkills(projectId: string, boardId: string): Promise<boolean> {
-  const row = saves.projectDocuments().find(item => item.rowId === boardId && item.project.id === projectId)
-  if (!row || row.access === 'shared') return false
-  const local = loadProjectSkillsState(projectId)
-  if (!local.dirty) return true
-  if (!await ensureBoardSession(accountBinding)) return false
-  let revision = local.revision
-  if (revision === null) {
-    const current = await fetch(`${boardSkillsUrl()}?board_id=${encodeURIComponent(boardId)}`, { credentials: 'include' })
-    if (!current.ok) return false
-    const remote: unknown = await current.json()
-    if (!remoteSkillsResponse(remote)) return false
-    if (remote.revision !== null
-      && !window.confirm('Skills already exist for this project on another device. Replace them with the skills on this device?')) return false
-    revision = remote.revision
-  }
-  const put = async (freshRevision: string | null) => fetch(boardSkillsUrl(), {
-    method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ board_id: boardId, revision: freshRevision, skills: skillsForSync(local) }),
-  })
-  let response = await put(revision)
-  if (response.status === 409) {
-    const latest = await fetch(`${boardSkillsUrl()}?board_id=${encodeURIComponent(boardId)}`, { credentials: 'include' })
-    if (!latest.ok) return false
-    const fresh: unknown = await latest.json()
-    if (!remoteSkillsResponse(fresh)) return false
-    if (!window.confirm('Skills changed on another device. Replace them with the skills on this device?')) return false
-    response = await put(fresh.revision)
-  }
-  if (!response.ok) return false
-  const saved: unknown = await response.json()
-  if (!remoteSkillsResponse(saved) || typeof saved.revision !== 'string') return false
-  const next = mergeSyncedSkills(local, saved.skills, saved.revision)
-  if (!next) return false
-  saveProjectSkillsState(projectId, next)
-  return true
-}
-async function syncCurrentSkills(): Promise<boolean> {
-  const boardId = saves.currentBoardId()
-  return boardId ? syncProjectSkills(currentProject(library).id, boardId) : false
-}
-async function flushSkillsForAgentLink(boardId: string): Promise<void> {
-  const row = saves.projectDocuments().find(item => item.rowId === boardId)
-  if (!row) throw new Error('Save this project before creating an agent link so its skills can sync.')
-  if (!loadProjectSkillsState(row.project.id).dirty) return
-  if (!await syncProjectSkills(row.project.id, boardId)) throw new Error('Could not sync this project\'s skills. Your skills remain on this device.')
-}
-
 function showScreen(next: SetScreen) {
   closeAppearancePicker()
   const prev = screen
   screen = next
-  if (next === 'pro' && prev !== 'pro') void recordProductEvent('pricing_opened')
   clearPitchStatus()
   const titleEl = settingsEl.querySelector('[data-set-title]') as HTMLElement
   const incoming = settingsEl.querySelector<HTMLElement>(`[data-pane="${next}"]`)
@@ -8655,18 +7832,16 @@ function showScreen(next: SetScreen) {
   settingsEl.querySelector<HTMLElement>('.setSheet')!.scrollTop = 0
   if (next === 'boards') saves.refresh()
   if (next === 'tools') renderToolsScreen()
-  if (next === 'pitch') { renderPitchSeg(); syncLockTags() }
+  if (next === 'pitch') renderPitchSeg()
   if (next === 'root') {
     renderRootValues()
     startProjectsSummaryTimer()
   } else {
     stopProjectsSummaryTimer()
   }
-  if (next === 'agents') renderAgentSettings()
   if (next === 'skills') renderSkillsScreen()
   if (next === 'official') renderOfficialDetail()
   if (next === 'skill') renderSkillDetail()
-  if (next === 'feedback') prefillFeedback()
 }
 
 let projectsSummaryTimer: number | null = null
@@ -8741,18 +7916,6 @@ function renderRootValues() {
   ;(settingsEl.querySelector('[data-pitch-name]') as HTMLElement).textContent = pitchById(store.scene.pitch).label
   const bgCount = backgrounds.count()
   ;(settingsEl.querySelector('[data-bg-count]') as HTMLElement).textContent = bgCount ? ` · ${bgCount} saved` : ''
-  const planName = settingsEl.querySelector<HTMLElement>('[data-plan-name]')
-  if (planName) planName.textContent = entitlements.isPro() ? 'Pro' : entitlements.hasBoardLicense() ? 'License' : 'Free'
-  const backupButton = settingsEl.querySelector<HTMLButtonElement>('[data-set="free-backup"]')
-  const backupLabel = settingsEl.querySelector<HTMLElement>('[data-free-backup-label]')
-  const backupValue = settingsEl.querySelector<HTMLElement>('[data-free-backup-value]')
-  if (backupButton && backupLabel && backupValue) {
-    const backupId = selectedFreeBackup(localStorage, accountBinding)
-    const backedUp = saves.projectDocuments().find(row => row.rowId === backupId)
-    backupButton.disabled = entitlements.isPro()
-    backupLabel.textContent = entitlements.isPro() ? 'All projects sync with Pro' : 'Back up one project free'
-    backupValue.textContent = entitlements.isPro() ? 'Active' : backedUp ? backedUp.name : authenticated ? 'Choose current' : 'Sign in'
-  }
   const toolsSummary = settingsEl.querySelector<HTMLElement>('[data-tools-summary]')
   if (toolsSummary) toolsSummary.textContent = `${visibleTopBar(topBar).length} of ${topBar.order.length}`
   const matchSummary = settingsEl.querySelector<HTMLElement>('[data-match-summary]')
@@ -8760,105 +7923,8 @@ function renderRootValues() {
     const m = store.scene.match
     matchSummary.textContent = m?.showScoreboard ? 'Scoreboard on' : m?.showTeams ? 'Team names on' : 'Off'
   }
-  renderAccountRow()
   renderProjectsSummary()
-  syncLockTags()
   renderAssetList()
-}
-
-/** Update the remaining Pro-only service tags. */
-function syncLockTags() {
-  settingsEl.querySelectorAll<HTMLElement>('[data-lock-tag="agents"]').forEach(tag => { tag.hidden = entitlements.isPro() })
-  renderAgentSettings()
-}
-
-const AGENT_MCP_URL = 'https://board.tacticsjournal.com/mcp'
-
-function renderAgentSettings() {
-  const pane = settingsEl.querySelector<HTMLElement>('[data-pane="agents"]')
-  if (!pane) return
-  if (!entitlements.isPro()) {
-    if (!proPlansVisible()) {
-      pane.innerHTML = `<p class="setNote">Connecting Claude or ChatGPT is not available right now.</p>`
-      return
-    }
-    pane.innerHTML = `
-      <p class="setNote">Connecting Claude or ChatGPT comes with Pro. An agent can read and draw on the boards you choose.</p>
-      <div class="setGroup">
-        <button class="setItem" data-goto="pro">
-          ${icon('license')}
-          <span class="setItemLabel">See plans</span>
-          ${icon('chevron-right', 'ic setChev')}
-        </button>
-      </div>`
-    return
-  }
-  pane.innerHTML = `
-    <div class="setGroupHead">Server</div>
-    <div class="setGroup">
-      <div class="setItem setItemStatic">
-        <code class="setCode" data-agents-url>${AGENT_MCP_URL}</code>
-        <button class="setItemAction setCopy" data-agents-copy aria-label="Copy the server URL">${icon('copy')}Copy</button>
-      </div>
-    </div>
-    <p class="setNote">Use this same server URL for every board. It grants no board access on its own.</p>
-
-    <div class="setGroupHead">Claude</div>
-    <div class="setGroup">
-      <div class="setItem setItemStatic"><span class="setStepNum">1</span><span class="setItemLabel">Open Customize, then Connectors.</span></div>
-      <div class="setItem setItemStatic"><span class="setStepNum">2</span><span class="setItemLabel">Choose Add custom connector and paste the server URL.</span></div>
-      <div class="setItem setItemStatic"><span class="setStepNum">3</span><span class="setItemLabel">Add it, then enable it in a conversation from +, then Connectors.</span></div>
-      <a class="setItem setProviderAction" data-agent-provider="Claude" href="https://claude.ai/settings/connectors" target="_blank" rel="noopener" aria-label="Copy URL and open Claude. You finish setup there.">
-        <span class="setItemLabel" data-provider-label>Copy URL and open Claude</span>${icon('external-link')}
-      </a>
-    </div>
-
-    <div class="setGroupHead">ChatGPT</div>
-    <div class="setGroup">
-      <div class="setItem setItemStatic"><span class="setStepNum">1</span><span class="setItemLabel">Open Settings, then Security and login. Turn on Developer mode.</span></div>
-      <div class="setItem setItemStatic"><span class="setStepNum">2</span><span class="setItemLabel">Open ChatGPT Plugins, choose +, and create an app with the server URL.</span></div>
-      <div class="setItem setItemStatic"><span class="setStepNum">3</span><span class="setItemLabel">In a conversation, choose +, then Developer mode, and select the app.</span></div>
-      <a class="setItem setProviderAction" data-agent-provider="ChatGPT" href="https://chatgpt.com/plugins" target="_blank" rel="noopener" aria-label="Copy URL and open ChatGPT. You finish setup there.">
-        <span class="setItemLabel" data-provider-label>Copy URL and open ChatGPT</span>${icon('external-link')}
-      </a>
-    </div>
-    <p class="setNote">Menus may move. See <a href="https://support.anthropic.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp" target="_blank" rel="noopener">Claude help</a> and <a href="https://platform.openai.com/docs/guides/developer-mode" target="_blank" rel="noopener">ChatGPT help</a>.</p>
-
-    <div class="setGroupHead">Create a new project</div>
-    <p class="setNote setNoteStrong">Ask Claude or ChatGPT to make the session. It returns an Add to Projects link. Open that link to review and save the project; no agent link is needed.</p>
-
-    <div class="setGroupHead">Edit an existing project</div>
-    <p class="setNote">Open the project, choose Share, then Invite an agent, and paste that link into the conversation. The link lasts 24 hours and covers only that project.</p>`
-}
-
-async function copyAgentMcpText(): Promise<boolean> {
-  const code = settingsEl.querySelector<HTMLElement>('[data-agents-url]')
-  if (!code) return false
-  try {
-    if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
-    await navigator.clipboard.writeText(AGENT_MCP_URL)
-    return true
-  } catch { /* fall through to selection-based copy */ }
-
-  const selection = window.getSelection()
-  if (!selection) return false
-  const range = document.createRange()
-  range.selectNodeContents(code)
-  selection.removeAllRanges()
-  selection.addRange(range)
-  try { return document.execCommand('copy') } catch { return false }
-}
-
-async function copyAgentMcpUrl(button: HTMLButtonElement) {
-  if (!await copyAgentMcpText()) {
-    setNote('The server URL is selected. Copy it with your keyboard.')
-    return
-  }
-  button.innerHTML = `${icon('check')}Copied`
-  setNote('Server URL copied.')
-  window.setTimeout(() => {
-    if (button.isConnected) button.innerHTML = `${icon('copy')}Copy`
-  }, 2000)
 }
 
 /** The build steps are several lines, so a selection fallback still hands over all of them. */
@@ -8888,21 +7954,6 @@ async function copySelfHostCommands(button: HTMLButtonElement) {
   setNote('Self-host commands copied.')
   window.setTimeout(() => {
     if (button.isConnected) button.innerHTML = `${icon('copy')}Copy`
-  }, 2000)
-}
-
-async function copyAgentMcpForProvider(link: HTMLAnchorElement) {
-  const provider = link.dataset.agentProvider === 'ChatGPT' ? 'ChatGPT' : 'Claude'
-  const label = link.querySelector<HTMLElement>('[data-provider-label]')
-  const original = `Copy URL and open ${provider}`
-  if (!await copyAgentMcpText()) {
-    setNote(`Opening ${provider}. Copy the server URL from this screen and paste it there.`)
-    return
-  }
-  if (label) label.innerHTML = `${icon('check')}Copied`
-  setNote(`Server URL copied. Opening ${provider}.`)
-  window.setTimeout(() => {
-    if (label?.isConnected) label.textContent = original
   }, 2000)
 }
 
@@ -8963,49 +8014,14 @@ settingsEl.addEventListener('click', (e) => {
   if (target.closest('[data-asset-add]')) openAssetPicker(shelfCat as AssetCategory)
 })
 
-/**
- * The account row. Someone already signed in is shown who they are signed in
- * as, not invited to sign in again.
- */
-let accountEmail: string | null = null
-let accountName: string | null = null
-
-function renderAccountRow() {
-  const label = settingsEl.querySelector('[data-account-label]') as HTMLElement | null
-  const value = settingsEl.querySelector('[data-account-email]') as HTMLElement | null
-  if (!label || !value) return
-  const signout = settingsEl.querySelector('[data-account-signout]') as HTMLElement | null
-  if (signout) signout.hidden = !accountEmail
-  if (accountEmail) {
-    label.textContent = 'Tactics Journal account'
-    value.textContent = accountEmail
-    return
-  }
-  label.textContent = 'Sign in to Tactics Journal'
-  value.textContent = ''
-}
-
 /* ----- feedback -----
  *
- * One plain form posted to tacticsjournal.com. Name and email are prefilled
- * from the signed-in session when there is one, and stay editable; a later
- * session event never overwrites something already typed. */
-const FEEDBACK_ENDPOINT = `${TJ_ORIGIN}/api/feedback`
+ * One plain form posted to tacticsjournal.com. It carries what the reader
+ * typed (name, email, issue, device, browser) and the page it was sent from,
+ * as origin and path only: never the query or hash, which can hold a link id.
+ * No cookies or referrer go with it. */
+const FEEDBACK_ENDPOINT = 'https://tacticsjournal.com/api/feedback'
 let feedbackSending = false
-
-function feedbackForm() {
-  return settingsEl.querySelector<HTMLFormElement>('[data-feedback-form]')
-}
-
-/** Fill blanks only, so a session arriving mid-typing cannot erase an edit. */
-function prefillFeedback() {
-  const form = feedbackForm()
-  if (!form) return
-  const name = form.querySelector<HTMLInputElement>('[data-feedback-name]')
-  const email = form.querySelector<HTMLInputElement>('[data-feedback-email]')
-  if (name && !name.value && accountName) name.value = accountName
-  if (email && !email.value && accountEmail) email.value = accountEmail
-}
 
 function setFeedbackStatus(text: string, isError: boolean) {
   const status = settingsEl.querySelector<HTMLElement>('[data-feedback-status]')
@@ -9049,7 +8065,7 @@ settingsEl.addEventListener('submit', (e) => {
     device: String(values.get('device') ?? ''),
     browser: String(values.get('browser') ?? ''),
     website: String(values.get('website') ?? ''),
-    page_url: window.location.href,
+    page_url: window.location.origin + window.location.pathname,
   }
   feedbackSending = true
   if (button) { button.disabled = true; button.textContent = 'Sending...' }
@@ -9057,7 +8073,8 @@ settingsEl.addEventListener('submit', (e) => {
   fetch(FEEDBACK_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
+    credentials: 'omit',
+    referrerPolicy: 'no-referrer',
     body: JSON.stringify(payload),
   })
     .then(async (res) => {
@@ -9093,201 +8110,17 @@ function closeSettings() {
 }
 function setNote(s: string) { (settingsEl.querySelector('[data-set-note]') as HTMLElement).textContent = s }
 
-/* ---------- holding a place on a shared project ----------
-   A project open on this device claims a place every half minute, and gives it
-   back when the project is closed or the tab goes away. The claim is what the
-   ten-editors-at-once limit is counted from; being refused one turns the board
-   read-only here rather than disconnecting anything. */
-
-const PRESENCE_HEARTBEAT_MS = 30_000
-let presenceBoardId: string | null = null
-let presenceTimer: number | null = null
-let presenceCrowded = false
-
-async function claimPresence(boardId: string): Promise<void> {
-  try {
-    const response = await fetch(boardPresenceUrl(), {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ board_id: boardId, action: 'claim' }),
-    })
-    if (presenceBoardId !== boardId) return
-    const crowded = response.status === 409
-    if (crowded && !presenceCrowded) {
-      const data = await response.json().catch(() => null)
-      showBanner(`
-        <p>${esc(data?.error || 'This project already has too many people editing it. It is read-only until one of them closes it.')}</p>
-        <span class="appBannerActions"><button data-banner="dismiss">Dismiss</button></span>`, 'warn')
-    }
-    presenceCrowded = crowded
-  } catch {
-    // A heartbeat that cannot be sent is not a refusal. The next one decides.
-  }
-}
-
-function releasePresence(boardId: string): void {
-  const body = JSON.stringify({ board_id: boardId, action: 'release' })
-  // A tab being closed will not wait for fetch, so hand it to the browser to
-  // send on its own; the place expires by itself if even that does not land.
-  if (navigator.sendBeacon?.(boardPresenceUrl(), new Blob([body], { type: 'application/json' }))) return
-  void fetch(boardPresenceUrl(), {
-    method: 'POST', credentials: 'include', keepalive: true,
-    headers: { 'Content-Type': 'application/json' }, body,
-  }).catch(() => {})
-}
-
-/** Follow the open project: claim the new one, give back the old one. */
-function updatePresence(): void {
-  const board = saves.currentBoardId()
-  const shared = board ? saves.isCurrentShared() : false
-  const wanted = shared && (authenticated || entitlements.isPro()) ? board : null
-  if (wanted === presenceBoardId) return
-  if (presenceBoardId) releasePresence(presenceBoardId)
-  presenceBoardId = wanted
-  presenceCrowded = false
-  if (presenceTimer !== null) { window.clearInterval(presenceTimer); presenceTimer = null }
-  if (!wanted) return
-  void claimPresence(wanted)
-  presenceTimer = window.setInterval(() => {
-    if (presenceBoardId) void claimPresence(presenceBoardId)
-  }, PRESENCE_HEARTBEAT_MS)
-}
-
-window.addEventListener('pagehide', () => { if (presenceBoardId) releasePresence(presenceBoardId) })
-
-/**
- * A link someone was sent. Reading it never spends it. The bearer can view a
- * read-only local copy, and the token is claimed only if they join the project.
- */
-async function openInvitationFromLink(): Promise<void> {
-  const params = new URLSearchParams(window.location.search)
-  const token = params.get('invite')
-  if (!token) return
-  // Take it out of the address bar straight away: a reload must not look like
-  // a second invitation, and the token has no business sitting in history.
-  const clean = new URL(window.location.href)
-  clean.searchParams.delete('invite')
-  window.history.replaceState(null, '', clean.toString())
-
-  let invitation: {
-    board_id?: string
-    board_name?: string
-    owner_username?: string | null
-    role?: string
-    updated_at?: string
-    document?: BoardDocument
-  } | null = null
-  try {
-    const response = await fetch(`${boardInvitationUrl()}?token=${encodeURIComponent(token)}`, { credentials: 'include' })
-    const data = await response.json()
-    if (!response.ok) { showToast(data?.error || 'That invitation is no longer valid.'); return }
-    invitation = data?.invitation || null
-  } catch {
-    showToast('That invitation could not be read.')
-    return
-  }
-
-  if (!invitation?.board_id || !invitation.document) {
-    showToast('That invitation could not be opened.')
-    return
-  }
-  invitationPreviewTokens.set(invitation.board_id, token)
-  if (!saves.openInvitationPreview({
-    id: invitation.board_id,
-    name: invitation.board_name || 'Shared project',
-    document: invitation.document,
-    ownerUsername: invitation.owner_username,
-    updatedAt: invitation.updated_at,
-  })) {
-    invitationPreviewTokens.delete(invitation.board_id)
-    showToast('That invitation could not be opened.')
-    return
-  }
-
-  const invitedBoardId = invitation.board_id
-  const project = invitation.board_name ? `"${esc(invitation.board_name)}"` : 'a project'
-  const from = invitation.owner_username ? `@${esc(invitation.owner_username)}` : 'Someone'
-  const reading = invitation.role === 'read'
-  const accept = async () => {
-    // Preview changes never belong to the shared project. Restore the exact
-    // bearer copy before account sync decides whether the server or device is newer.
-    saves.restoreInvitationPreview(invitedBoardId)
-    if (!await ensureBoardSession()) {
-      // Signing in happens at the account, and comes back here holding the
-      // same invitation, so the reader never has to find the link again.
-      const back = new URL(window.location.href)
-      back.searchParams.set('invite', token)
-      window.location.href = `${TJ_ORIGIN}/api/account/google/start?next=${encodeURIComponent(back.toString())}`
-      return
-    }
-    try {
-      const response = await fetch(boardInvitationUrl(), {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-      })
-      const data = await response.json()
-      if (!response.ok) { showToast(data?.error || 'That invitation could not be accepted.'); return }
-      showToast(`${data?.board_name || 'The project'} is now in your saved boards.`)
-      await runSync()
-      invitationPreviewTokens.delete(invitedBoardId)
-      sharedBackgroundScope?.clear()
-      sharedBackgroundScope = null
-      sharedBackgroundRowId = null
-      sharedBackgroundProjectId = null
-      boardsView.clearBackgroundCache()
-      selectProjectBackgroundResolver(currentProject(library))
-      board.refreshBackground()
-      saves.refresh()
-    } catch {
-      showToast('That invitation could not be accepted.')
-    }
-  }
-
-  showBanner(`
-    <p>${from} ${reading ? 'shared' : 'invited you to edit'} ${project}. It is open read-only now, without a login. ${reading
-      ? 'Sign in only if you want to keep it in your boards and receive updates.'
-      : 'Join the project to draw on it with everyone else.'}</p>
-    <span class="appBannerActions">
-      <button data-banner="accept-invite">${reading ? 'Keep in my boards' : 'Join and edit'}</button>
-      <button data-banner="dismiss">Not now</button>
-    </span>`)
-  document.querySelector('[data-banner="accept-invite"]')?.addEventListener('click', () => { void accept() })
-}
-
 function openDeepLinkedPanel() {
   const params = new URLSearchParams(window.location.search)
-  const target = (params.get('pro') || params.get('panel') || params.get('tab') || window.location.hash.slice(1)).toLowerCase()
-  // 'waitlist' is kept as an alias so links printed before the licence went
-  // on sale still land on the same panel.
-  if (target === 'waitlist' || target === 'pro') { if (proPlansVisible()) openSettings('pro') }
-  else if (target === 'feedback') openSettings('feedback')
+  const target = (params.get('panel') || params.get('tab') || window.location.hash.slice(1)).toLowerCase()
+  if (target === 'feedback') openSettings('feedback')
 }
 
 teams.onOpen = () => openSettings('teams')
 teams.onClose = closeSettings
 teams.onChangedSides = renderRootValues
-saves.onOpen = () => { updatePresence(); openSettings('boards') }
+saves.onOpen = () => { openSettings('boards') }
 saves.onClose = closeSettings
-saves.historyContext = () => ({
-  pro: entitlements.isPro(),
-  signedIn: authenticated,
-  selfHosted: BOARD_SELF_HOSTED,
-  accountBinding,
-})
-saves.onOpenHistory = (target) => {
-  setNote('')
-  boardHistory.open(target)
-  showScreen('history')
-  settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
-}
-saves.onOpenProposals = (target) => {
-  setNote('')
-  boardProposals.start(target)
-  showScreen('proposals')
-  settingsEl.querySelector<HTMLElement>('.setBack')?.focus()
-}
-
 let themeApplied = false
 function setThemeResolved(dark: boolean, selected: 'system' | 'light' | 'dark') {
   // same attribute tacticsjournal.com uses, so the palettes stay in sync
@@ -9305,8 +8138,6 @@ function setThemeResolved(dark: boolean, selected: 'system' | 'light' | 'dark') 
   }
   const menuSelect = document.querySelector<HTMLSelectElement>('#menu-theme-select')
   if (menuSelect) menuSelect.value = selected
-  const accountSelect = document.querySelector<HTMLSelectElement>('#account-panel-theme-select')
-  if (accountSelect) accountSelect.value = selected
 }
 /**
  * Move the board on screen onto the theme's paper. A switch of theme is an
@@ -9341,7 +8172,7 @@ function applyThemeChoice(selected: 'system' | 'light' | 'dark') {
 }
 function applyTheme(dark: boolean) { applyThemeChoice(dark ? 'dark' : 'light') }
 
-for (const id of ['#menu-theme-select', '#account-panel-theme-select']) {
+for (const id of ['#menu-theme-select']) {
   document.querySelector<HTMLSelectElement>(id)?.addEventListener('change', (e) => {
     const value = (e.target as HTMLSelectElement).value
     applyThemeChoice(value === 'dark' ? 'dark' : value === 'light' ? 'light' : 'system')
@@ -9352,201 +8183,7 @@ window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change',
   if (saved === 'system') setThemeResolved(prefersDark(), 'system')
 })
 
-/* ----- Pro checkout and grandfathered License status -----
- *
- * Tactics Journal creates the Pro checkout and Polar opens it over the board.
- * Existing License holders keep a status and management link, but the retired
- * product is not offered to new customers.
- */
-
-const LICENSE_MANAGE_URL = `${TJ_ORIGIN}/settings/`
-
-/**
- * Pro is not on sale on the website. Existing subscribers and License holders
- * keep their access and management link; everyone else sees no plans or
- * prices. Preview and development builds keep the purchase surface available
- * for review. Opening the sale again also requires server configuration.
- */
-const PRO_CHECKOUT_OPEN = false
-
-/** Pro surfaces show only while the sale is open or to someone who already holds a plan. */
-function proPlansVisible(): boolean {
-  return proCheckoutOpen() || entitlements.isPro() || entitlements.hasBoardLicense()
-}
-
-function proCheckoutOpen(): boolean {
-  // The App Store takes payment in the app. Polar checkout never opens there;
-  // the StoreKit purchase replaces it.
-  if (IS_NATIVE_APP) return false
-  return PRO_CHECKOUT_OPEN || entitlements.isTrustedPreviewBuild()
-}
-
-function comingSoon(what: string): string {
-  return `<p class="proHeroNote"><strong>${what} is coming soon.</strong> The board is free to use in the meantime, and the paid features will unlock here the moment it opens.</p>`
-}
-
-function buyButton(label: string, product: CheckoutProduct): string {
-  return `<button type="button" class="proBuyBtn" data-buy="${product}">${label}</button>`
-}
-
-function manageLink(): string {
-  return `<a class="proManageLink" href="${LICENSE_MANAGE_URL}" target="_blank" rel="noopener">Manage or cancel on Tactics Journal</a>`
-}
-
-function renderLicenseCta() {
-  const area = settingsEl.querySelector('[data-lic-area]') as HTMLElement | null
-  if (!area) return
-  const onSale = proCheckoutOpen()
-  for (const el of settingsEl.querySelectorAll<HTMLElement>('[data-pro-sale]')) el.hidden = !onSale
-  const planRow = settingsEl.querySelector<HTMLElement>('[data-plan-row]')
-  if (planRow) planRow.hidden = !proPlansVisible()
-
-  if (entitlements.isPro()) {
-    area.innerHTML = `<p class="proHeroNote">Pro is active.</p>${manageLink()}`
-    return
-  }
-  if (entitlements.hasBoardLicense()) {
-    area.innerHTML = `
-      <p class="proHeroNote" data-buy-note>Your grandfathered Hosted Board License is active. You keep the access you bought and can upgrade to Pro.</p>
-      ${manageLink()}`
-    return
-  }
-
-  if (!onSale) {
-    area.innerHTML = `<p class="proHeroNote">Pro is not available right now. Every local editing and export feature stays free.</p>`
-    return
-  }
-  area.innerHTML = `<p class="proHeroNote" data-buy-note>${usingBillingSandbox()
-    ? 'This build is pointed at the Polar sandbox. Nothing here charges a real card, and the account it signs into is the sandbox one, not your real Tactics Journal account.'
-    : 'Pro belongs to your Tactics Journal account and unlocks as soon as checkout finishes.'}</p>`
-}
-
-/**
- * A License holder sees the same Pro upgrade button. The backend preserves the
- * existing in-place upgrade rather than starting a second subscription.
- */
-/** Yearly is the price the card leads with, and the toggle switches it. */
-let proBillingPeriod: 'yearly' | 'monthly' = 'yearly'
-
-function renderProCta() {
-  const cta = settingsEl.querySelector('[data-pro-card-cta]') as HTMLElement | null
-  if (!cta) return
-  if (entitlements.isPro()) {
-    cta.innerHTML = `
-      <p class="proHeroNote">Pro is active.</p>
-      ${manageLink()}`
-    return
-  }
-  if (!proCheckoutOpen()) {
-    cta.innerHTML = `<p class="proHeroNote">Pro is coming soon.</p>`
-    return
-  }
-  cta.innerHTML = proBillingPeriod === 'yearly'
-    ? buyButton('Get Pro', 'pro_yearly')
-    : buyButton('Get Pro', 'pro_monthly')
-}
-
-/** The Pro card names one price at a time; the toggle says which one. */
-function renderProBilling() {
-  const yearly = proBillingPeriod === 'yearly'
-  const amount = settingsEl.querySelector('[data-pro-amount]')
-  const billed = settingsEl.querySelector('[data-pro-billed]')
-  const save = settingsEl.querySelector('[data-pro-save]') as HTMLElement | null
-  if (amount) amount.textContent = yearly ? '$12.99' : '$14.99'
-  if (billed) billed.textContent = yearly ? 'Billed yearly at $155.88' : 'Cancel anytime'
-  if (save) save.hidden = !yearly
-  for (const button of settingsEl.querySelectorAll('[data-period]')) {
-    button.setAttribute('aria-pressed', String(button.getAttribute('data-period') === proBillingPeriod))
-  }
-  renderProCta()
-}
-
-settingsEl.addEventListener('click', (e) => {
-  const toggle = (e.target as HTMLElement).closest('[data-period]') as HTMLButtonElement | null
-  if (!toggle) return
-  proBillingPeriod = toggle.getAttribute('data-period') === 'monthly' ? 'monthly' : 'yearly'
-  renderProBilling()
-})
-
-/**
- * The account panel matches the site's, which signs out from its account page.
- * The board keeps a cookie of its own, so the control lives here instead.
- */
-async function signOutFromSettings(): Promise<void> {
-  try {
-    await tjHeader.signOut()
-    showToast('Signed out.')
-  } catch {
-    showToast('Could not sign out. Try again.')
-  }
-}
-
-/** Opens the site account panel in the board header, closing settings first. */
-function openSignIn() {
-  closeSettings()
-  // Not a synthetic click on the header icon: that icon is an anchor to the
-  // site's account page, and a click on it at desktop width used to navigate
-  // away from the board - unsaved-work prompt and all - instead of signing in.
-  tjHeader.openAccount()
-}
-
-/**
- * One buy button, wherever it is. The button is disabled while the overlay is
- * open so a second click cannot start a second checkout, and every ending —
- * bought, abandoned, signed out, closed — says what happened in the same place.
- */
-async function buy(button: HTMLButtonElement): Promise<void> {
-  if (IS_NATIVE_APP) return
-  const product = button.dataset.buy as CheckoutProduct
-  const note = settingsEl.querySelector('[data-buy-note]') as HTMLElement | null
-  const say = (message: string) => { if (note) note.textContent = message }
-  const label = button.textContent || ''
-
-  button.disabled = true
-  button.textContent = 'Opening checkout...'
-  void recordProductEvent('checkout_opened', product)
-  try {
-    const theme = document.documentElement.getAttribute('data-theme-resolved') === 'dark' ? 'dark' : 'light'
-    const outcome = await startCheckout(product, theme, (stage) => {
-      button.textContent = stage === 'confirming' ? 'Confirming purchase...' : 'Opening checkout...'
-    })
-    if (outcome.ok) {
-      // The board hears about the purchase from the account session, so the
-      // buttons are redrawn from what the server says, not from this result.
-      renderLicenseCta()
-      renderProCta()
-      // Paying with an address that already has an account cannot sign anyone
-      // in, because typing someone else's address would then be a way into
-      // their account. The code in their inbox is.
-      if (outcome.checkEmail) {
-        say('Paid. That email already has a Tactics Journal account, so check your inbox for a sign-in code and the purchase is waiting.')
-      }
-      return
-    }
-    if (outcome.reason === 'unavailable') {
-      say('Checkout is not open yet. Nothing was charged.')
-    } else if (outcome.reason === 'failed') {
-      say('Checkout could not be opened. Nothing was charged.')
-    } else if (outcome.reason === 'unconfirmed') {
-      say('Checkout finished, but Pro could not be confirmed yet. Check your Tactics Journal account or email before trying again.')
-    } else {
-      say('Checkout closed. Nothing was charged.')
-    }
-  } finally {
-    button.disabled = false
-    if (button.isConnected) button.textContent = label
-  }
-}
-
-settingsEl.addEventListener('click', (e) => {
-  const button = (e.target as HTMLElement).closest('[data-buy]') as HTMLButtonElement | null
-  if (button) void buy(button)
-})
-
-renderLicenseCta()
-renderProCta()
 openDeepLinkedPanel()
-void openInvitationFromLink()
 
 /* ----- pitch style picker ----- */
 
@@ -9740,7 +8377,7 @@ function renderBackgroundGrid() {
     : ''
   const note = settingsEl.querySelector('[data-bg-note]') as HTMLElement
   note.textContent = saved.length
-    ? 'Pro syncs your backgrounds between devices. Sharing a Project never shares your private background library.'
+    ? 'Backgrounds stay in this browser. Copy link and project files carry only background ids, never the images.'
     : 'Add a photo, a broadcast still or a training-ground shot. Each one is saved here, and the board takes its shape.'
 
   // Fill in the tiles whose thumbnail has not been read yet. The answer lands
@@ -9871,7 +8508,7 @@ settingsEl.addEventListener('click', (e) => {
     return
   }
   if (BOARD_SELF_HOSTED && skillsAction === 'remove-extension' && editingExtensionId) {
-    if (window.confirm('Remove this extension from this project?')) { saveSkills(removeExtension(projectSkills(), editingExtensionId), false); disposeExtensionRuntime(); editingExtensionId = null; showScreen('skills') }
+    if (window.confirm('Remove this extension from this project?')) { saveSkills(removeExtension(projectSkills(), editingExtensionId)); disposeExtensionRuntime(); editingExtensionId = null; showScreen('skills') }
     return
   }
   const bgMenu = (e.target as HTMLElement).closest('[data-bg-menu]') as HTMLElement | null
@@ -9935,10 +8572,6 @@ settingsEl.addEventListener('click', (e) => {
   }
   const selfHostCopy = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-self-host-copy]')
   if (selfHostCopy) { void copySelfHostCommands(selfHostCopy); return }
-  const agentCopy = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-agents-copy]')
-  if (agentCopy) { void copyAgentMcpUrl(agentCopy); return }
-  const providerLink = (e.target as HTMLElement).closest<HTMLAnchorElement>('[data-agent-provider]')
-  if (providerLink) { void copyAgentMcpForProvider(providerLink); return }
   const toolsMove = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-tools-move]')
   if (toolsMove) {
     const [id, direction] = toolsMove.dataset.toolsMove!.split(' ')
@@ -9963,8 +8596,7 @@ settingsEl.addEventListener('click', (e) => {
     setNote('')
     disposeExtensionRuntime()
     if (screen === 'skill') editingSkillDraft = null
-    showScreen(screen === 'skill' || screen === 'extension' || screen === 'official' ? 'skills'
-      : screen === 'history' || screen === 'proposals' ? 'boards' : 'root')
+    showScreen(screen === 'skill' || screen === 'extension' || screen === 'official' ? 'skills' : 'root')
   }
   else if (k === 'theme-system') applyThemeChoice('system')
   else if (k === 'theme-light') applyTheme(false)
@@ -9976,9 +8608,6 @@ settingsEl.addEventListener('click', (e) => {
   else if (k === 'styles-reset') resetPitchDefaults()
   else if (k === 'boards-export') exportBoardsFile()
   else if (k === 'projects') openProjectsScreen()
-  else if (k === 'free-backup') void requestFreeBackup('settings')
-  else if (k === 'signin') openSignIn()
-  else if (k === 'signout') void signOutFromSettings()
 })
 
 settingsEl.addEventListener('submit', (e) => {
@@ -10007,7 +8636,7 @@ settingsEl.addEventListener('change', (e) => {
     return
   }
   if (input.matches('[data-extension-enabled]') && editingExtensionId) {
-    saveSkills(setExtensionEnabled(projectSkills(), editingExtensionId, input.checked), false)
+    saveSkills(setExtensionEnabled(projectSkills(), editingExtensionId, input.checked))
     if (!input.checked) disposeExtensionRuntime()
   }
 })
@@ -10077,8 +8706,6 @@ window.addEventListener('keydown', (e) => {
     return
   }
   if (openSheet) return
-  // Keyboard edits and view commands are board-directed local control too.
-  hideRemotePreview()
   const mod = e.metaKey || e.ctrlKey
   if (mod && e.key.toLowerCase() === 'z') {
     e.preventDefault()
@@ -10286,9 +8913,6 @@ appBanner.addEventListener('click', (e) => {
   } else if (action === 'conflict-keep') {
     saves.keepCurrentConflict()
     hideBanner()
-  } else if (action === 'free-backup') {
-    hideBanner()
-    void requestFreeBackup('fourth_save')
   }
 })
 
@@ -10309,17 +8933,6 @@ if (changelogAnnouncement) {
   })
 }
 
-saves.onFreeLimit = () => {
-  if (BOARD_SELF_HOSTED || entitlements.isPro()) return
-  void recordProductEvent('free_backup_prompted', 'fourth_save')
-  showBanner(`
-    <p>Local projects are unlimited. Back up one project to your Tactics Journal account free, or use Pro to sync every project.</p>
-    <span class="appBannerActions">
-      <button data-banner="dismiss">Not now</button>
-      <button data-banner="free-backup">Back up one project</button>
-    </span>`)
-}
-
 // Multi-tab conflict: another tab saved a newer version of the board this
 // tab has open. Let the user grab a backup of their local copy before
 // choosing to load the newer version or keep working on theirs.
@@ -10327,7 +8940,7 @@ saves.onExternalConflict = (_name, state) => {
   const deleted = state === 'conflict-delete'
   showBanner(`
     <p>${deleted
-      ? 'This board was deleted on another device. Keep this canvas as a new saved copy, or accept the deletion?'
+      ? 'This board was deleted in another tab. Keep this canvas as a new saved copy, or accept the deletion?'
       : 'This board was changed in another tab. Load the newer version or keep yours as a new saved copy?'}</p>
     <span class="appBannerActions">
       <button data-banner="conflict-backup">Download backup</button>
@@ -10336,625 +8949,10 @@ saves.onExternalConflict = (_name, state) => {
     </span>`, 'warn')
 }
 
-// Server-derived paid access: the TJ header fetches the session from
-// tacticsjournal.com and dispatches auth-changed. Wire that into the
-// entitlements module so the board reflects the server's answer. The two
-// products are read separately: `site_access` for the Pro subscription and
-// `board_license` for a grandfathered License.
-let wasPro = entitlements.isPro()
-/** Authentication permits shared-board sync even without a Pro entitlement. */
-let boardSessionReady = false
-let syncGeneration = 0
-window.addEventListener('tacticsjournal:auth-changed', ((event: CustomEvent) => {
-  // Authentication changes are a collaboration boundary, even when the
-  // account binding happens to remain null.
-  clearCollaborationPreview()
-  const data = event.detail
-  const previousAuthenticated = authenticated
-  authenticated = data?.authenticated === true
-  const authBoundary = authenticated !== previousAuthenticated
-  if (!authenticated) boardSessionReady = false
-  const nextBinding = authenticated && typeof data?.account_binding === 'string' ? data.account_binding : null
-  const accountChanged = nextBinding !== accountBinding
-  if (accountChanged || authBoundary) {
-    accountBinding = nextBinding
-    teams.activateLibraryAccount(accountBinding)
-    activateCategoryScenesAccount(accountBinding)
-    resetBoardSession()
-    boardSessionReady = false
-    syncGeneration += 1
-    if (syncTimer !== null) { clearTimeout(syncTimer); syncTimer = null }
-    syncStore = sync.createLocalSyncStore(accountBinding)
-    liveChannel.stop()
-    collaborationChannel.stop()
-    sharedBackgroundScope?.clear()
-    sharedBackgroundScope = null
-    sharedBackgroundRowId = null
-    sharedBackgroundProjectId = null
-    clearActiveSharedPitches()
-    boardsView.clearBackgroundCache()
-    board.setBackgroundResolver(id => backgrounds.image(id))
-    board.refreshBackground()
-    selectProjectBackgroundResolver(currentProject(library))
-    board.refreshBackground()
-    clearRemotePreview()
-  }
-  const serverPro = Boolean(data && data.site_access === 'pro')
-  const serverLicense = Boolean(data && data.board_license === true)
-  const serverBoardAdmin = Boolean(data && data.authenticated === true && data.board_admin === true)
-  accountEmail = data && data.authenticated === true && typeof data.email === 'string' ? data.email : null
-  accountName = data && data.authenticated === true && typeof data.name === 'string' && data.name.trim() !== '' ? data.name : null
-  renderAccountRow()
-  // fills blanks only, so a session landing later never clobbers an edit
-  prefillFeedback()
-  entitlements.setServerEntitlement(serverPro, serverLicense, serverBoardAdmin)
-  if (authenticated && !previousAuthenticated) {
-    const intent = takeFreeBackupIntent(sessionStorage)
-    if (intent) queueMicrotask(() => { void requestFreeBackup(intent.source, intent.boardId) })
-  }
-  renderPitchSeg()
-  // the tags say what is still to buy, so they answer to the new access at once
-  syncLockTags()
-  // Pro loss only. Local work remains fully editable; only hosted account
-  // services stop when Pro ends.
-  const isPro = entitlements.isPro()
-  if (wasPro && !isPro) {
-    showBanner(`
-      <p>Pro access has ended. Local projects remain editable and exportable; all-project sync, version history, collaboration, sharing controls, and agent access are paused.</p>
-      <span class="appBannerActions"><button data-banner="dismiss">Dismiss</button></span>`, 'warn')
-  }
-  wasPro = isPro
-  // Auth can change while entitlement flags remain false. It still starts or
-  // stops shared-board sync and its live nudge channel immediately.
-  void runSync()
-  void updateLiveChannel()
-  void updateCollaborationChannel()
-}) as EventListener)
-
-/* ----- board sync -----
- *
- * Pro syncs personal and shared boards; a signed-in free member syncs only
- * boards shared with them. Failures
- * are silent by design — a device that cannot reach the server has lost
- * nothing, and a banner on every flaky connection would be noise.
- *
- * Sync is immediate in both directions. A local save pushes as it happens, and
- * a live channel says when another device has pushed, so the two sides meet in
- * about as long as the round trip takes. The old triggers are kept as the
- * fallback: a device with no socket still converges when the tab comes back.
- */
-let syncStore = sync.createLocalSyncStore(accountBinding)
-const syncApi = sync.createSyncApi()
-const assetSyncApi = assetSync.createAssetSyncApi()
-const librarySyncApi = librarySync.createLibrarySyncApi()
-let syncTimer: number | null = null
-
-async function syncPersonalLibraries(generation: number, binding: string | null): Promise<void> {
-  if (!authenticated || !entitlements.isPro()) return
-  const [assets, libraries] = await Promise.all([
-    assetSync.syncAssetsOnce(assetSyncStore(), assetSyncApi, binding),
-    librarySync.syncLibrariesOnce(librarySyncStore, librarySyncApi, binding),
-  ])
-  if (generation !== syncGeneration) return
-  if (assets.pulled > 0) { board.rebuild(); renderPanel(); renderAssetList() }
-  if (libraries.pulled > 0) {
-    // Remote library applications suppress local-change signals. Refresh the
-    // picker and shelves here, after all pulled background JPEGs are stored.
-    board.refreshBackground(); board.rebuild(); renderPanel(); renderAssetList(); renderPitchSeg(); renderRootValues()
-  }
-}
-
-function reconcileProjectSync(rowsBeforeSync: ReturnType<typeof saves.projectDocuments>, result: sync.SyncResult): boolean {
-  // localStorage does not notify its own writer. Explicitly load a remote
-  // update into a clean open canvas, or use the existing conflict choices if
-  // the person edited while the request was in flight.
-  // A later page can fail after valid pages changed local storage. Reconcile
-  // those pages too; only the network failure itself stays silent.
-  const openConflict = saves.applyRemoteCurrent(result.remoteIds, saves.currentBoardId())
-  const rowsAfterSync = saves.projectDocuments()
-  const remainingRows = new Set(rowsAfterSync.map(row => row.rowId))
-  const remoteRows = new Set(result.remoteIds)
-  const remotelyDeletedProjects = rowsBeforeSync
-    .filter(row => remoteRows.has(row.rowId) && !remainingRows.has(row.rowId))
-    .map(row => row.project.id)
-  // applyRemoteCurrent alone owns replacement or deletion of the Project on
-  // screen. All other full Project rows become visible library entries here.
-  reconcileLibraryProjectDocuments({ removeProjectIds: remotelyDeletedProjects, skipCurrent: true })
-  const remoteProjectIds = new Set(rowsAfterSync
-    .filter(row => remoteRows.has(row.rowId))
-    .map(row => row.project.id))
-  const destination = freshDeviceDestination(library, freshStarter, remoteProjectIds)
-  if (destination && freshStarter) {
-    library = {
-      ...library,
-      currentId: destination.id,
-      projects: library.projects.filter(project => project.id !== freshStarter!.id),
-    }
-    freshStarter = null
-    saveLibrary(library)
-    boardsView.setLibrary(library)
-    saves.activateDocument(destination.id)
-  }
-  if (result.pulled > 0 || result.conflicts > 0 || result.remoteIds.length > 0) {
-    saves.refresh()
-    // A revoked open share leaves its canvas detached. Drop its scoped image
-    // before that canvas can keep showing bytes this account may no longer read.
-    selectProjectBackgroundResolver(currentProject(library))
-    board.refreshBackground()
-  }
-  return openConflict
-}
-
-/**
- * Put a version the server restored onto this device.
- *
- * The response is an ordinary sync row, so it takes the ordinary path: write
- * any live edit to its own record first, hand the row to the sync store, then
- * run the same reconciliation a pull runs. That is what keeps the canvas, the
- * saved list and the Projects library on one project rather than two, and what
- * makes a name that now collides behave exactly as a name from another device
- * does. A refused local write returns false with nothing changed.
- */
-function applyRestoredVersion(board: RestoredBoard, target: BoardHistoryTarget): boolean {
-  if (!authenticated || !entitlements.isPro() || !accountBinding || target.accountBinding !== accountBinding) return false
-  if (!saves.flushCurrentForSync()) return false
-  const rowsBeforeRestore = saves.projectDocuments()
-  syncStore.upsert({
-    id: board.id,
-    name: board.name,
-    savedAt: board.updatedAt,
-    scene: board.scene,
-    ...(accountBinding ? { syncAccount: accountBinding } : {}),
-  })
-  const stored = syncStore.list().some(row => row.id === board.id && row.savedAt === board.updatedAt)
-  if (!stored) return false
-  reconcileProjectSync(rowsBeforeRestore, {
-    status: 'ok', pushed: 0, pulled: 1, conflicts: 0, remoteIds: [board.id],
-  })
-  return true
-}
-
-async function runSyncPass(): Promise<void> {
-  if (!(authenticated || entitlements.isPro())) return
-  // The board host has its own host-only cookie. Establish it before every
-  // pass so expiry is repaired once, not by a retry loop of failed syncs.
-  const requestedGeneration = syncGeneration
-  const requestedBinding = accountBinding
-  boardSessionReady = await ensureBoardSession(requestedBinding)
-  if (!boardSessionReady || requestedGeneration !== syncGeneration || !(authenticated || entitlements.isPro())) return
-  // Personal libraries share the Board session, but not the Project store.
-  // Start them independently so a dirty/conflicted Project or a failed Project
-  // request cannot prevent a clean device from restoring account data.
-  const personalSync = syncPersonalLibraries(requestedGeneration, requestedBinding)
-  // Do this before starting the Project request. A failed local write must
-  // never let a pull replace a dirty saved board; an unnamed canvas has no
-  // sync record. Personal libraries are safe to finish either way.
-  if (!saves.flushCurrentForSync()) { await personalSync; return }
-  // Remember which visible Project each durable row represented before sync.
-  // A missing row after a remote tombstone must remove that Project, not seed
-  // it back into account sync on this or the next pass.
-  const rowsBeforeSync = saves.projectDocuments()
-  const passGeneration = requestedGeneration
-  const passStore = syncStore
-  const freeBackupId = !entitlements.isPro() ? selectedFreeBackup(localStorage, requestedBinding) : null
-  const result = await sync.syncOnce(passStore, syncApi, new Date().toISOString(), undefined, {
-    includeOwned: entitlements.isPro() || !!freeBackupId,
-    ...(freeBackupId ? { ownedId: freeBackupId, freeBackupId } : {}),
-    stillCurrent: () => passGeneration === syncGeneration && requestedBinding === accountBinding,
-  })
-  // A response started under another account may update its account-scoped
-  // local records, but it must not replace the board now on screen.
-  if (passGeneration !== syncGeneration) return
-  const openConflict = reconcileProjectSync(rowsBeforeSync, result)
-  if (!entitlements.isPro() && !freeBackupId && requestedBinding) {
-    const restored = saves.projectDocuments().find(row => row.access !== 'shared' && result.remoteIds.includes(row.rowId))
-    if (restored) setSelectedFreeBackup(localStorage, requestedBinding, restored.rowId)
-  }
-  await personalSync
-  if (passGeneration !== syncGeneration) return
-  // Only speak up for an accepted server conflict, never a network failure.
-  if (result.status === 'ok' && result.conflicts > 0) {
-    if (!openConflict) {
-      showBanner(`
-        <p>A board was edited on another device as well. Both versions are saved; the copy from this device is named "(this device)".</p>
-        <span class="appBannerActions"><button data-banner="dismiss">Dismiss</button></span>`, 'warn')
-    }
-  }
-  // A successful push/pull elsewhere is not authoritative for the board
-  // being watched. Only its durable replacement may dismiss this frame.
-  if (result.status === 'ok' && result.remoteIds.includes(saves.currentBoardId() ?? '')) clearRemotePreview()
-  // A pass can bring in a share, or take one away, so the place this
-  // device holds is re-checked against whatever is open now.
-  updatePresence()
-}
-
-let projectSyncQueue: Promise<void> = Promise.resolve()
-function serializeProjectSync<T>(work: () => Promise<T>): Promise<T> {
-  const run = projectSyncQueue.then(() => work(), () => work())
-  projectSyncQueue = run.then(() => undefined, () => undefined)
-  return run
-}
-
-function freeBackupCandidate(requestedId?: string) {
-  const rows = saves.projectDocuments().filter(row => row.access !== 'shared')
-  if (requestedId) return rows.find(row => row.rowId === requestedId) ?? null
-  const currentId = saves.currentBoardId()
-  return rows.find(row => row.rowId === currentId)
-    ?? rows.sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))[0]
-    ?? null
-}
-
-async function requestFreeBackup(source: FreeBackupSource, requestedId?: string): Promise<void> {
-  if (BOARD_SELF_HOSTED) return
-  if (entitlements.isPro()) { showToast('Pro already backs up every project.'); return }
-  const row = freeBackupCandidate(requestedId)
-  if (!row) { showToast('Save a project on this device before turning on backup.'); return }
-  if (source === 'settings') void recordProductEvent('free_backup_prompted', source)
-  if (!authenticated || !accountBinding) {
-    if (!saveFreeBackupIntent(sessionStorage, { boardId: row.rowId, source })) {
-      showToast('This browser could not preserve the backup request. Sign in, then try again.')
-      return
-    }
-    showToast('Sign in to back up this project free.')
-    openSignIn()
-    return
-  }
-  const previous = selectedFreeBackup(localStorage, accountBinding)
-  if (previous && previous !== row.rowId) {
-    const old = freeBackupCandidate(previous)
-    if (!window.confirm(`Replace ${old?.name || 'your current free backup'} with ${row.name}? The old project stays on this device.`)) return
-  }
-  await serializeProjectSync(() => syncFreeBackupProject(row.rowId, source))
-}
-
-async function syncFreeBackupProject(boardId: string, source: FreeBackupSource): Promise<void> {
-  const requestedGeneration = syncGeneration
-  const requestedBinding = accountBinding
-  if (!authenticated || !requestedBinding || entitlements.isPro()) return
-  boardSessionReady = await ensureBoardSession(requestedBinding)
-  if (!boardSessionReady || requestedGeneration !== syncGeneration || requestedBinding !== accountBinding) {
-    showToast('Could not connect this backup to your account. Try again.')
-    return
-  }
-  if (!saves.flushCurrentForSync()) {
-    showToast('Could not save the current project on this device. Nothing was uploaded.')
-    return
-  }
-  const row = freeBackupCandidate(boardId)
-  if (!row) { showToast('That project is no longer saved on this device.'); return }
-  const rowsBeforeSync = saves.projectDocuments()
-  const result = await sync.syncOnce(syncStore, syncApi, new Date().toISOString(), undefined, {
-    includeOwned: true,
-    ownedId: boardId,
-    targetId: boardId,
-    freeBackupId: boardId,
-    advanceMarkers: false,
-    stillCurrent: () => requestedGeneration === syncGeneration && requestedBinding === accountBinding,
-  })
-  if (requestedGeneration !== syncGeneration || requestedBinding !== accountBinding) return
-  reconcileProjectSync(rowsBeforeSync, result)
-  if (result.status === 'ok' && result.conflicts > 0) {
-    showToast('Another version was already backed up. Both versions stay on this device; choose the project again after reviewing them.')
-    return
-  }
-  if (result.status !== 'ok') {
-    if (result.reason === 'free_backup_creation_cap') {
-      if (proPlansVisible()) {
-        showToast('This account has used its three free backup records. Pro backs up every project; your local work is unchanged.')
-        openSettings('pro')
-      } else showToast('This account has used its three free backup records. Your local work is unchanged.')
-    } else showToast('The project stayed on this device, but backup did not finish. Try again.')
-    return
-  }
-  if (!setSelectedFreeBackup(localStorage, requestedBinding, boardId)) {
-    showToast('Backup finished, but this browser could not remember the selection.')
-    return
-  }
-  void recordProductEvent('free_backup_enabled', source)
-  renderRootValues()
-  showToast(`${row.name} is backed up to your account.`)
-}
-
-async function runTargetedSyncPass(
-  boardId: string,
-  requestedGeneration: number,
-  requestedBinding: string | null,
-): Promise<sync.SyncResult> {
-  if (requestedGeneration !== syncGeneration || requestedBinding !== accountBinding) {
-    return { status: 'failed', pushed: 0, pulled: 0, conflicts: 0, remoteIds: [], reason: 'the account changed while preparing the Project' }
-  }
-  if (!(authenticated || entitlements.isPro())) {
-    return { status: 'failed', pushed: 0, pulled: 0, conflicts: 0, remoteIds: [], reason: 'an active account is required' }
-  }
-  boardSessionReady = await ensureBoardSession(requestedBinding)
-  if (!boardSessionReady) {
-    return { status: 'failed', pushed: 0, pulled: 0, conflicts: 0, remoteIds: [], reason: 'could not establish the Board session' }
-  }
-  if (requestedGeneration !== syncGeneration || requestedBinding !== accountBinding || !(authenticated || entitlements.isPro())) {
-    return { status: 'failed', pushed: 0, pulled: 0, conflicts: 0, remoteIds: [], reason: 'the account changed while preparing the Project' }
-  }
-  // Flush only after the session check, and never let the targeted pass turn a
-  // failed local write into a remote overwrite.
-  if (!saves.flushCurrentForSync()) {
-    return { status: 'failed', pushed: 0, pulled: 0, conflicts: 0, remoteIds: [], reason: 'could not save the current Project on this device' }
-  }
-  const targetRow = saves.projectDocuments().find(row => row.rowId === boardId)
-  if (!targetRow || targetRow.access === 'shared') {
-    return { status: 'failed', pushed: 0, pulled: 0, conflicts: 0, remoteIds: [], reason: 'the Project is not locally owned' }
-  }
-  try {
-    await librarySync.pushReferencedBackgrounds(targetRow.project, librarySyncStore, librarySyncApi, requestedBinding, {
-      stillCurrent: () => requestedGeneration === syncGeneration && requestedBinding === accountBinding,
-    })
-  } catch (error) {
-    return {
-      status: 'failed', pushed: 0, pulled: 0, conflicts: 0, remoteIds: [],
-      reason: error instanceof Error ? error.message : 'could not upload the Project backgrounds',
-    }
-  }
-  if (requestedGeneration !== syncGeneration || requestedBinding !== accountBinding) {
-    return { status: 'failed', pushed: 0, pulled: 0, conflicts: 0, remoteIds: [], reason: 'the account changed while preparing the Project' }
-  }
-  const rowsBeforeSync = saves.projectDocuments()
-  const passStore = syncStore
-  const result = await sync.syncOnce(passStore, syncApi, new Date().toISOString(), undefined, {
-    includeOwned: entitlements.isPro(), targetId: boardId, advanceMarkers: false, shareTarget: true,
-    stillCurrent: () => requestedGeneration === syncGeneration && requestedBinding === accountBinding,
-  })
-  if (requestedGeneration !== syncGeneration || requestedBinding !== accountBinding) {
-    return { ...result, status: 'failed', reason: 'the account changed while preparing the Project' }
-  }
-  const openConflict = reconcileProjectSync(rowsBeforeSync, result)
-  if (result.status === 'ok' && result.conflicts > 0 && !openConflict) {
-    showBanner(`
-      <p>A board was edited on another device as well. Both versions are saved; the copy from this device is named "(this device)".</p>
-      <span class="appBannerActions"><button data-banner="dismiss">Dismiss</button></span>`, 'warn')
-  }
-  if (result.status === 'ok' && result.remoteIds.includes(saves.currentBoardId() ?? '')) clearRemotePreview()
-  updatePresence()
-  return result
-}
-
-const requestSync = sync.createSyncRunner(() => serializeProjectSync(runSyncPass))
-function runSync(): Promise<void> {
-  if (!(authenticated || entitlements.isPro())) return Promise.resolve()
-  return requestSync()
-}
-
-// Sharing pushes only the saved Project being shared. A large or malformed
-// unrelated Project must not block the invitation, and this pass never moves
-// the full-sync markers.
-async function prepareSavedBoardsForSharing(boardId: string): Promise<string> {
-  // Bind the queued request to the account that pressed Share. A Project with
-  // no prior account binding must never be claimed by an account selected
-  // while this request waits behind another sync.
-  const requestedGeneration = syncGeneration
-  const requestedBinding = accountBinding
-  let currentId = boardId
-  let reidentified = false
-  let stable = false
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const generation = documentChangeGeneration
-    const result = await serializeProjectSync(() => runTargetedSyncPass(currentId, requestedGeneration, requestedBinding))
-    if (result.status !== 'ok') {
-      if (result.reason === 'board_not_accessible' && !reidentified) {
-        currentId = await serializeProjectSync(async () => {
-          if (requestedGeneration !== syncGeneration || requestedBinding !== accountBinding) {
-            throw new Error('The account changed while preparing the Project')
-          }
-          return saves.reidentifySavedBoard(currentId)
-        })
-        reidentified = true
-        continue
-      }
-      throw new Error(`Could not prepare this Project for sharing: ${result.reason || 'sync failed'}`)
-    }
-    if (generation === documentChangeGeneration) { stable = true; break }
-  }
-  if (!stable) throw new Error('The board kept changing. Stop editing for a moment and try again.')
-  return currentId
-}
-
-saves.onPrepareShare = (boardId: string) => prepareSavedBoardsForSharing(boardId)
-saves.onCreateAgentLink = async (boardId: string, mode: AgentAccessMode = 'propose'): Promise<string> => {
-  const finalBoardId = await prepareSavedBoardsForSharing(boardId)
-  await flushSkillsForAgentLink(finalBoardId)
-  const response = await fetch(boardAgentLinksUrl(), {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ board_id: finalBoardId, access_mode: mode }),
-  })
-  if (!response.ok) throw new Error(`The server returned ${response.status}.`)
-  const data = await response.json() as { url?: unknown }
-  if (typeof data.url !== 'string' || !data.url) throw new Error('The server returned no agent link.')
-  return data.url
-}
-
-/**
- * Sync shortly, not repeatedly.
- *
- * Dragging a player writes the board on every autosave, and each of those is a
- * change worth sending — but sending each one separately would be a request per
- * gesture. A short wait collapses a flurry into one push and still reads as
- * immediate.
- */
-const SYNC_DEBOUNCE = 700
-function scheduleSync(delay = SYNC_DEBOUNCE, change: { shared: boolean } = { shared: false }): void {
-  if (!(authenticated || entitlements.isPro())) return
-  // A signed-in Free user pushes shared edits and, when chosen, one personal
-  // backup. Other owned projects never leave the device.
-  if (authenticated && !entitlements.isPro() && !change.shared
-    && !selectedFreeBackup(localStorage, accountBinding)) return
-  if (syncTimer !== null) clearTimeout(syncTimer)
-  syncTimer = window.setTimeout(() => { syncTimer = null; void runSync() }, delay)
-}
-
-// Every write to the saved-boards record — save, rename, delete, autosave.
-saves.onLocalChange = (change) => {
-  updatePresence()
-  scheduleSync(SYNC_DEBOUNCE, change ?? { shared: false })
-  queueMicrotask(() => {
-    void updateCollaborationChannel()
-    // A new board only gets its id at its first save. Repeats are free.
-    announceTab()
-  })
-}
-// Asset storage has no project write to wake the normal sync path. Remote
-// applications suppress this notification, so a pull cannot schedule a loop.
-subscribeAssets(() => scheduleSync())
-backgrounds.subscribe(source => { if (source !== 'remote') scheduleSync() })
-subscribeStamps(() => scheduleSync())
-teams.subscribeLibrary(() => scheduleSync())
-categorySceneListeners.add(() => scheduleSync())
-
-/* ----- the live channel -----
- *
- * The socket only ever says "changed", which this device answers with the same
- * sync it would have run anyway. Nothing is trusted from it and nothing is lost
- * without it.
- */
-const liveChannel = live.createLiveChannel({
-  deviceId: sync.deviceId(),
-  enabled: () => authenticated || entitlements.isPro(),
-  // A nudge means another device has already pushed, so there is nothing to
-  // collapse: pull now.
-  onChanged: () => { void runSync() },
-})
-
-/* ----- visual collaboration previews -----
- *
- * These frames are paint only. Durable Store events still take the existing
- * autosave/D1 route, so a lost preview simply falls back to normal sync.
- */
-const collaborationDevice = sync.deviceId()
-let remotePreviewTimer: number | null = null
-let localPointerActive = false
-let localPreviewEndPending = false
-let localPreviewGesture: string | null = null
-const remoteOrder = collaboration.createPreviewOrder()
-// Every accepted frame updates its sender's scene here, painted or not, so a
-// delta always has the frame it builds on.
-const remoteModel = collaboration.createPreviewModel()
-/*
- * Paints at most once per display frame. Frames that land between two paints
- * merge rather than queue, so a slow device drops frames instead of falling
- * behind; a delta redraws only the objects it names, and those glide.
- */
-const remotePainter = collaboration.createPreviewPainter({
-  target: {
-    render: (scene) => board.renderRemotePreview(scene),
-    patch: (scene, objects, removed) => board.patchRemotePreview(scene, objects, removed),
-  },
-})
-
-function setLiveEditStatus(visible: boolean) {
-  if (liveEditChipEl.classList.contains('isVisible') === visible) return
-  liveEditChipEl.classList.toggle('isVisible', visible)
-  liveEditChipEl.textContent = visible ? 'Live edit' : ''
-}
-
-/** Hide paint only. Sequence/end ordering survives local control and expiry. */
-function hideRemotePreview() {
-  if (remotePreviewTimer !== null) { clearTimeout(remotePreviewTimer); remotePreviewTimer = null }
-  remotePainter.reset()
-  board.clearRemotePreview()
-  setLiveEditStatus(false)
-}
-
-/** Reset ordering only when the room or authoritative durable state changes. */
-function clearRemotePreview() {
-  hideRemotePreview()
-  remoteOrder.clear()
-  remoteModel.clear()
-}
-
-function expireRemotePreview(phase: collaboration.PreviewPhase) {
-  if (remotePreviewTimer !== null) clearTimeout(remotePreviewTimer)
-  // An abandoned drag should disappear quickly. An end frame is useful until
-  // the live nudge/pull has had a fair chance to replace it durably.
-  remotePreviewTimer = window.setTimeout(hideRemotePreview, phase === 'end' ? 10_000 : 2_000)
-}
-
-const collaborationChannel = collaboration.createCollaborationChannel({
-  deviceId: collaborationDevice,
-  enabled: () => authenticated || entitlements.isPro(),
-  // A socket drop is a room/disconnect boundary, so its ordering is no longer useful.
-  onExpired: clearRemotePreview,
-  onPreview: (message) => {
-    const page = currentBoard()?.id
-    if (!page || message.page !== page) return
-    // Sequence numbers may reset on reconnect and are meaningful only within
-    // one source's gesture. The order helper also suppresses ended gestures
-    // and bounds both maps, including frames ignored during local control.
-    if (!remoteOrder.accept(message)) return
-    // Null is a delta with no base here: show nothing until a whole scene.
-    const update = remoteModel.apply(message)
-    if (!update) return
-    expireRemotePreview(message.phase)
-    if (localPointerActive) return
-    remotePainter.paint(update)
-  },
-})
-
-board.onPointerActivity = (active) => {
-  localPointerActive = active
-  if (active) hideRemotePreview()
-}
-board.onRemotePreviewVisibilityChange = (visible) => {
-  setLiveEditStatus(visible)
-  // The board clears itself on zoom, wheel and capture: stop any glide, and
-  // draw the next frame whole.
-  if (!visible) remotePainter.reset()
-}
-board.onLivePreview = (phase, scene) => {
-  if (saves.isCurrentReadOnly()) return
-  const page = currentBoard()?.id
-  if (!page) return
-  localPreviewGesture ??= `preview-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`
-  if (phase === 'end') {
-    // Store.endGesture emits synchronously just after this callback. Do not
-    // send that durable event twice; clear the marker for a no-op gesture.
-    localPreviewEndPending = true
-    queueMicrotask(() => { localPreviewEndPending = false })
-  }
-  collaborationChannel.preview(page, localPreviewGesture, phase, scene)
-  if (phase === 'end') localPreviewGesture = null
-}
-
-/** Store emits once for a completed gesture and once for each discrete edit. */
-store.subscribe(() => {
-  if (swappingScene) return
-  if (saves.isCurrentReadOnly()) return
-  if (localPreviewEndPending) {
-    localPreviewEndPending = false
-    return
-  }
-  hideRemotePreview()
-  const page = currentBoard()?.id
-  if (!page) return
-  const gesture = `preview-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`
-  collaborationChannel.preview(page, gesture, 'end', () => store.scene)
-})
-
-async function updateCollaborationChannel(): Promise<void> {
-  if (!(authenticated || entitlements.isPro())) {
-    collaborationChannel.stop()
-    return
-  }
-  const requestedGeneration = syncGeneration
-  const requestedBinding = accountBinding
-  const ready = await ensureBoardSession(requestedBinding)
-  if (ready && requestedGeneration === syncGeneration && (authenticated || entitlements.isPro())) {
-    collaborationChannel.start(saves.currentBoardId())
-  } else collaborationChannel.stop()
-}
-
 /* ----- the same board open in two tabs -----
  *
- * Tabs in one browser share a device, so the room treats them as one editor
- * and a move in one only reaches the other once it is saved. Say so, rather
- * than leave it looking like live editing is broken.
+ * Tabs in one browser share the same local storage, and a move in one only
+ * reaches the other once it is saved. Say so. Nothing here leaves the browser.
  */
 const TAB_BANNER = 'other-tab'
 const tabPresence = createTabPresence({
@@ -10971,69 +8969,7 @@ window.addEventListener('pagehide', () => tabPresence.leave())
 window.addEventListener('pageshow', (event) => { if (event.persisted) announceTab() })
 announceTab()
 
-collaborationBoardChanged = () => {
-  clearRemotePreview()
-  announceTab()
-  queueMicrotask(() => { void updateCollaborationChannel() })
-}
-clearCollaborationPreview = clearRemotePreview
-
-async function updateLiveChannel(): Promise<void> {
-  if (!(authenticated || entitlements.isPro())) {
-    boardSessionReady = false
-    liveChannel.stop()
-    return
-  }
-  const requestedGeneration = syncGeneration
-  const requestedBinding = accountBinding
-  boardSessionReady = await ensureBoardSession(requestedBinding)
-  if (boardSessionReady && requestedGeneration === syncGeneration && (authenticated || entitlements.isPro())) liveChannel.start()
-  else liveChannel.stop()
-}
-
-// When entitlements change after session load, update UI elements that
-// were rendered with the initial (fail-closed) state.
-window.addEventListener('tbm:entitlements-changed', ((event: CustomEvent) => {
-  // The Plans pane renders fail-closed on load, before the session answers,
-  // so it has to be redrawn once the answer arrives.
-  renderLicenseCta()
-  renderProCta()
-  saves.refresh()
-  // A lapsed or signed-out account must not be left standing on a screen its
-  // project list no longer offers.
-  if ((screen === 'history' || screen === 'proposals')
-    && !(authenticated && entitlements.isPro() && !BOARD_SELF_HOSTED)) showScreen('boards')
-  // Pro just resolved, which is the first moment sync is allowed to run.
-  void runSync()
-  void updateLiveChannel()
-  void updateCollaborationChannel()
-}) as EventListener)
-
-// Development and preview builds already have automatic Pro. A session answer
-// of false does not change entitlement state or emit an event, so initialize
-// once after the listeners above are wired as well.
-void updateCollaborationChannel()
-void runSync()
-void updateLiveChannel()
-
-// Coming back to the tab is when another device's edits are most likely to be
-// waiting, and it is also the cheapest moment to ask. With a live channel this
-// is a fallback rather than the main path: a socket dropped while the tab was
-// in the background is reconnected here.
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return
-  void runSync()
-  liveChannel.poke()
-  void updateCollaborationChannel()
-})
-
-// A network that has come back is worth one attempt straight away rather than
-// at the end of whatever backoff step the channel had reached.
-window.addEventListener('online', () => {
-  void runSync()
-  liveChannel.poke()
-  void updateCollaborationChannel()
-})
+tabBoardChanged = announceTab
 
 // Protect unsaved work: save the current board before the page unloads
 // (tab close, navigation, refresh). The beforeunload handler persists
@@ -11054,72 +8990,10 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') saves.autosaveLive()
 })
 
-// When the tab comes back online after a network loss, re-check the
-// TJ session. The header's session fetch will fire auth-changed which
-// updates entitlements. This covers access-loss during offline periods.
-window.addEventListener('online', () => {
-  // The TJ header re-fetches session on visibility. Trigger a manual
-  // session check to catch access changes that happened while offline.
-  const header = document.querySelector('.site-header')
-  if (header) {
-    header.dispatchEvent(new CustomEvent('tj:refresh-session'))
-  }
-})
-
-/**
- * Point the editor at the copy that replaced the open project.
- * openLibraryProject cannot do this: it
- * stashes the live board into the project it opens, which would push the board
- * being discarded back into the imported copy.
- */
-function openReplacedProject(project: Project) {
-  window.clearTimeout(projectAutosaveTimer)
-  disposeExtensionRuntime()
-  library.currentId = project.id
-  editingBoard = 0
-  documentChangeGeneration += 1
-  rememberBoard(library, project.id, project.boards[0].id)
-  saveLibrary(library)
-  if (!saves.activateDocument(project.id)) {
-    loadBoardIntoEditor(project.boards[0].scene)
-    saves.registerNew()
-  }
-  syncPreviousBoard()
-}
-
-/**
- * Delete one project to make room for the copy. The copy is stored first, so a
- * device that cannot save it loses nothing.
- */
-function replaceSharedProject(create: () => Project, projectId: string, scope: 'project' | 'board'): BoardImportResult {
-  const index = library.projects.findIndex(project => project.id === projectId)
-  if (index < 0) return { status: 'failed', message: 'That project is no longer available.' }
-  const removed = library.projects[index]
-  const project = create()
-  if (!saves.persistProjectDocuments([project])) {
-    return { status: 'failed', message: `The ${scope} could not be saved on this device. Nothing was deleted.` }
-  }
-  if (!saves.removeDocument(removed.id)) {
-    // The copy was written before the delete was attempted, so take it back
-    // out rather than leaving a spare row behind.
-    saves.removeDocument(project.id)
-    return { status: 'failed', message: `“${removed.name}” could not be removed on this device. Nothing was deleted.` }
-  }
-  library.projects.splice(index, 1)
-  library.projects.push(project)
-  saveLibrary(library)
-  boardsView.setLibrary(library)
-  if (library.currentId === removed.id) openReplacedProject(project)
-  return { status: 'added', projectId: project.id, projectName: project.name, boardId: project.boards[0].id }
-}
-
-function addSharedProject(draft: AgentImportDraft, projectId: string | null, mode: BoardImportMode = 'append'): BoardImportResult {
+function addSharedProject(draft: AgentImportDraft, projectId: string | null, _mode: BoardImportMode = 'append'): BoardImportResult {
   const source = migrateProject(draft.document)
   if (!source) return { status: 'failed', message: 'This project link is invalid.' }
 
-  if (projectId && mode === 'replace') {
-    return replaceSharedProject(() => newProjectFromProjectCopy(source, draft.name), projectId, 'project')
-  }
   if (projectId) {
     const index = library.projects.findIndex(project => project.id === projectId)
     if (index < 0) return { status: 'failed', message: 'That project is no longer available.' }
@@ -11145,14 +9019,11 @@ function addSharedProject(draft: AgentImportDraft, projectId: string | null, mod
   return { status: 'added', projectId: project.id, projectName: project.name, boardId: project.boards[0].id }
 }
 
-function addSharedBoard(draft: AgentImportDraft, projectId: string | null, mode: BoardImportMode = 'append'): BoardImportResult {
+function addSharedBoard(draft: AgentImportDraft, projectId: string | null, _mode: BoardImportMode = 'append'): BoardImportResult {
   const imported = migrateProject(draft.document)
   if (!imported || imported.boards.length !== 1) return { status: 'failed', message: 'This board link is invalid.' }
   const source = imported.boards[0]
 
-  if (projectId && mode === 'replace') {
-    return replaceSharedProject(() => newProjectFromBoard(source, draft.name), projectId, 'board')
-  }
   if (projectId) {
     const index = library.projects.findIndex(project => project.id === projectId)
     if (index < 0) return { status: 'failed', message: 'That project is no longer available.' }
@@ -11180,20 +9051,13 @@ function addSharedBoard(draft: AgentImportDraft, projectId: string | null, mode:
 
 if (!BOARD_SELF_HOSTED) startAgentImport({
   saves,
-  isPro: () => entitlements.isPro(),
-  openSignIn,
-  openPro: () => openSettings('pro'),
-  plansVisible: proPlansVisible,
   openProjects: () => openProjectsScreen(),
-  boardDestinations: () => {
-    const readOnly = new Set(saves.projectDocuments().filter(row => row.readOnly).map(row => row.project.id))
-    return orderedProjects(library).filter(project => !readOnly.has(project.id)).map(project => ({
-      id: project.id,
-      name: project.name,
-      boardCount: project.boards.length,
-    }))
-  },
-  canCreateProject: () => canCreateProject(library, entitlements.hasPaidBoardAccess()),
+  boardDestinations: () => orderedProjects(library).map(project => ({
+    id: project.id,
+    name: project.name,
+    boardCount: project.boards.length,
+  })),
+  canCreateProject: () => canCreateProject(library),
   addBoard: addSharedBoard,
   addProject: addSharedProject,
   openProject: openLibraryProject,
@@ -11207,15 +9071,13 @@ registerWebMcp({
     return project
   },
   revision: () => `${library.currentId}:${documentChangeGeneration}:${currentBoard()?.id ?? ''}`,
-  editable: () => (BOARD_SELF_HOSTED || entitlements.isPro()) && !saves.isCurrentReadOnly(),
+  // The in-browser WebMCP tools are free and act only on this browser's copy.
+  editable: () => true,
   activeBoard: () => currentBoard()?.id ?? '',
   blankScene: () => blankSceneLike(store.scene.pitch),
   commit: (project, expectedRevision, activeBoardId) => {
     if (`${library.currentId}:${documentChangeGeneration}:${currentBoard()?.id ?? ''}` !== expectedRevision) {
       throw new Error('WebMCP: The project changed before the edit could be committed.')
-    }
-    if ((!BOARD_SELF_HOSTED && !entitlements.isPro()) || saves.isCurrentReadOnly()) {
-      throw new Error('WebMCP: This project is read-only or WebMCP writes require Pro.')
     }
     const current = currentProject(library)
     if (project.id !== current.id) throw new Error('WebMCP: The current project changed before the edit could be committed.')

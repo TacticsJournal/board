@@ -15,11 +15,8 @@ const errors = []
 const check = (ok, msg) => { if (!ok) errors.push(msg) }
 
 function benignConsole(text) {
-  // The shared TJ header checks account state on load. Anonymous users get a
-  // 401; that is expected on both localhost and board.tacticsjournal.com.
-  return /status of 401/.test(text)
-    || /tacticsjournal\.com\/api\//.test(text)
-    || /api\/account\/session/.test(text)
+  // Board's own APIs (counters, links) are not served by the local preview.
+  return /tacticsjournal\.com\/api\//.test(text)
     || /Access to fetch at .*\/api\//.test(text)
     || /Failed to load resource: net::ERR_FAILED/.test(text)
     || /Failed to load resource:.*favicon/.test(text)

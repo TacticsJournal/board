@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli'
 
 /**
  * The iOS app ships the hosted bundle from `dist/`. Board-local editing works
- * offline; Pro (sync, collaboration, agents) comes from the App Store.
+ * offline. There are no accounts or purchases.
  */
 const config: CapacitorConfig = {
   appId: 'com.tacticsjournal.board',

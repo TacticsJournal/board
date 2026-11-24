@@ -1,7 +1,6 @@
-/** Reusable object arrangements, stored locally and reconciled as library rows. */
+/** Reusable object arrangements, stored in this browser. */
 import type { SceneObj } from './types.ts'
 import { sanitizeObjects } from './types.ts'
-import type { LibrarySyncStore, SyncedLibraryRecord } from './library-sync.ts'
 
 export type Stamp = {
   id: string
@@ -13,7 +12,7 @@ export type Stamp = {
   h: number
   at: number
   updatedAt: string
-  syncAccount?: string
+  /** Old delete records from retired account sync. Never shown. */
   deleted?: boolean
 }
 
@@ -54,8 +53,7 @@ function clean(value: unknown): Stamp | null {
   const cat = normalizeCat(s.cat)
   if (!cat) return null
   const objects = sanitizeObjects(Array.isArray(s.objects) ? s.objects : []).slice(0, MAX_STAMP_OBJECTS)
-  // Tombstones retain their old payload locally, but accept a bare remote
-  // tombstone too: it only needs an id and revision to prevent resurrection.
+  // Old delete records may have no payload; keep them so they stay hidden.
   if (!objects.length && !s.deleted) return null
   const at = Number.isFinite(s.at) ? s.at : 0
   return {
@@ -64,7 +62,6 @@ function clean(value: unknown): Stamp | null {
     h: Number.isFinite(s.h) && s.h > 0 ? s.h : 100,
     at,
     updatedAt: typeof s.updatedAt === 'string' && Number.isFinite(Date.parse(s.updatedAt)) ? s.updatedAt : timestamp(at),
-    ...(typeof s.syncAccount === 'string' && s.syncAccount ? { syncAccount: s.syncAccount } : {}),
     ...(s.deleted === true ? { deleted: true } : {}),
   }
 }
@@ -102,7 +99,7 @@ export function customCats(builtIn: readonly string[]): string[] {
 
 export function usedBytes(): number { return JSON.stringify(listStamps()).length }
 
-export function addStamp(s: Omit<Stamp, 'id' | 'at' | 'updatedAt' | 'syncAccount' | 'deleted'>): Stamp {
+export function addStamp(s: Omit<Stamp, 'id' | 'at' | 'updatedAt' | 'deleted'>): Stamp {
   const at = Date.now()
   const stamp: Stamp = { ...s, id: `st-${Math.random().toString(36).slice(2, 10)}`, at, updatedAt: timestamp(at) }
   write([...read(), stamp])
@@ -110,9 +107,7 @@ export function addStamp(s: Omit<Stamp, 'id' | 'at' | 'updatedAt' | 'syncAccount
 }
 
 export function removeStamp(id: string) {
-  const now = Date.now()
-  write(read().map(stamp => stamp.id === id && !stamp.deleted
-    ? { ...stamp, objects: [], deleted: true, updatedAt: nextTimestamp(stamp.updatedAt, now) } : stamp))
+  write(read().filter(stamp => stamp.id !== id))
 }
 
 export function updateStamp(id: string, patch: Partial<Pick<Stamp, 'name' | 'cat'>>) {
@@ -121,35 +116,3 @@ export function updateStamp(id: string, patch: Partial<Pick<Stamp, 'name' | 'cat
     ? { ...stamp, ...patch, updatedAt: nextTimestamp(stamp.updatedAt, now) } : stamp))
 }
 
-const payload = (stamp: Stamp) => ({ cat: stamp.cat, objects: stamp.objects, w: stamp.w, h: stamp.h, at: Math.max(SYNC_EPOCH, stamp.at) })
-
-/** Adapter deliberately suppresses listeners for pulled rows to avoid sync loops. */
-export function stampLibrarySyncStore(): LibrarySyncStore {
-  return {
-    list() {
-      return read().map(stamp => ({
-        id: stamp.id, kind: 'stamp' as const, name: stamp.name, payload: payload(stamp), updatedAt: stamp.updatedAt,
-        ...(stamp.deleted ? { deleted: true } : {}), ...(stamp.syncAccount ? { syncAccount: stamp.syncAccount } : {}),
-      }))
-    },
-    apply(record: SyncedLibraryRecord) {
-      if (record.kind !== 'stamp') return
-      const current = read().find(stamp => stamp.id === record.id)
-      if (current && Date.parse(current.updatedAt) >= Date.parse(record.updatedAt)) return
-      const data = record.payload && typeof record.payload === 'object'
-        ? record.payload as Record<string, unknown> : {}
-      const next = clean({
-        id: record.id, name: record.name || current?.name || 'Deleted stamp',
-        cat: data.cat ?? current?.cat ?? 'equipment', objects: record.deleted ? [] : data.objects,
-        w: data.w ?? current?.w, h: data.h ?? current?.h, at: data.at ?? current?.at,
-        updatedAt: record.updatedAt, syncAccount: record.syncAccount, deleted: record.deleted,
-      })
-      if (!next) return
-      write([...read().filter(stamp => stamp.id !== next.id), next], false)
-    },
-    bind(ids, account) {
-      write(read().map(stamp => ids.includes(stamp.id) && (!stamp.syncAccount || stamp.syncAccount === account)
-        ? { ...stamp, syncAccount: account } : stamp), false)
-    },
-  }
-}

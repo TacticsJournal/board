@@ -34,7 +34,6 @@ export type ProjectSkillsState = {
   skills: Skill[]
   extensions: ExtensionSnapshot[]
 }
-export type SyncedSkill = Pick<Skill, 'id' | 'name' | 'instructions' | 'enabled'>
 
 const plainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
@@ -134,33 +133,6 @@ export function deleteSkill(state: ProjectSkillsState, skillId: string): Project
 }
 export function setExtensionEnabled(state: ProjectSkillsState, extensionId: string, enabled: boolean): ProjectSkillsState {
   return { ...state, extensions: state.extensions.map(extension => extension.id === extensionId ? { ...extension, enabled } : extension) }
-}
-
-export function skillsForSync(state: ProjectSkillsState): SyncedSkill[] {
-  return state.skills.map(({ id, name, instructions, enabled }) => ({ id, name, instructions, enabled }))
-}
-
-/** Merge the owner-controlled server skills while preserving local timestamps. */
-export function mergeSyncedSkills(state: ProjectSkillsState, values: unknown, revision: string | null, now = new Date().toISOString()): ProjectSkillsState | null {
-  if (!Array.isArray(values) || values.length > MAX_SKILLS) return null
-  const existing = new Map(state.skills.map(item => [item.id, item]))
-  const skills: Skill[] = []
-  const ids = new Set<string>()
-  for (const raw of values) {
-    if (!plainObject(raw) || !Object.keys(raw).every(key => ['id', 'name', 'instructions', 'enabled'].includes(key)) || Object.keys(raw).length !== 4) return null
-    const skillId = id(raw.id)
-    const name = text(raw.name, SKILL_NAME_MAX).trim()
-    const instructions = text(raw.instructions, INSTRUCTIONS_MAX)
-    if (!skillId || !name || !instructions.trim() || typeof raw.enabled !== 'boolean' || ids.has(skillId)) return null
-    ids.add(skillId)
-    const old = existing.get(skillId)
-    skills.push({
-      id: skillId, name, instructions, enabled: raw.enabled,
-      createdAt: old?.createdAt ?? now,
-      updatedAt: old && old.name === name && old.instructions === instructions && old.enabled === raw.enabled ? old.updatedAt : now,
-    })
-  }
-  return { ...state, skills, revision, dirty: false }
 }
 
 export function installExtension(state: ProjectSkillsState, manifest: Omit<ExtensionSnapshot, 'id' | 'enabled' | 'installedAt'>, now = new Date().toISOString(), paths: readonly string[] = BOARD_EXTENSION_PATHS, selfHosted = BOARD_SELF_HOSTED): ProjectSkillsState | null {

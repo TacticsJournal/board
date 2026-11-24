@@ -1,5 +1,3 @@
-import type { SyncedAsset } from './asset-sync'
-
 /** A user's own shapes: crests, coaching keys, custom tokens. */
 export type AssetCategory = 'players' | 'arrows' | 'zones' | 'equipment'
 export const ASSET_CATEGORIES: AssetCategory[] = ['players', 'arrows', 'zones', 'equipment']
@@ -13,10 +11,8 @@ export type UserAsset = {
   w: number
   h: number
   at: number
-  /** Last local or accepted remote revision. */
+  /** Last local revision. */
   updatedAt: string
-  /** Account that accepted this asset. Unbound old assets are claimed on first Pro sync. */
-  syncAccount?: string
 }
 
 type StoredAsset = Omit<UserAsset, 'src'> & { src?: string; deleted?: true }
@@ -46,11 +42,10 @@ function normalize(value: unknown): StoredAsset | null {
     w: typeof a.w === 'number' && Number.isFinite(a.w) ? a.w : 1,
     h: typeof a.h === 'number' && Number.isFinite(a.h) ? a.h : 1,
     at, updatedAt: timestamp(a.updatedAt, new Date(at).toISOString()),
-    ...(typeof a.syncAccount === 'string' ? { syncAccount: a.syncAccount } : {}),
   }
   if (a.deleted === true) return { ...common, deleted: true }
-  // Keep this explicit validation: remote bytes and old storage never become
-  // renderable unless they are an image data URL.
+  // Keep this explicit validation: old storage never becomes renderable unless
+  // it is an image data URL.
   if (typeof a.src !== 'string' || !a.src.startsWith('data:image/')) return null
   return { ...common, src: a.src }
 }
@@ -88,7 +83,7 @@ export function listAssets(cat?: AssetCategory): UserAsset[] {
 export function getAsset(id: string): UserAsset | undefined { return listAssets().find(a => a.id === id) }
 export function usedBytes(): number { return listAssets().reduce((sum, a) => sum + a.src.length, 0) }
 
-export function addAsset(a: Omit<UserAsset, 'id' | 'at' | 'updatedAt' | 'syncAccount'>): UserAsset {
+export function addAsset(a: Omit<UserAsset, 'id' | 'at' | 'updatedAt'>): UserAsset {
   if (usedBytes() + a.src.length > ASSET_BUDGET_BYTES) throw new AssetQuotaError()
   const now = new Date().toISOString()
   const asset: UserAsset = { ...a, id: `as-${Math.random().toString(36).slice(2, 10)}`, at: Date.now(), updatedAt: now }
@@ -104,33 +99,8 @@ export function updateAsset(id: string, patch: Partial<Pick<UserAsset, 'name' | 
   write(next)
 }
 
-/** Keep delete records until the account service accepts them. */
 export function removeAsset(id: string) {
-  const now = new Date().toISOString()
-  write(read().map(a => a.id === id && !a.deleted ? { ...a, src: undefined, deleted: true as const, updatedAt: now } : a))
-}
-
-/** Internal adapter for account sync. Remote writes deliberately do not notify/schedule another pass. */
-export function assetSyncStore() {
-  return {
-    list: (): SyncedAsset[] => read().map(a => ({
-      id: a.id, name: a.name, cat: a.cat, w: a.w, h: a.h, updatedAt: a.updatedAt,
-      ...(a.src ? { src: a.src } : {}), ...(a.deleted ? { deleted: true as const } : {}),
-      ...(a.syncAccount ? { syncAccount: a.syncAccount } : {}),
-    })),
-    apply(record: SyncedAsset) {
-      const incoming = normalize({ ...record, at: Date.parse(record.updatedAt), src: record.src })
-      if (!incoming) return
-      const next = read().filter(a => a.id !== incoming.id)
-      if (!incoming.deleted && usedBytes() - (getAsset(incoming.id)?.src.length ?? 0) + (incoming.src?.length ?? 0) > ASSET_BUDGET_BYTES) return
-      write([...next, incoming], false)
-    },
-    bind(ids: string[], account: string) {
-      const wanted = new Set(ids)
-      const next = read().map(a => wanted.has(a.id) && (!a.syncAccount || a.syncAccount === account) ? { ...a, syncAccount: account } : a)
-      write(next, false)
-    },
-  }
+  write(read().filter(a => a.id !== id))
 }
 
 /** Read a picked file into a downscaled PNG data URL. */

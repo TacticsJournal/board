@@ -71,7 +71,7 @@ test('every broadcast pitch asks for the finer ladder, custom ones included', ()
   // a saved background is a pitch style like any other, and is marked broadcast
   setCustomPitches([{
     id: 'bg:x', label: 'My clip', src: '', boardH: 418,
-    category: 'custom', sides: 1, pro: false, live: true, custom: true,
+    category: 'custom', sides: 1, live: true, custom: true,
   } as any])
   assert.equal(pitchById('bg:x').live, true)
   setCustomPitches([])

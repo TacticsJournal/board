@@ -8,13 +8,16 @@ const BOARD = 'https://board.tacticsjournal.com'
 test('the Board proxy forwards aggregate events only from its own browser origin', async () => {
   const request = new Request(`${BOARD}/api/board/events`, {
     method: 'POST',
-    headers: { Origin: BOARD, 'Content-Type': 'application/json' },
+    headers: { Origin: BOARD, 'Content-Type': 'application/json', Cookie: 'tj_session=x', 'CF-Connecting-IP': '203.0.113.7', 'User-Agent': 'Reader' },
     body: JSON.stringify({ event: 'editor_opened', detail: '', plan: 'free' }),
   })
   const upstream = upstreamRequest(request, { path: 'events' })
   assert.ok(upstream)
-  assert.equal(new URL(upstream.url).pathname, '/api/board/events')
+  assert.equal(upstream.url, 'https://tacticsjournal.com/api/board/events')
   assert.equal(upstream.method, 'POST')
+  assert.equal(upstream.headers.get('Cookie'), null)
+  assert.equal(upstream.headers.get('CF-Connecting-IP'), null)
+  assert.equal(upstream.headers.get('User-Agent'), 'TacticsBoard/1.0')
 
   const foreign = new Request(`${BOARD}/api/board/events`, {
     method: 'POST',

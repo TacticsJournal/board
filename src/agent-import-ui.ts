@@ -1,6 +1,6 @@
 import {
   agentImportFile, agentImportSource, boardImportReadyRows, decodeAgentImport, fetchAgentImport, projectImportReadyRows,
-  projectLimitChoiceRows, projectLimitConfirmRows, STORED_PROJECT_IMPORT_LIMITS,
+  STORED_PROJECT_IMPORT_LIMITS,
   type AgentImportDraft, type BoardImportMode, type BoardImportReadyRow,
 } from './agent-import.ts'
 import { previewSvg } from './saves.ts'
@@ -21,11 +21,6 @@ export type BoardImportResult = {
 
 type Options = {
   saves: ImportSaves
-  isPro: () => boolean
-  openSignIn: () => void
-  openPro: () => void
-  /** False while Pro is not on sale and the visitor holds no plan. */
-  plansVisible?: () => boolean
   openProjects: () => void
   boardDestinations: () => BoardImportDestination[]
   canCreateProject: () => boolean
@@ -34,13 +29,9 @@ type Options = {
   openProject: (id: string, boardId?: string) => void
 }
 
-type Access = 'checking' | 'signed-out' | 'locked' | 'ready'
 type Result = 'added' | 'existing' | 'failed' | null
-/**
- * The copy dialog is one screen deep at a time: the offer, the choices a
- * capped free account has, a project picker, and a destructive confirmation.
- */
-type Stage = 'ready' | 'limit' | 'pick' | 'confirm'
+/** The copy dialog is one screen deep at a time: the offer, then a project picker. */
+type Stage = 'ready' | 'pick'
 
 /** Start the add prompt only for a generated project or shared-copy URL. */
 export function startAgentImport(options: Options): boolean {
@@ -97,13 +88,9 @@ export function startAgentImport(options: Options): boolean {
   const back = dialog.querySelector<HTMLButtonElement>('.agentImportBack')
   let draft: AgentImportDraft | null = null
   let error = source ? '' : `This ${copyLink ? projectCopyLink ? 'project' : 'board' : 'project'} link is invalid.`
-  let access: Access = copyLink ? 'ready' : options.isPro() ? 'ready' : 'checking'
   let result: Result = null
   let adding = false
   let stage: Stage = 'ready'
-  let pickMode: Exclude<BoardImportMode, 'new'> = 'append'
-  let pending: BoardImportDestination | null = null
-  let suspended = false
   let addedProjectId = ''
   let addedProjectName = ''
   let addedBoardId = ''
@@ -130,7 +117,7 @@ export function startAgentImport(options: Options): boolean {
   const boardRow = (item: BoardImportReadyRow) => {
     const element = document.createElement('button')
     element.type = 'button'
-    element.className = `agentImportRow${item.primary ? ' agentImportRowPrimary' : ''}${item.destructive ? ' agentImportRowDanger' : ''}`
+    element.className = `agentImportRow${item.primary ? ' agentImportRowPrimary' : ''}`
     element.dataset.agentImport = item.action
     const text = document.createElement('span')
     text.className = 'agentImportRowText'
@@ -186,23 +173,12 @@ export function startAgentImport(options: Options): boolean {
       focusHeading()
       return
     }
-    if (stage === 'limit' && !adding && !result) {
-      dialog.dataset.agentImportState = 'limit'
-      back!.hidden = false
-      title.textContent = 'Your projects are full'
-      copy.textContent = `Free keeps three projects. Choose how to make room for “${draft.name}”.`
-      setRows(...projectLimitChoiceRows(options.boardDestinations().length))
-      focusHeading()
-      return
-    }
     if (stage === 'pick' && !adding && !result) {
       dialog.dataset.agentImportState = 'picking'
       preview.hidden = true
       back!.hidden = false
-      title.textContent = pickMode === 'append' ? `Add “${draft.name}” to…` : 'Remove which project?'
-      copy.textContent = pickMode === 'append'
-        ? ''
-        : 'The project and its boards are deleted, then this copy is added.'
+      title.textContent = `Add “${draft.name}” to…`
+      copy.textContent = ''
       projects.hidden = false
       projects.replaceChildren(...options.boardDestinations().map(item => {
         const element = document.createElement('button')
@@ -215,16 +191,6 @@ export function startAgentImport(options: Options): boolean {
         element.append(label, detail)
         return element
       }))
-      focusHeading()
-      return
-    }
-    if (stage === 'confirm' && pending && pickMode !== 'append' && !adding && !result) {
-      dialog.dataset.agentImportState = 'confirm'
-      back!.hidden = false
-      title.textContent = `Delete “${pending.name}”?`
-      const boards = `${pending.boardCount} board${pending.boardCount === 1 ? '' : 's'}`
-      copy.textContent = `“${pending.name}” and its ${boards} are deleted to make room for “${draft.name}”. This cannot be undone.`
-      setRows(...projectLimitConfirmRows(pending.name, pending.boardCount))
       focusHeading()
       return
     }
@@ -304,26 +270,6 @@ export function startAgentImport(options: Options): boolean {
       setActions(button('Cancel', 'close'), button('Try again', 'add', true))
       return
     }
-    if (access === 'checking') {
-      copy.textContent = 'Checking Pro access…'
-      setActions(button('Cancel', 'close'))
-      return
-    }
-    if (access === 'signed-out') {
-      copy.textContent = 'Sign in to Tactics Journal to add this project.'
-      setActions(button('Cancel', 'close'), button('Sign in', 'signin', true))
-      return
-    }
-    if (access === 'locked') {
-      if (options.plansVisible && !options.plansVisible()) {
-        copy.textContent = 'Adding projects from Claude or ChatGPT is not available right now.'
-        setActions(button('Cancel', 'close'))
-        return
-      }
-      copy.textContent = 'Adding projects from Claude or ChatGPT comes with Pro.'
-      setActions(button('Cancel', 'close'), button('See Pro', 'pro', true))
-      return
-    }
     copy.textContent = 'Your current board stays open.'
     const add = button('Add to Projects', 'add', true)
     add.autofocus = true
@@ -332,24 +278,8 @@ export function startAgentImport(options: Options): boolean {
 
   function destroy() {
     history.replaceState(null, '', window.location.pathname)
-    window.removeEventListener('tacticsjournal:auth-changed', onAuth)
     dialog.remove()
   }
-  function closeTemporarily() {
-    suspended = true
-    dialog.close()
-    suspended = false
-  }
-  function onAuth(event: Event) {
-    if (copyLink) return
-    const detail = (event as CustomEvent).detail
-    access = options.isPro() || detail?.site_access === 'pro'
-      ? 'ready'
-      : detail?.authenticated === true ? 'locked' : 'signed-out'
-    render()
-    if (!dialog.open) dialog.showModal()
-  }
-
   function addCopy(projectId: string | null, mode: BoardImportMode) {
     if (!draft || adding) return
     adding = true
@@ -359,7 +289,7 @@ export function startAgentImport(options: Options): boolean {
     const outcome = projectCopyLink ? options.addProject(draft, projectId, mode) : options.addBoard(draft, projectId, mode)
     adding = false
     // A failure keeps the screen it came from, so Back still leads home.
-    if (outcome.status === 'added') { stage = 'ready'; pending = null }
+    if (outcome.status === 'added') stage = 'ready'
     result = outcome.status
     addedProjectId = outcome.projectId ?? ''
     addedProjectName = outcome.projectName ?? 'Projects'
@@ -368,42 +298,27 @@ export function startAgentImport(options: Options): boolean {
     render()
   }
 
-  dialog.addEventListener('close', () => { if (!suspended) destroy() })
+  dialog.addEventListener('close', () => { destroy() })
   dialog.addEventListener('cancel', () => { destroy() })
   dialog.addEventListener('click', (event) => {
     const projectId = (event.target as HTMLElement).closest<HTMLElement>('[data-agent-import-project]')?.dataset.agentImportProject
-    if (projectId && copyLink && !adding) {
-      if (pickMode === 'append') { addCopy(projectId, 'append'); return }
-      // Never delete straight off a list tap: confirm by name first.
-      pending = options.boardDestinations().find(item => item.id === projectId) ?? null
-      if (!pending) return
-      stage = 'confirm'
-      render()
-      return
-    }
+    if (projectId && copyLink && !adding) { addCopy(projectId, 'append'); return }
     const action = (event.target as HTMLElement).closest<HTMLElement>('[data-agent-import]')?.dataset.agentImport
     if (!action || adding) return
     if (action === 'close') { dialog.close(); return }
     if (action === 'projects') { dialog.close(); options.openProjects(); return }
     if (action === 'open-project' && addedProjectId) { dialog.close(); options.openProject(addedProjectId, addedBoardId); return }
-    if (action === 'pro') { dialog.close(); options.openPro(); return }
-    if (action === 'signin') { closeTemporarily(); options.openSignIn(); return }
     if (copyLink && action === 'new-project') { addCopy(null, 'new'); return }
-    if (copyLink && action === 'existing') { pickMode = 'append'; stage = 'pick'; render(); return }
-    if (copyLink && action === 'project-limit') { stage = 'limit'; render(); return }
-    if (copyLink && action === 'remove-project') { pickMode = 'replace'; stage = 'pick'; render(); return }
-    if (copyLink && action === 'confirm' && pending && pickMode !== 'append') { addCopy(pending.id, pickMode); return }
+    if (copyLink && action === 'existing') { stage = 'pick'; render(); return }
     if (copyLink && action === 'destination-back') {
       // A failed attempt returns to the screen it was made from; otherwise
-      // step back one screen: confirm → picker → limit choices → the offer.
+      // step back from the picker to the offer.
       if (result) result = null
-      else if (stage === 'confirm') { pending = null; stage = 'pick' }
-      else if (stage === 'pick') stage = pickMode === 'append' ? 'ready' : 'limit'
       else stage = 'ready'
       render()
       return
     }
-    if (action !== 'add' || !draft || access !== 'ready') return
+    if (action !== 'add' || !draft) return
     adding = true
     result = null
     copy.textContent = 'Adding to Projects…'
@@ -416,7 +331,6 @@ export function startAgentImport(options: Options): boolean {
     render()
   })
 
-  window.addEventListener('tacticsjournal:auth-changed', onAuth)
   dialog.showModal()
   if (source) {
     const payload = source.kind === 'stored' || source.kind === 'stored-board' || source.kind === 'stored-project-copy'

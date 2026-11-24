@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict'
-import test, { afterEach, beforeEach } from 'node:test'
+import test, { beforeEach } from 'node:test'
+import { readFileSync } from 'node:fs'
 
-import { recordProductEvent, resolveProductPlan } from '../src/product-events.ts'
-import { resetServerEntitlement, setServerEntitlement } from '../src/entitlements.ts'
-import { BOARD_SELF_HOSTED } from '../src/build-mode.ts'
+import { PRODUCT_PLAN, recordProductEvent } from '../src/product-events.ts'
 
 let captured: Request[]
 let fetcher: typeof fetch
@@ -15,23 +14,15 @@ beforeEach(() => {
     captured.push(new Request(url, init))
     return new Response(null, { status: 204 })
   }) as typeof fetch
-  resetServerEntitlement()
 })
-
-afterEach(() => resetServerEntitlement())
 
 async function body(): Promise<Record<string, unknown>> {
   assert.equal(captured.length, 1)
   return captured[0].json() as Promise<Record<string, unknown>>
 }
 
-test('resolveProductPlan reports the current trusted entitlement', () => {
-  assert.equal(resolveProductPlan(), 'free')
-  setServerEntitlement(false, true)
-  assert.equal(resolveProductPlan(), 'license')
-  setServerEntitlement(true, true)
-  assert.equal(resolveProductPlan(), 'pro')
-  if (BOARD_SELF_HOSTED) assert.equal(resolveProductPlan(), 'self_hosted')
+test('the plan is always free', () => {
+  assert.equal(PRODUCT_PLAN, 'free')
 })
 
 test('events use the anonymous aggregate endpoint shape', async () => {
@@ -46,29 +37,28 @@ test('events use the anonymous aggregate endpoint shape', async () => {
   assert.deepEqual(await body(), { event: 'editor_opened', detail: '', plan: 'free' })
 })
 
-test('every event sends one allowlisted scalar detail', async () => {
-  const cases = [
-    ['board_exported', 'gif'],
-    ['paid_gate_hit', 'screenshot_import'],
-    ['pricing_opened', ''],
-    ['checkout_opened', 'pro_yearly'],
-    ['trial_used', 'gif_export'],
-    ['free_backup_prompted', 'fourth_save'],
-    ['free_backup_enabled', 'settings'],
-  ] as const
-  for (const [event, detail] of cases) {
+test('exports send only the format', async () => {
+  for (const detail of ['png', 'gif', 'video'] as const) {
     captured = []
-    await recordProductEvent(event, detail, fetcher)
-    assert.deepEqual(await body(), { event, detail, plan: 'free' })
+    await recordProductEvent('board_exported', detail, fetcher)
+    assert.deepEqual(await body(), { event: 'board_exported', detail, plan: 'free' })
   }
 })
 
 test('the request body has no visitor or browsing identifiers', async () => {
-  await recordProductEvent('paid_gate_hit', 'gif_export', fetcher)
+  await recordProductEvent('board_exported', 'gif', fetcher)
   const payload = await body()
-  for (const key of ['visitor_id', 'local_id', 'url', 'referrer', 'account_id']) {
-    assert.equal(key in payload, false)
+  assert.deepEqual(Object.keys(payload).sort(), ['detail', 'event', 'plan'])
+})
+
+test('no paywall, pricing, checkout, trial, backup, sign-in, or account events remain', () => {
+  const source = readFileSync(new URL('../src/product-events.ts', import.meta.url), 'utf8')
+  for (const name of ['paid_gate_hit', 'pricing_opened', 'checkout_opened', 'trial_used', 'free_backup', 'sign_in', 'account']) {
+    assert.equal(source.includes(`'${name}`), false, name)
   }
+  const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
+  const events = [...main.matchAll(/recordProductEvent\('([a-z_]+)'/g)].map(match => match[1])
+  assert.deepEqual([...new Set(events)].sort(), ['board_exported', 'editor_opened'])
 })
 
 test('event delivery failures never reject the caller', async () => {

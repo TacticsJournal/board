@@ -5,8 +5,8 @@ import test from 'node:test'
 
 import {
   AgentImportError, agentImportFile, agentImportSource, boardImportReadyRows, createBoardImportUrl, createProjectImportUrl,
-  createStoredProjectImportUrl, decodeAgentImport, fetchAgentImport, MAX_AGENT_IMPORT_PAYLOAD_CHARS,
-  projectImportReadyRows, projectLimitChoiceRows, projectLimitConfirmRows, STORED_PROJECT_IMPORT_LIMITS,
+  decodeAgentImport, fetchAgentImport, MAX_AGENT_IMPORT_PAYLOAD_CHARS,
+  projectImportReadyRows, STORED_PROJECT_IMPORT_LIMITS,
 } from '../src/agent-import.ts'
 import { addBoard, newProject } from '../src/projects.ts'
 
@@ -165,56 +165,18 @@ test('a constrained context can add a shared project to an existing project', ()
   ])
 })
 
-test('the capped new-project choice offers only a licence or room before anything is opened', () => {
-  const choices = projectLimitChoiceRows(3)
-  assert.deepEqual(choices.map(row => row.action), ['pro', 'remove-project'])
-  assert.equal(choices[0].label, 'Upgrade')
-  assert.equal(choices[0].detail, 'License or Pro removes the three-project limit')
-  assert.equal(choices[0].primary, true)
-  assert.equal(choices[1].detail, 'Delete one of your 3 projects, then add this copy')
-  assert.equal(projectLimitChoiceRows(1)[1].detail, 'Delete your project, then add this copy')
-
-  // the way out comes first so a stray Tab and Enter cannot destroy a project
-  assert.deepEqual(projectLimitConfirmRows('Pressing patterns', 4), [
-    { label: 'Choose another project', detail: 'Nothing has changed yet', action: 'destination-back' },
-    {
-      label: 'Delete “Pressing patterns”', detail: 'Deletes 4 boards, then adds the copy',
-      action: 'confirm', primary: true, destructive: true,
-    },
-  ])
-  const remove = projectLimitConfirmRows('Old plan', 1)
-  assert.equal(remove[1].detail, 'Deletes 1 board, then adds the copy')
-})
-
-test('the capped dialog keeps the import and wires removal to the host', () => {
+test('the copy dialog only adds: it never deletes a project to make room', () => {
   const ui = readFileSync(new URL('../src/agent-import-ui.ts', import.meta.url), 'utf8')
   const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
-  const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
-  // the licence panel may only open from the explicit choice, never from the row
-  assert.doesNotMatch(ui, /action === 'new-project'.*openPro/s)
-  assert.match(ui, /copyLink && action === 'project-limit'.*stage = 'limit'/)
-  assert.match(ui, /copyLink && action === 'remove-project'.*pickMode = 'replace'/)
-  assert.match(ui, /action === 'confirm' && pending && pickMode !== 'append'/)
-  assert.match(ui, /projectLimitChoiceRows\(options\.boardDestinations\(\)\.length\)/)
-  assert.match(ui, /projectLimitConfirmRows\(pending\.name, pending\.boardCount\)/)
-  // a list tap on a destructive picker confirms by name instead of mutating
-  assert.match(ui, /pending = options\.boardDestinations\(\)\.find\(item => item\.id === projectId\) \?\? null/)
-  assert.match(ui, /stage === 'confirm'.*stage = 'pick'/)
-  assert.match(ui, /stage === 'pick'.*pickMode === 'append' \? 'ready' : 'limit'/)
-  assert.match(ui, /preview\.hidden = !!error \|\| stage === 'pick'/)
+  assert.match(ui, /type Stage = 'ready' \| 'pick'$/m)
+  assert.match(ui, /copyLink && action === 'existing'\) \{ stage = 'pick'/)
+  assert.match(ui, /projectId && copyLink && !adding\) \{ addCopy\(projectId, 'append'\)/)
   assert.match(ui, /options\.addProject\(draft, projectId, mode\) : options\.addBoard\(draft, projectId, mode\)/)
   assert.match(ui, /addCopy\(null, 'new'\)/)
-  assert.match(ui, /addCopy\(projectId, 'append'\)/)
-  assert.match(main, /mode === 'replace'/)
-  // the capped screen offers upgrading or removing only: no write-over path
-  assert.doesNotMatch(ui, /overwrite/i)
-  // the copy has to reach storage before the project it makes room for goes
-  const replace = main.indexOf('function replaceSharedProject')
-  const removeCall = main.indexOf('saves.removeDocument(removed.id)', replace)
-  assert.ok(replace > 0 && removeCall > 0)
-  assert.ok(main.indexOf('saves.persistProjectDocuments([project])', replace) < removeCall)
-  assert.match(main.slice(replace), /library\.projects\.splice\(index, 1\)/)
-  assert.match(styles, /\.agentImportRowDanger/)
+  for (const gone of [/project-limit/, /remove-project/, /openPro\b/, /openSignIn/, /pickMode/, /overwrite/i]) {
+    assert.doesNotMatch(ui, gone)
+  }
+  assert.doesNotMatch(main, /replaceSharedProject|mode === 'replace'/)
 })
 
 test('a board link rejects a payload too large for reliable URLs', async () => {
@@ -226,39 +188,52 @@ test('a board link rejects a payload too large for reliable URLs', async () => {
   )
 })
 
-test('large stored project imports use the paid bounds and exact POST shape', async () => {
+test('a large project link uses the stored bounds, the anonymous endpoint, and no credentials', async () => {
   const project = newProject(scene as never, 'Stored project')
   project.boards[0].note = randomBytes(40 * 1024).toString('base64')
-  await assert.rejects(
-    () => createProjectImportUrl(project.name, project, 'https://board.tacticsjournal.com'),
-    /too large for a reliable link/,
-  )
 
   let request: Request | null = null
-  const url = await createStoredProjectImportUrl(project.name, project, 'https://board.tacticsjournal.com', (async (input, init) => {
+  const url = await createProjectImportUrl(project.name, project, 'https://board.tacticsjournal.com', (async (input, init) => {
     request = input instanceof Request ? input : new Request(new URL(String(input), 'https://board.tacticsjournal.com'), init)
-    return Response.json({ id: 'i'.repeat(22), expires_at: null }, { status: 201 })
+    return Response.json({ id: 'i'.repeat(22) }, { status: 201 })
   }) as typeof fetch)
   assert.equal(url, 'https://board.tacticsjournal.com/import#project-copy=' + 'i'.repeat(22))
   assert.equal(request!.method, 'POST')
-  assert.equal(request!.headers.get('X-Tactics-Board-Link-Scope'), 'project-copy')
+  assert.equal(new URL(request!.url).pathname, '/api/board/import-drafts')
+  assert.equal(request!.credentials, 'omit')
+  assert.equal(request!.referrerPolicy, 'no-referrer')
+  assert.equal(request!.headers.get('X-Tactics-Board-Link-Scope'), null)
   assert.deepEqual(Object.keys(await request!.clone().json()), ['payload'])
   const storedPayload = (await request!.json() as { payload: string }).payload
   assert.ok(storedPayload.length <= STORED_PROJECT_IMPORT_LIMITS.maxPayloadChars)
   const decoded = await decodeAgentImport(storedPayload, STORED_PROJECT_IMPORT_LIMITS)
   assert.equal(decoded.name, 'Stored project')
   assert.equal(decoded.document.boards[0].note, project.boards[0].note)
-  let repeatedPayload = ''
-  project.updated += 1000
-  await createStoredProjectImportUrl(project.name, project, 'https://board.tacticsjournal.com', (async (_input, init) => {
-    repeatedPayload = (JSON.parse(String(init?.body)) as { payload: string }).payload
-    return Response.json({ id: 'i'.repeat(22) })
-  }) as typeof fetch)
-  assert.equal(repeatedPayload, storedPayload)
+
+  // The server's own size limit is the only limit: a refusal reads as too large.
+  for (const status of [400, 413]) {
+    await assert.rejects(
+      () => createProjectImportUrl(project.name, project, 'https://board.tacticsjournal.com', (async () => new Response(null, { status })) as typeof fetch),
+      /too large/,
+    )
+  }
   await assert.rejects(
-    () => createStoredProjectImportUrl(project.name, project, 'https://board.tacticsjournal.com', async () => Response.json({ id: 'bad' })),
-    /invalid/,
+    () => createProjectImportUrl(project.name, project, 'https://board.tacticsjournal.com', async () => Response.json({ id: 'bad' })),
+    /could not be created/,
   )
+})
+
+test('a board link posts the board and preview with no credentials or referrer', async () => {
+  const project = newProject(scene as never, 'Board')
+  let request: Request | null = null
+  await createBoardImportUrl('Board', project, 'data:image/jpeg;base64,/9j/2Q==', 'https://board.tacticsjournal.com', (async (input, init) => {
+    request = new Request(new URL(String(input), 'https://board.tacticsjournal.com'), init)
+    return Response.json({ id: 'b'.repeat(22) }, { status: 201 })
+  }) as typeof fetch)
+  assert.equal(request!.credentials, 'omit')
+  assert.equal(request!.referrerPolicy, 'no-referrer')
+  assert.equal(request!.headers.get('Cookie'), null)
+  assert.deepEqual(Object.keys(await request!.json()).sort(), ['payload', 'preview'])
 })
 
 test('stored imports fetch one bounded payload from the board endpoint', async () => {
@@ -298,14 +273,13 @@ test('the import prompt preserves its fragment for browser handoff, then clears 
   assert.doesNotMatch(ui.slice(0, destroy), /history\.replaceState/)
   assert.match(ui.slice(destroy), /history\.replaceState\(null, '', window\.location\.pathname\)/)
   assert.match(ui, /fetchAgentImport\(source\.value\)/)
-  assert.match(ui, /options\.isPro\(\) \|\| detail\?\.site_access === 'pro'/)
+  assert.doesNotMatch(ui, /isPro|site_access/)
   assert.match(ui, /Add to Projects/)
   assert.match(ui, /agentImportBoard/)
   assert.match(ui, /Add a copy to your boards/)
   assert.match(ui, /The original stays with whoever shared it\./)
   assert.match(ui, /boardImportReadyRows\(draft\.name, destinations\.length, options\.canCreateProject\(\)\)/)
   assert.match(ui, /const projectCopyLink = source\?\.kind === 'project-copy'/)
-  assert.match(ui, /copyLink \? 'ready'/)
   assert.match(ui, /projectImportReadyRows\(draft\.name, draft\.boardCount, destinations\.length, options\.canCreateProject\(\)\)/)
   assert.match(ui, /projectId && copyLink/)
   assert.match(ui, /copyLink && action === 'existing'/)
@@ -318,12 +292,12 @@ test('the import prompt preserves its fragment for browser handoff, then clears 
   assert.match(ui, /Keep browsing/)
   assert.doesNotMatch(ui, /'Add board'/)
   assert.match(ui, /Your current board stays open/)
-  assert.match(ui, /Sign in to Tactics Journal/)
-  assert.match(ui, /comes with Pro/)
+  assert.doesNotMatch(ui, /Sign in to Tactics Journal|comes with Pro/)
   assert.match(ui, /options\.saves\.hasImport\(draft\.draftId\)/)
-  assert.match(main, /createStoredProjectImportUrl/)
+  assert.doesNotMatch(main, /createStoredProjectImportUrl/)
   assert.match(main, /isAgentImportTooLarge/)
-  assert.match(main, /Large whole-project links require Pro/)
+  assert.doesNotMatch(main, /require Pro/)
+  assert.match(main, /This project is too large for a link\. Export it as a file instead\./)
   assert.match(saves, /saved\.importId === importId/)
   assert.match(styles, /\.agentImportDialog/)
   assert.match(styles, /\.agentImportPreview svg/)

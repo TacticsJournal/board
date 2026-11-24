@@ -49,37 +49,17 @@ export type BoardsHost = {
   deleteProject: (id: string) => void
   /** Index of the board the editor is holding. */
   currentIndex: () => number
-  /** Legacy paid-account status used by compatibility paths. */
-  paid: () => boolean
-  /** Open the Pro pane. */
-  openPro: () => void
   /**
-   * Bytes for an uploaded background, which live outside the Project: on the
-   * server for a shared Project and in this device's shelf for its own. The
-   * host knows which, so it does the reading; this view only caches what it
+   * Bytes for an uploaded background, which live outside the Project in this
+   * browser's shelf. The host does the reading; this view only caches what it
    * is given.
    */
   resolveBackground: (id: string, projectId: string) => Promise<string | null>
   /** Apply a carry request after the target picker closes. */
   carryObjects: (sourceBoardId: string, targetBoardIds: readonly string[], scope: CarrySelection) => void
-  /**
-   * What this account may do with one project beyond renaming and deleting
-   * it, and how many proposed versions are waiting on it. The library shows
-   * what it is given and decides nothing itself.
-   */
-  projectActions: (projectId: string) => ProjectActions
-  /** The same answer for all cards in one Projects render. */
-  projectActionsFor: (projectIds: readonly string[]) => ReadonlyMap<string, ProjectActions>
-  /** Leave the library for one project's Version history. */
-  openProjectHistory: (projectId: string) => void
-  /** Leave the library for one project's Proposals. */
-  openProjectProposals: (projectId: string) => void
   /** The Transition sheet closed, so anything showing its chip as open can let go. */
   transitionClosed?: () => void
 }
-
-/** Owner-only actions for one project, as the host reports them. */
-export type ProjectActions = { history: boolean; proposals: boolean; waiting: number }
 
 /** null is the user backing out of the native picker: nothing to say about it. */
 export type AddBoardUpload = { pitchId: string } | { error: string } | null
@@ -279,7 +259,7 @@ export class BoardsView {
     this.bgWaiting.forEach(redraw => redraw())
   }
 
-  /** Forget resolved bytes: the account, or a shared Project's art, changed. */
+  /** Forget resolved bytes after the background shelf changed. */
   clearBackgroundCache() {
     this.bg.clear()
     this.backgroundArrived()
@@ -355,7 +335,6 @@ export class BoardsView {
     title.textContent = 'Projects'
     this.titleEl.replaceChildren(title)
     const projects = orderedProjects(this.lib)
-    const projectActions = this.host.projectActionsFor(projects.map(project => project.id))
     const previewItems: Array<{ board: Board; projectId: string }> = []
     this.listEl.innerHTML = projects.map(project => {
       const boards = project.boards.slice(0, 6)
@@ -364,7 +343,6 @@ export class BoardsView {
       <div class="libCard projCard${project.id === this.lib.currentId ? ' is-live' : ''}" data-project="${project.id}">
         <span class="projTop">
           <span class="projName">${escapeText(project.name)}</span>
-          ${this.waitingChip(projectActions.get(project.id)?.waiting ?? 0)}
           <span class="projMeta">${project.boards.length} · ${ago(project.updated)}</span>
           <button class="projMore" data-act="proj-menu" data-id="${project.id}" title="More" aria-haspopup="dialog" aria-label="More for ${escapeText(project.name)}">${icon('dots')}</button>
         </span>
@@ -586,26 +564,17 @@ export class BoardsView {
   }
 
   /** The amber word on a card that something is waiting, or nothing at all. */
-  private waitingChip(waiting: number): string {
-    if (waiting < 1) return ''
-    const label = waiting === 1 ? '1 waiting' : `${waiting} waiting`
-    return `<span class="projWait" title="Proposed versions waiting for you">${label}</span>`
-  }
-
   /**
    * Everything a project can be asked to do, in words.
    *
    * It is a sheet rather than a floating menu for the same reason Add board
    * is: on a phone a menu hung off a card in a scrolling grid ends up half
-   * off the screen. What an account cannot use is absent, never greyed out,
-   * so the sheet never advertises Pro from inside a project's own menu.
+   * off the screen.
    */
   private projectMenu(projectId: string, trigger?: HTMLElement | null) {
     this.closeProjectSheet(false)
     const project = this.lib.projects.find(p => p.id === projectId)
     if (!project) return
-    const actions = this.host.projectActions(projectId)
-    const waiting = actions.waiting > 0 ? `<span class="projSheetCount">${actions.waiting}</span>` : ''
     const sheet = document.createElement('div')
     sheet.className = 'modal projSheet'
     sheet.innerHTML = `
@@ -615,8 +584,6 @@ export class BoardsView {
           <button data-proj="close">Close</button>
         </div>
         <button class="projOpt" data-proj="rename">${icon('pencil')}<span>Rename</span></button>
-        ${actions.history ? `<button class="projOpt" data-proj="history">${icon('history')}<span>Version history</span></button>` : ''}
-        ${actions.proposals ? `<button class="projOpt" data-proj="proposals">${icon('inbox')}<span>Proposals</span>${waiting}</button>` : ''}
         <button class="projOpt projOptDanger" data-proj="delete"${this.lib.projects.length < 2 ? ' disabled' : ''}>${icon('trash')}<span>Delete</span></button>
       </div>`
     document.body.appendChild(sheet)
@@ -642,8 +609,6 @@ export class BoardsView {
     this.closeProjectSheet(act === 'rename' || act === 'delete')
     if (act === 'rename') this.renameProject(projectId)
     else if (act === 'delete') this.deleteProject(projectId)
-    else if (act === 'history') this.host.openProjectHistory(projectId)
-    else if (act === 'proposals') this.host.openProjectProposals(projectId)
   }
 
   private closeProjectSheet(restoreFocus: boolean) {
@@ -762,12 +727,12 @@ export class BoardsView {
     if (act === 'copy' || act === 'same') { this.addBoardHere(undefined, act === 'copy'); return }
     if (act === 'upload') { void this.uploadForNewBoard(pick); return }
     if (act !== 'pitch') return
-    if (pick.dataset.locked === '1') { this.addNote('That pitch is not available for this account.'); return }
+    if (pick.dataset.locked === '1') { this.addNote('That pitch is not available in this build.'); return }
     this.addBoardHere(pick.dataset.pitch)
   }
 
   private async uploadForNewBoard(tile: HTMLElement) {
-    if (tile.dataset.locked === '1') { this.addNote('Uploads are not available for this account.'); return }
+    if (tile.dataset.locked === '1') { this.addNote('Uploads are not available.'); return }
     tile.classList.add('is-busy')
     // The picker has to be opened from inside this click, so nothing may be
     // awaited before it: the host clicks the input and hands back the promise.

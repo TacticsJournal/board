@@ -21,7 +21,7 @@ function sliceBetween(source: string, startMarker: string, endMarker: string): s
 }
 
 test('Settings uses the flat deduplicated menu', () => {
-  const heads = ['Board', 'Projects', 'Agents', 'Account', 'Help']
+  const heads = ['Board', 'Editor', 'Projects', 'Agents', 'Help']
   let previous = -1
   for (const label of heads) {
     const at = root.indexOf(`<div class="setGroupHead">${label}</div>`)
@@ -29,7 +29,7 @@ test('Settings uses the flat deduplicated menu', () => {
     previous = at
   }
 
-  for (const oldLabel of ['Teams', 'Pitch', 'Appearance', 'Extend']) {
+  for (const oldLabel of ['Teams', 'Pitch', 'Appearance', 'Extend', 'Account']) {
     assert.ok(!root.includes(`<div class="setGroupHead">${oldLabel}</div>`), `${oldLabel} should not be a root group`)
   }
   assert.ok(!root.includes('data-set="match"'), 'scoreboard belongs in the board toolbar, not Settings')
@@ -39,37 +39,32 @@ test('Board contains teams, the merged pitch route, and theme', () => {
   const board = sliceBetween(
     root,
     '<div class="setGroupHead">Board</div>',
-    '<div class="setGroupHead">Projects</div>',
+    '<div class="setGroupHead">Editor</div>',
   )
   assert.match(board, /data-side-row="home"[\s\S]*?>Home</)
   assert.match(board, /data-side-row="away"[\s\S]*?>Away</)
   assert.match(board, /data-goto="pitch"[\s\S]*?>Pitch and background</)
   assert.match(board, /setPitchSummary[\s\S]*?data-pitch-name[\s\S]*?data-bg-count/)
   assert.match(board, /role="group" aria-label="Theme"[\s\S]*?data-set="theme-system" aria-pressed="false"[\s\S]*?data-set="theme-light" aria-pressed="false"[\s\S]*?data-set="theme-dark" aria-pressed="false"/)
-  assert.match(board, /\$\{BOARD_SELF_HOSTED \? `<button class="setItem" data-goto="assets">/)
+  assert.match(board, /<button class="setItem" data-goto="assets">[\s\S]*?>My assets</)
   assert.equal(occurrences(board, 'data-goto="pitch"'), 1)
   assert.match(styles, /\.setPitchSummary \{ min-width: 0; overflow: hidden; text-overflow: ellipsis; \}/)
   assert.match(styles, /\.setPitchSummary \[data-bg-count\] \{ display: none; \}/)
   assert.match(main, /button\.setAttribute\('aria-pressed', String\(selected === choice\)\)/)
 })
 
-test('Agents, Account, and Help keep every existing destination discoverable', () => {
+test('Agents and Help keep every destination discoverable, with no account rows', () => {
   const agents = sliceBetween(
     root,
     '<div class="setGroupHead">Agents</div>',
     '${BOARD_SELF_HOSTED ? `<div class="setGroupHead">Hosting</div>',
   )
   assert.match(agents, /data-goto="skills"[\s\S]*?>Skills and Extensions</)
-  assert.match(agents, /BOARD_SELF_HOSTED \? '' : `<button class="setItem" data-goto="agents">[\s\S]*?>Connect Claude or ChatGPT</)
+  assert.doesNotMatch(agents, /data-goto="agents"/)
 
-  const account = sliceBetween(
-    root,
-    '<div class="setGroupHead">Account</div>',
-    '<div class="setGroupHead">Help</div>',
-  )
-  assert.match(account, /data-set="signin"[\s\S]*?Sign in to Tactics Journal/)
-  assert.match(account, /data-goto="pro"[\s\S]*?>Plans</)
-  assert.match(account, /data-goto="assets"[\s\S]*?>My assets</)
+  for (const gone of ['data-set="signin"', 'data-set="signout"', 'data-goto="pro"', 'data-set="free-backup"', 'data-buy', 'Sign in to Tactics Journal']) {
+    assert.ok(!main.includes(gone), `${gone} should be gone`)
+  }
 
   const helpStart = root.indexOf('<div class="setGroupHead">Help</div>')
   assert.ok(helpStart > -1)

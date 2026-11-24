@@ -88,7 +88,7 @@ export const MOVE_LINK: Required<BoardLink> = { dur: 1200, ease: 'in-out', style
 export const UNTITLED = 'Untitled project'
 
 const KEY = 'tbm-board-projects-v1'
-/** Full Project documents used by saves and account sync. */
+/** Full Project documents used by saves. */
 const SAVED_PROJECTS_KEY = 'tbm-projects-v1'
 /** Where a single sequence lived before there were projects. */
 const LEGACY_KEY = 'tbm-sequence-v1'
@@ -461,10 +461,8 @@ export function projectDuration(project: Project): number {
   return project.boards.length * HOLD_MS + moves
 }
 
-/** Legacy display constant retained for import compatibility. Local projects are unlimited. */
-export const FREE_PROJECT_LIMIT = 3
-
-export function canCreateProject(_lib: Library, _paid: boolean): boolean {
+/** Local projects are unlimited. */
+export function canCreateProject(_lib: Library): boolean {
   return true
 }
 
@@ -828,29 +826,6 @@ export function currentProject(lib: Library): Project {
 /** Newest first, which is how the library reads. */
 export function orderedProjects(lib: Library): Project[] {
   return [...lib.projects].sort((a, b) => b.updated - a.updated)
-}
-
-function projectHasContent(project: Project): boolean {
-  return project.name !== UNTITLED || project.boards.length > 1 || project.boards.some(board =>
-    !!board.title.trim() || !!board.label || !!board.note.trim() || board.scene.objects.length > 0)
-}
-
-/**
- * A brand-new device starts with one temporary blank Project so the editor has
- * something to draw. Once account rows arrive, prefer real account work and
- * discard that untouched placeholder instead of leaving a signed-in device on
- * an empty pitch.
- */
-export function freshDeviceDestination(
-  lib: Library,
-  starter: { id: string; updated: number } | null,
-  remoteProjectIds: ReadonlySet<string>,
-): Project | null {
-  if (!starter) return null
-  const currentStarter = lib.projects.find(project => project.id === starter.id)
-  if (!currentStarter || currentStarter.updated !== starter.updated) return null
-  const remote = orderedProjects(lib).filter(project => project.id !== starter.id && remoteProjectIds.has(project.id))
-  return remote.find(projectHasContent) ?? remote[0] ?? null
 }
 
 export function touch(project: Project) {

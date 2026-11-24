@@ -33,7 +33,6 @@ test('saved documents use the Project-or-Scene union without flattening sequence
   assert.match(saves, /id: existing\?\.id \|\| newId\(\)/)
   assert.match(main, /reconcileLibraryProjectDocuments\(\{ seedMissing: !freshStarter \}\)[\s\S]*if \(!saves\.activateDocument\(library\.currentId\)\)/)
   assert.match(main, /if \(!freshStarter\) saves\.registerNew\(\)/)
-  assert.match(main, /freshDeviceDestination\(library, freshStarter, remoteProjectIds\)/)
   // Snapshots and conflict copies serialize the adapter's full normalized document.
   assert.match(saves, /scene: this\.documentForSave\(\)/)
   const imported = saves.match(/importFile\(text: string\)[\s\S]*?\n  }\n\n  resetProjects/)?.[0] ?? ''
@@ -45,7 +44,7 @@ test('saved documents use the Project-or-Scene union without flattening sequence
   assert.match(imported, /id = newId\(\)/)
   assert.match(imported, /const projectCollision = Object\.values\(all\)\.some/)
   const exported = saves.match(/exportFile\(\): string[\s\S]*?\n  }\n\n  \/\*\* Merge/)?.[0] ?? ''
-  assert.match(exported, /boards: personal/)
+  assert.match(exported, /boards: readAll\(this\.storageKey\)/)
   assert.doesNotMatch(exported, /\.objects/)
   assert.doesNotMatch(saves.match(/function readAll[\s\S]*?\n}/)?.[0] ?? '', /normalizeBoardDocument/)
   assert.match(saves, /copyDocumentForConflict\(this\.documentForSave\(\), id\)/)
@@ -53,25 +52,12 @@ test('saved documents use the Project-or-Scene union without flattening sequence
   assert.match(saves, /this\.currentDocumentTemplate = template/)
 })
 
-test('all edit paths recompute policy from canonical entitlement', () => {
-  // The saved-board limit follows paid access, so either product lifts it: the
-  // one-time license and the Pro subscription both do.
-  assert.match(saves, /hasPaidBoardAccess/)
-  assert.doesNotMatch(saves, /localStorage.*(?:pro|entitlement)|searchParams.*pro/i)
-  assert.match(saves, /editableBoardNames\(all, hasPaidBoardAccess\(\)\)/)
-  assert.match(saves, /private autosaveNamed[\s\S]*editableBoardNames\(all, hasPaidBoardAccess\(\)\)\.has\(name\)/)
-  // Pro is used only for owner-only invitation controls; saved-board policy
-  // stays based on paid access.
-  assert.match(saves, /const canInvite = isPro\(\)/)
-  assert.match(saves, /Pro is needed to invite someone\. You can still remove access\./)
-})
-
-test('locked loads remain loadable but cannot flow into background autosave', () => {
+test('every saved board is editable: no plan, lock, or read-only policy remains', () => {
+  for (const gone of [/hasPaidBoardAccess/, /isPro\(/, /editableBoardNames/, /FREE_EDITABLE_BOARD_LIMIT/, /Read-only saved board/, /This saved board is read-only/, /Pro is needed/]) {
+    assert.doesNotMatch(saves, gone)
+  }
   assert.match(saves, /this\.store\.loadScene/)
-  assert.match(saves, /Read-only saved board/)
-  assert.match(saves, /return this\.autosaveNamed\(this\.currentName, all\)/)
-  assert.match(saves, /This saved board is read-only/)
-  assert.match(saves, /exports only the stored copy/)
+  assert.match(saves, /No saved boards yet\. Local saved boards are unlimited\./)
 })
 
 test('new-board flow preserves state unless save succeeds or discard is confirmed', () => {
@@ -96,17 +82,7 @@ test('new-board flow preserves state unless save succeeds or discard is confirme
   assert.doesNotMatch(startNew, /nameInput\(\)\.value\s*=\s*''/)
 })
 
-test('shared rows show attribution and never expose deletion', () => {
-  assert.match(saves, /Shared by @/)
-  assert.match(saves, /\$\{!isShared \? `<button class="setItemAction danger"/)
-  assert.match(saves, /all\[name\]\.access === 'shared'\) return/)
-  assert.match(saves, /entry\.access !== 'shared'/)
-  assert.match(saves, /A shared board cannot be replaced or deleted/)
-  assert.match(saves, /filter\(\(\[, project\]\) => project\.access !== 'shared'\)/)
-  assert.match(saves, /<dialog|document\.createElement\('dialog'\)/)
-})
-
-test('the share button owns copy links, invitations, and export', () => {
+test('the share button offers Copy link and Export, and nothing server-backed', () => {
   // the menu builds itself from what the build can honour, so assert the
   // entries rather than fixed markup
   assert.match(main, /const shareMenu = document\.querySelector<HTMLElement>\('#shareMenu'\)!/)
@@ -118,212 +94,32 @@ test('the share button owns copy links, invitations, and export', () => {
   assert.match(main, /createBoardImportUrl\(boardLinkName, newProjectFromBoard\(source, boardLinkName\), boardLinkPreview\(\)\)/)
   assert.match(main, /createProjectImportUrl\(projectName, projectCopy\)/)
   assert.match(main, /The link expires after 24 hours\./)
-  assert.match(main, /The link does not expire\./)
-  assert.match(main, /function addSharedProject\(draft: AgentImportDraft, projectId: string \| null, mode: BoardImportMode = 'append'\)/)
+  assert.doesNotMatch(main, /The link does not expire\./)
+  assert.match(main, /function addSharedProject\(draft: AgentImportDraft, projectId: string \| null/)
   assert.match(main, /newProjectFromProjectCopy\(source, draft\.name\)/)
   assert.match(main, /appendProjectCopy\(project, source\)/)
-  assert.match(main, /newProjectFromProjectCopy\(source, draft\.name\)/)
-  assert.match(main, /filter\(row => row\.readOnly\)/)
-  assert.doesNotMatch(main, /Free keeps three projects|take a licence/)
   assert.match(main, /addProject: addSharedProject/)
   assert.match(main, /function boardLinkPreview\(/)
-  assert.match(main, /label: 'Invite a person'/)
-  assert.match(main, /label: 'Invite an agent'/)
-  assert.match(main, /shareStep\('Invite an agent',[\s\S]*?makeAgentLink\(body\)/)
-  assert.match(main, /saves\.currentAgentLink\(mode\)/)
-  assert.match(main, /data-agent-link aria-label="Agent link"/)
-  assert.match(main, /entry\.key !== 'username' && entry\.key !== 'board-link' && entry\.key !== 'agent'/)
-  const currentAgentLink = saves.match(/async currentAgentLink\(mode: AgentAccessMode = 'propose'\)[\s\S]*?\n  }/)?.[0] ?? ''
-  assert.doesNotMatch(currentAgentLink, /this\.open\(\)/)
   assert.match(main, /label: 'Export/)
-  // invitations are answered inside the share sheet rather than moving into Settings
-  assert.match(main, /saves\.embedShareForm\(body\)/)
-  assert.match(saves, /embedShareForm\(host: HTMLElement\)/)
-  assert.doesNotMatch(main, /inviteCurrentByUsername!\(\)/)
-  // every entry is listed, and the ones this account cannot reach say what
-  // buys them and go to the page that sells it
-  assert.match(main, /locked: pro \? undefined : \{ tag: 'Pro', toast: UPGRADE_TOAST \}/)
-  assert.match(main, /const UPGRADE_TOAST = 'Go to settings to upgrade to a Pro subscription\.'/)
-  assert.match(main, /if \(entry\.locked\) \{ showToast\(entry\.locked\.toast\); return \}/)
-  assert.match(main, /setTag \$\{e\.locked\.tag === 'Pro' \? 'setTagPro' : 'setTagLicense'\}/)
-  // every locked row is marked and answers; a preview build cannot mint a real
-  // agent link however much Pro it grants, and says so instead of nothing
-  assert.match(main, /tag: 'Board', toast: 'Agent links are issued only from board\.tacticsjournal\.com\.'/)
-  assert.doesNotMatch(main, /locked\?\.trim\(\)/)
-  assert.doesNotMatch(saves, /data-sv="share"/)
+  for (const gone of [/label: 'Invite a person'/, /label: 'Invite an agent'/, /makeAgentLink/, /currentAgentLink/, /embedShareForm/,
+    /UPGRADE_TOAST/, /setTagPro/, /Post to Community/i, /postBoardToCommunity/]) {
+    assert.doesNotMatch(main, gone)
+  }
+  assert.doesNotMatch(saves, /embedShareForm|currentAgentLink|reidentifySavedBoard|Shared by @/)
 })
 
-test('sharing can replace a local row id without deleting the foreign server row', () => {
-  const reidentify = saves.match(/reidentifySavedBoard\(boardId: string\)[\s\S]*?\n  }/)?.[0] ?? ''
-  assert.match(reidentify, /saved\.access === 'shared'/)
-  assert.match(reidentify, /saved\.readOnly === true/)
-  assert.match(reidentify, /newId\(\)/)
-  assert.match(reidentify, /syncAccount: _previousAccount/)
-  assert.match(reidentify, /writeAll\(next, this\.storageKey\)/)
-  assert.doesNotMatch(reidentify, /recordTombstones/)
-  assert.match(saves, /let shareId = board\.id/)
-  assert.match(saves, /shareId = finalId/)
-  assert.match(saves, /board_id: shareId/)
+test('nothing syncs, signs in, or announces presence', () => {
+  for (const gone of [/scheduleSync|runSync|SYNC_DEBOUNCE/, /updatePresence|claimPresence|releasePresence/, /authenticated/, /accountBinding/,
+    /openSignIn|signOutFromSettings/, /selectedFreeBackup|requestFreeBackup/, /live\.connect|collaboration\./, /tacticsjournal:auth-changed/]) {
+    assert.doesNotMatch(main, gone)
+  }
+  assert.doesNotMatch(saves, /onLocalChange|flushCurrentForSync|applyRemoteCurrent/)
+  assert.doesNotMatch(header, /fetch\(|credentials|session|signin|sign in/i)
 })
 
-test('one row covers the three ways to name a person, and each carries a role', () => {
-  assert.match(saves, /onPrepareShare: \(boardId: string\) => Promise<string>/)
-  assert.match(saves, /this\.onPrepareShare\(shareId\)/)
-  // email first: it is the only one that reaches somebody who has never heard
-  // of Tactics Journal
-  assert.match(saves, /\['email', 'Email'\], \['username', '@username'\], \['link', 'Copy link'\]/)
-  assert.match(saves, /chooseWay\('email'\)/)
-  // one question about what they may do, asked with the same control as the
-  // ways above it, and answered whichever way is showing
-  assert.match(saves, /\['write', 'Edit the project'\], \['read', 'Read only'\]/)
-  assert.match(saves, /const role = \(\) => chosenRole/)
-  // every request carries the chosen role, whichever way named the person
-  assert.match(saves, /board_id: shareId, username, role: role\(\)/)
-  assert.match(saves, /board_id: shareId, kind: 'email', email, role: role\(\)/)
-  assert.match(saves, /board_id: shareId, kind: 'link', role: role\(\)/)
-  // the link is copied where it is read: one press makes it and copies it,
-  // and a link made for one permission never stands for another
-  assert.match(saves, /const copyLink = async \(\) =>/)
-  // one link field, wherever a link is handed over: the agent's and the
-  // person's invitation are the same component
-  assert.match(saves, /function linkField\(ariaLabel: string/)
-  assert.match(saves, /\$\{linkField\('Agent link'\)\}/)
-  assert.match(saves, /\$\{linkField\('Invitation link', 'Made when you copy it'\)\}/)
-  assert.match(saves, /if \(next !== chosenRole\) forgetLink\(\)/)
-  assert.match(saves, /submit\.hidden = next === 'link'/)
-})
-
-test('a refusal arrives in the words the server chose', () => {
-  // the whole reason the old form was undiagnosable: it replaced every reason
-  // with one sentence of its own
-  assert.match(saves, /if \(!response\.ok\) throw new Error\(data\?\.error \|\| 'That did not work\.'\)/)
-  assert.doesNotMatch(saves, /Could not share this board/)
-  assert.match(saves, /error instanceof Error \? error\.message : 'That did not work\.'/)
-})
-
-test('an invitation link is read before it is spent, and never left in the address bar', () => {
-  assert.match(main, /clean\.searchParams\.delete\('invite'\)/)
-  assert.match(main, /window\.history\.replaceState\(null, '', clean\.toString\(\)\)/)
-  // reading it is a GET and opens a local read-only preview; only accepting claims it
-  assert.match(main, /\$\{boardInvitationUrl\(\)\}\?token=/)
-  assert.match(main, /saves\.openInvitationPreview\(\{/)
-  assert.match(saves, /access: 'shared',[\s\S]*?readOnly: true/)
-  assert.match(main, /It is open read-only now, without a login\./)
-  assert.match(main, /saves\.restoreInvitationPreview\(invitedBoardId\)/)
-  assert.match(saves, /if \(all\[name\]\?\.readOnly === true\)/)
-  assert.match(saves, /if \(currentExists && all\[this\.currentName!\]\?\.readOnly === true\)/)
-  assert.match(main, /body: JSON\.stringify\(\{ token \}\)/)
-  // signing in comes back holding the same invitation
-  assert.match(main, /back\.searchParams\.set\('invite', token\)/)
-})
-
-test('a place on a shared project is claimed on a heartbeat and given back', () => {
-  assert.match(main, /const PRESENCE_HEARTBEAT_MS = 30_000/)
-  assert.match(main, /action: 'claim'/)
-  assert.match(main, /action: 'release'/)
-  // a closing tab cannot wait for fetch
-  assert.match(main, /navigator\.sendBeacon\?\.\(boardPresenceUrl\(\)/)
-  assert.match(main, /window\.addEventListener\('pagehide'/)
-  // being refused a place is a read-only board, not a disconnection
-  assert.match(main, /const crowded = response\.status === 409/)
-})
-
-test('a read-only shared board says so where it is listed', () => {
-  assert.match(saves, /isCurrentReadOnly\(\): boolean/)
-  assert.match(saves, /const readOnly = isShared && project\.readOnly === true/)
-  assert.match(saves, /locked \|\| readOnly \? `<span class="saveReadOnly">/)
-})
-
-test('account changes scope sync state and ignore stale on-screen reconciliation', () => {
-  assert.match(main, /account_binding/)
-  assert.match(main, /syncStore = sync\.createLocalSyncStore\(accountBinding\)/)
-  assert.match(main, /if \(passGeneration !== syncGeneration\) return/)
-  assert.match(main, /resetBoardSession\(\)/)
-  assert.match(main, /ensureBoardSession\(requestedBinding\)/)
-  assert.match(main, /requestedGeneration !== syncGeneration/)
-  assert.match(main, /liveChannel\.stop\(\)/)
-  assert.match(header, /showAccountLoggedOut\(\)\s*announceSession\(\)/)
-})
-
-test('email-code sign-in loads the canonical account before board sync starts', () => {
-  const visibleCodePath = header.match(/if \(mode === 'code'\) \{[\s\S]*?\n          return\n/)?.[0] ?? ''
-  assert.match(visibleCodePath, /return loadCanonicalAccountSessionAfterSignIn\(\)/)
-  assert.doesNotMatch(visibleCodePath, /setAuthenticatedEverywhere\(/)
-
-  const canonicalLoad = header.match(/async function loadCanonicalAccountSessionAfterSignIn\(\) \{[\s\S]*?\n  }/)?.[0] ?? ''
-  assert.match(canonicalLoad, /if \(accountSessionPromise\) await accountSessionPromise/)
-  assert.match(canonicalLoad, /accountSessionData = null/)
-  assert.match(canonicalLoad, /await fetchAccountSession\(\)/)
-  assert.equal((header.match(/return loadCanonicalAccountSessionAfterSignIn\(\)/g) ?? []).length, 2)
-})
-
-test('free local scheduling receives whether the changed record is shared', () => {
-  assert.match(saves, /onLocalChange: \(change\?: SavesLocalChange\)/)
-  assert.match(saves, /this\.onLocalChange\(\{ shared: sharedChanged \}\)/)
-  assert.match(main, /if \(authenticated && !entitlements\.isPro\(\) && !change\.shared[\s\S]*?!selectedFreeBackup\(localStorage, accountBinding\)\) return/)
-  assert.match(main, /saves\.onLocalChange = \(change\) => \{\s*updatePresence\(\)\s*scheduleSync\(SYNC_DEBOUNCE, change \?\? \{ shared: false \}\)/)
-})
-
-test('rename and overwrite paths protect locked records and retain confirmation', () => {
-  assert.match(saves, /all\[name\] && !editable\.has\(name\)/)
+test('rename and overwrite paths retain confirmation', () => {
   assert.match(saves, /confirm\(`Overwrite saved board/)
   assert.match(saves, /delete next\[this\.currentName!\]/)
-})
-
-test('user-facing plan copy names Free and Pro exactly', () => {
-  assert.match(main, /Keep unlimited projects and saved boards on this device/)
-  assert.match(main, /Every local editing and export feature is free/)
-  assert.doesNotMatch(main, /buyButton\('Get Hosted Board License'|licenseCheckoutOpen/)
-  assert.match(main, /grandfathered Hosted Board License/)
-  assert.match(main, /LICENSE_MANAGE_URL = `\$\{TJ_ORIGIN\}\/settings\/`/)
-  assert.match(main, /PRO_CHECKOUT_OPEN\s*=\s*false/)
-  assert.match(main, /data-period="yearly" aria-pressed="true"/)
-  assert.match(main, /data-period="monthly" aria-pressed="false"/)
-  assert.match(main, /proCardName\">Pro<\/span>/)
-  assert.doesNotMatch(main, /Pro · Recommended/)
-  assert.match(main, /data-pro-amount>\$12\.99<\/span><span class=\"proCardPer\">\/month/)
-  assert.match(main, /yearly \? '\$12\.99' : '\$14\.99'/)
-  assert.match(main, /yearly \? 'Billed yearly at \$155\.88' : 'Cancel anytime'/)
-  assert.match(main, /Save \$24 versus monthly/)
-  assert.match(main, /buyButton\('Get Pro', 'pro_monthly'\)/)
-  assert.match(main, /buyButton\('Get Pro', 'pro_yearly'\)/)
-  assert.doesNotMatch(main, /\$95\.88|\$179\.88|\$19\.99/)
-})
-
-test('plan copy assigns local features to Free and hosted services to Pro', () => {
-  const free = main.match(/proCardName">Free[\s\S]*?<\/div>\s*<div class="proCard proCardAccent"/)?.[0] ?? ''
-  assert.match(free, /every drawing tool and pitch style/i)
-  assert.match(free, /unlimited local projects and saved boards/i)
-  assert.match(free, /Import screenshots, backgrounds, and custom assets/)
-  assert.match(free, /Export PNG, GIF, and video/)
-  assert.match(free, /Back up one project/)
-
-  const pro = main.match(/proCardName">Pro[\s\S]*?<\/ul>/)?.[0] ?? ''
-  assert.match(pro, /sync every project across devices/)
-  assert.match(pro, /real time for people you invite/)
-  assert.match(pro, /hosted project sharing and invitations/)
-  assert.match(pro, /24-hour access by link/)
-  assert.match(pro, /MCP and WebMCP account access/)
-  assert.doesNotMatch(main, /proCardName">Hosted Board License/)
-  assert.match(main, /Full refund within 14 days of your first payment or of an automatic yearly renewal/)
-  assert.doesNotMatch(main, /player detection/i)
-})
-
-test('the board sells where the buyer already is', () => {
-  // The board has no server, so Tactics Journal creates the checkout against
-  // the signed-in account and Polar's overlay opens over the board. Buying
-  // never navigates away from the board someone has open.
-  assert.match(main, /startCheckout\(product, theme, /)
-  // The button stops claiming to be opening a checkout once the money is taken.
-  assert.match(main, /'Confirming purchase\.\.\.'/)
-  assert.match(main, /data-buy="\$\{product\}"/)
-  assert.match(main, /LICENSE_MANAGE_URL = `\$\{TJ_ORIGIN\}\/settings\/`/)
-  // Nothing about a purchase is decided here: no price id, no amount, no tier.
-  const cta = main.match(/function renderLicenseCta\(\)[\s\S]*?\n}/)?.[0] ?? ''
-  assert.doesNotMatch(cta, /pri_|pro_|amount|tier|cadence/)
-  // Someone who already holds one is not sold another.
-  assert.match(cta, /hasBoardLicense\(\)/)
-  assert.match(cta, /isPro\(\)/)
 })
 
 test('screenshot import is Free without a trial or paid gate', () => {
@@ -331,29 +127,6 @@ test('screenshot import is Free without a trial or paid gate', () => {
   assert.match(liveButton, /pitchById\(store\.scene\.pitch\)\.live/)
   assert.match(main, /const files = Array\.from\(input\.files \?\? \[\]\)/)
   assert.doesNotMatch(main, /featureTrials|paid_gate_hit', 'screenshot_import'/)
-})
-
-test('signing in is free, and Pro sells sync rather than the door to it', () => {
-  const pro = main.match(/proCardName">Pro[\s\S]*?<\/ul>/)?.[0] ?? ''
-  // Sign-in is how a licence holder claims and recovers what they bought, and
-  // accounts are free everywhere else on tacticsjournal.com. Selling it as a
-  // Pro feature would lock a paying licence holder out of their own purchase.
-  assert.doesNotMatch(pro, /Sign in/i)
-  assert.match(pro, /sync every project across devices/)
-})
-
-test('the Pro launch path will upgrade without charging twice', () => {
-  const cta = main.match(/function renderProCta\(\)[\s\S]*?\n}/)?.[0] ?? ''
-  // A subscriber is not sold what they already have.
-  assert.match(cta, /entitlements\.isPro\(\)/)
-  // Every Pro button reads the same, whatever the visitor already holds.
-  assert.match(cta, /buyButton\('Get Pro', 'pro_yearly'\)/)
-  assert.match(cta, /'pro_monthly'/)
-  assert.match(cta, /'pro_yearly'/)
-  // The board contains no provider product or price identifiers and sends no
-  // amount, tier, or cadence in the request body.
-  assert.doesNotMatch(cta, /pri_|product_id|price_id|amount|tier|cadence/)
-  assert.match(main, /Existing Hosted Board License holders keep their access and can upgrade to Pro\./)
 })
 
 test('a board draws the pieces the board draws, from the board’s own art', () => {

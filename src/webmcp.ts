@@ -459,7 +459,7 @@ export function registerWebMcp(adapter: WebMcpAdapter, target: ModelContextTarge
   }
   const editTool: WebMcpTool = {
     name: 'edit_current_project',
-    description: 'Edit the current Tactics Board project in one atomic batch. First call read_current_project and pass its revision. Writes are unavailable for read-only projects and require Pro on the hosted service. This MVP has no delete operation.',
+    description: 'Edit the current Tactics Board project in one atomic batch. First call read_current_project and pass its revision. Writes are unavailable while the editor cannot take changes. This MVP has no delete operation.',
     inputSchema: EDIT_CURRENT_PROJECT_SCHEMA as unknown as Record<string, unknown>,
     annotations: { readOnlyHint: false, untrustedContentHint: false },
     execute: async (input: unknown): Promise<WebMcpEditResultSet> => {
@@ -467,7 +467,7 @@ export function registerWebMcp(adapter: WebMcpAdapter, target: ModelContextTarge
       if (!args || typeof args.revision !== 'string' || !args.revision) fail('revision from read_current_project is required.')
       const expectedRevision = String(adapter.revision())
       if (expectedRevision !== args.revision) fail('The project changed. Read current project again before writing.')
-      if (!adapter.editable()) fail('This project is read-only or WebMCP writes require Pro.')
+      if (!adapter.editable()) fail('This project cannot be edited right now.')
       if (!Array.isArray(args.edits) || args.edits.length < 1 || args.edits.length > 100) fail('edits must contain 1 to 100 operations.')
       const activeBoardId = adapter.activeBoard()
       const source = adapter.snapshot()
@@ -476,7 +476,7 @@ export function registerWebMcp(adapter: WebMcpAdapter, target: ModelContextTarge
       // The adapter performs the same checks immediately before it replaces
       // anything. It is the last line of defence against a changed tab.
       if (String(adapter.revision()) !== expectedRevision) fail('The project changed while preparing the edit. Read it again.')
-      if (!adapter.editable()) fail('This project is read-only or WebMCP writes require Pro.')
+      if (!adapter.editable()) fail('This project cannot be edited right now.')
       adapter.commit(applied.project, args.revision, activeBoardId)
       return { revision: String(adapter.revision()), activeBoardId: adapter.activeBoard(), results: applied.results }
     },

@@ -16,7 +16,7 @@ test('the export sheet offers every board as individual PNG images', () => {
   assert.match(main, /role="group" aria-label="Export format"/)
   assert.match(main, /aria-pressed=/)
   assert.match(main, /setBusy\(true\)[\s\S]*?exportProjectImages/)
-  assert.match(main, /sharedBackgroundScope \?\? undefined/)
+  assert.doesNotMatch(main, /sharedBackgroundScope/)
   assert.match(main, /project\.boards\.length < 10/)
   assert.match(main, /openProjectImageSheet\(files\)/)
   assert.doesNotMatch(main, /if \(!licensed && !usingGifTrial\)/)
@@ -48,12 +48,11 @@ test('GIF export uses the full animation resolution at 30 fps', () => {
   assert.match(animation, /const GIF_WIDTH = 1040/)
 })
 
-test('animation export waits for local and shared project backgrounds', () => {
+test('animation export waits for project backgrounds', () => {
   assert.match(animation, /const backgroundIds = \[\.\.\.new Set\(project\.boards/)
   assert.match(animation, /await Promise\.all\(backgroundIds\.map\(cachedBackground\)\)/)
   assert.match(animation, /new OffscreenBoard\(defaults, cachedBackground\)/)
   assert.match(animation, /await Promise\.resolve\(\)[\s\S]*await offscreen\.board\.imagesReady\(\)/)
-  assert.match(main, /exportAnimation\([\s\S]*?sharedBackgroundScope \?\? undefined\)/)
   assert.doesNotMatch(animation, /watermark|drawTrialWatermark/)
 })
 

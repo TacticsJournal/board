@@ -17,14 +17,13 @@ test('anchored menus use the dropdown states and clean up after closing', () => 
 })
 
 test('segmented controls mount one measured pill and release observers when removed', () => {
-  assert.match(pills, /const PILL_BARS = '\.shareWays, \.setSeg, \.proBilling'/)
+  assert.match(pills, /const PILL_BARS = '\.shareWays, \.setSeg'/)
   assert.match(pills, /pill\.style\.transition = 'none'/)
   assert.match(pills, /new ResizeObserver/)
   assert.match(pills, /new MutationObserver/)
   assert.match(pills, /sizes\.disconnect\(\)/)
   assert.match(pills, /states\.disconnect\(\)/)
   assert.match(main, /mountSlidingPills\(settingsEl\)/)
-  assert.match(saves, /mountSlidingPills\(form\)/)
 })
 
 test('match controls are semantic switches that animate only after use', () => {
