@@ -14,7 +14,6 @@ export const boardSharesUrl = () => `${BOARD_API}/shares`
 export const boardUserSearchUrl = () => `${BOARD_API}/user-search`
 export const boardInvitationsUrl = () => `${BOARD_API}/invitations`
 export const boardInvitationUrl = () => `${BOARD_API}/invitation`
-export const boardPresenceUrl = () => `${BOARD_API}/presence`
 export const boardTransferUrl = () => `${BOARD_API}/transfer`
 export const boardAgentLinksUrl = () => `${BOARD_API}/agent-links`
 export const boardAgentUrl = () => `${BOARD_API}/agent`

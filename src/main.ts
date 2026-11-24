@@ -46,7 +46,7 @@ import * as live from './live'
 import * as collaboration from './collaboration'
 import { createTabPresence } from './tab-presence'
 import { TJ_ORIGIN, usingBillingSandbox } from './origin'
-import { boardAgentLinksUrl, boardInvitationUrl, boardPresenceUrl, boardSkillsUrl, ensureBoardSession, resetBoardSession, type AgentAccessMode } from './board-api'
+import { boardAgentLinksUrl, boardInvitationUrl, boardSkillsUrl, ensureBoardSession, resetBoardSession, type AgentAccessMode } from './board-api'
 import { startCheckout, type CheckoutProduct } from './checkout'
 import { IS_NATIVE_APP, nativeShareFile } from './native'
 import * as entitlements from './entitlements'
@@ -80,7 +80,6 @@ import { STILL_COPY, dropDecision, dropLabel, imageFiles, isTypingTarget, pasteD
 import { openComposer } from './composer'
 import { CATEGORY_SCENES_RECOVERED_SUFFIX, planCategorySnapshotRecovery } from './category-recovery'
 import { exportAnimation } from './animate-export'
-import { recordProductEvent } from './product-events'
 import { downloadProjectImage, exportProjectImages, type ProjectImageFile } from './project-image-export'
 import { startAgentImport, type BoardImportResult } from './agent-import-ui'
 import { createBoardImportUrl, createProjectImportUrl, createStoredProjectImportUrl, isAgentImportTooLarge, MAX_COMMUNITY_POST_CAPTION_CHARS, postBoardToCommunity, type AgentImportDraft, type BoardImportMode } from './agent-import'
@@ -4997,7 +4996,6 @@ function dataUrlToBlob(url: string): Blob {
 
 /** `url` is a board already drawn some other way (the export sheet's look). */
 function exportPng(url = board.exportPng()) {
-  void recordProductEvent('board_exported', 'png')
   const filename = store.scene.pitch === 'classic'
     ? 'Pitch - Board Tactics Journal.png'
     : 'tactics-board.png'
@@ -6581,7 +6579,6 @@ async function openExportSheet() {
         await exportProjectImages(styled(), defaults, (done, total) => {
           status.textContent = `Building the project images\u2026 ${done} of ${total}`
         }, sharedBackgroundScope ?? undefined, individualFallback)
-        void recordProductEvent('board_exported', 'png')
         if (!fellBack) close()
       } catch (err) {
         setBusy(false)
@@ -6596,7 +6593,6 @@ async function openExportSheet() {
         const pct = Math.round(done * 100 / total)
         status.textContent = kind === 'gif' ? `Building the GIF\u2026 ${pct}%` : `Recording the video\u2026 ${pct}%`
       }, sharedBackgroundScope ?? undefined)
-      void recordProductEvent('board_exported', kind)
       close()
     } catch (err) {
       setBusy(false)
@@ -7719,7 +7715,7 @@ settingsEl.innerHTML = `
     <div class="setPane hidden" data-pane="about">
       <div class="setTutorial">
         <strong>Privacy, data, copyright and use</strong>
-        ${BOARD_SELF_HOSTED ? '' : '<p><b>Privacy.</b> Board sends first-party aggregate counters for editor opens, exports, pricing, and checkout starts. These counters contain no IP address, account ID, visitor ID, URL, referrer, cookies, or arbitrary text and are kept for 14 months. We use no advertising, third-party analytics, or cross-site tracking cookies.</p>'}
+        <p><b>Privacy.</b> Board collects no usage data. There is no analytics, telemetry, advertising, or tracking.</p>
         <p><b>Data sources.</b> Team search and kit colors use TheSportsDB public API. Squad names, shirt numbers and positions are read from current squad sections on Wikipedia through the Wikipedia API. Third-party data may be incomplete, delayed or inaccurate; verify it before publishing.</p>
         <p><b>Copyright.</b> Except for identified third-party materials, the software and bundled assets are available under the MIT license. Club names, player names, colors and other source data remain the property of their respective owners and data providers. Tactics Journal and Tactics Board names and logos are reserved trademarks.</p>
         <p><b>Interface icons.</b> The icons in Settings and the menus are <a href="https://tabler.io/icons" target="_blank" rel="noopener">Tabler Icons</a>, copyright Paweł Kuna, used under the MIT license. The full license text is served at <a href="/LICENSE-icons" target="_blank" rel="noopener">/LICENSE-icons</a>.</p>
@@ -8614,7 +8610,6 @@ function showScreen(next: SetScreen) {
   closeAppearancePicker()
   const prev = screen
   screen = next
-  if (next === 'pro' && prev !== 'pro') void recordProductEvent('pricing_opened')
   clearPitchStatus()
   const titleEl = settingsEl.querySelector('[data-set-title]') as HTMLElement
   const incoming = settingsEl.querySelector<HTMLElement>(`[data-pane="${next}"]`)
@@ -9077,68 +9072,6 @@ function closeSettings() {
 }
 function setNote(s: string) { (settingsEl.querySelector('[data-set-note]') as HTMLElement).textContent = s }
 
-/* ---------- holding a place on a shared project ----------
-   A project open on this device claims a place every half minute, and gives it
-   back when the project is closed or the tab goes away. The claim is what the
-   ten-editors-at-once limit is counted from; being refused one turns the board
-   read-only here rather than disconnecting anything. */
-
-const PRESENCE_HEARTBEAT_MS = 30_000
-let presenceBoardId: string | null = null
-let presenceTimer: number | null = null
-let presenceCrowded = false
-
-async function claimPresence(boardId: string): Promise<void> {
-  try {
-    const response = await fetch(boardPresenceUrl(), {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ board_id: boardId, action: 'claim' }),
-    })
-    if (presenceBoardId !== boardId) return
-    const crowded = response.status === 409
-    if (crowded && !presenceCrowded) {
-      const data = await response.json().catch(() => null)
-      showBanner(`
-        <p>${esc(data?.error || 'This project already has too many people editing it. It is read-only until one of them closes it.')}</p>
-        <span class="appBannerActions"><button data-banner="dismiss">Dismiss</button></span>`, 'warn')
-    }
-    presenceCrowded = crowded
-  } catch {
-    // A heartbeat that cannot be sent is not a refusal. The next one decides.
-  }
-}
-
-function releasePresence(boardId: string): void {
-  const body = JSON.stringify({ board_id: boardId, action: 'release' })
-  // A tab being closed will not wait for fetch, so hand it to the browser to
-  // send on its own; the place expires by itself if even that does not land.
-  if (navigator.sendBeacon?.(boardPresenceUrl(), new Blob([body], { type: 'application/json' }))) return
-  void fetch(boardPresenceUrl(), {
-    method: 'POST', credentials: 'include', keepalive: true,
-    headers: { 'Content-Type': 'application/json' }, body,
-  }).catch(() => {})
-}
-
-/** Follow the open project: claim the new one, give back the old one. */
-function updatePresence(): void {
-  const board = saves.currentBoardId()
-  const shared = board ? saves.isCurrentShared() : false
-  const wanted = shared && (authenticated || entitlements.isPro()) ? board : null
-  if (wanted === presenceBoardId) return
-  if (presenceBoardId) releasePresence(presenceBoardId)
-  presenceBoardId = wanted
-  presenceCrowded = false
-  if (presenceTimer !== null) { window.clearInterval(presenceTimer); presenceTimer = null }
-  if (!wanted) return
-  void claimPresence(wanted)
-  presenceTimer = window.setInterval(() => {
-    if (presenceBoardId) void claimPresence(presenceBoardId)
-  }, PRESENCE_HEARTBEAT_MS)
-}
-
-window.addEventListener('pagehide', () => { if (presenceBoardId) releasePresence(presenceBoardId) })
-
 /**
  * A link someone was sent. Reading it never spends it. The bearer can view a
  * read-only local copy, and the token is claimed only if they join the project.
@@ -9251,7 +9184,7 @@ function openDeepLinkedPanel() {
 teams.onOpen = () => openSettings('teams')
 teams.onClose = closeSettings
 teams.onChangedSides = renderRootValues
-saves.onOpen = () => { updatePresence(); openSettings('boards') }
+saves.onOpen = () => openSettings('boards')
 saves.onClose = closeSettings
 saves.historyContext = () => ({
   pro: entitlements.isPro(),
@@ -9488,7 +9421,6 @@ async function buy(button: HTMLButtonElement): Promise<void> {
 
   button.disabled = true
   button.textContent = 'Opening checkout...'
-  void recordProductEvent('checkout_opened', product)
   try {
     const theme = document.documentElement.getAttribute('data-theme-resolved') === 'dark' ? 'dark' : 'light'
     const outcome = await startCheckout(product, theme, (stage) => {
@@ -10524,9 +10456,6 @@ async function runSyncPass(): Promise<void> {
   // A successful push/pull elsewhere is not authoritative for the board
   // being watched. Only its durable replacement may dismiss this frame.
   if (result.status === 'ok' && result.remoteIds.includes(saves.currentBoardId() ?? '')) clearRemotePreview()
-  // A pass can bring in a share, or take one away, so the place this
-  // device holds is re-checked against whatever is open now.
-  updatePresence()
 }
 
 let projectSyncQueue: Promise<void> = Promise.resolve()
@@ -10592,7 +10521,6 @@ async function runTargetedSyncPass(
       <span class="appBannerActions"><button data-banner="dismiss">Dismiss</button></span>`, 'warn')
   }
   if (result.status === 'ok' && result.remoteIds.includes(saves.currentBoardId() ?? '')) clearRemotePreview()
-  updatePresence()
   return result
 }
 
@@ -10672,7 +10600,6 @@ function scheduleSync(delay = SYNC_DEBOUNCE, change: { shared: boolean } = { sha
 
 // Every write to the saved-boards record — save, rename, delete, autosave.
 saves.onLocalChange = (change) => {
-  updatePresence()
   scheduleSync(SYNC_DEBOUNCE, change ?? { shared: false })
   queueMicrotask(() => {
     void updateCollaborationChannel()
@@ -11109,8 +11036,6 @@ registerWebMcp({
     loadBoardIntoEditor(project.boards[editingBoard].scene)
   },
 })
-
-if (!BOARD_SELF_HOSTED) void recordProductEvent('editor_opened')
 
 // debugging/testing handle
 ;(window as any).__tbm = { store, board, importer, saves, entitlements, backgrounds, pitchById, officialExtensions }
