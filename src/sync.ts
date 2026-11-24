@@ -95,7 +95,7 @@ export type SyncResult = {
 
 export type SyncOptions = {
   includeOwned?: boolean
-  /** Push only this saved Project. Used by sharing and Free backup selection. */
+  /** Push only this saved Project. Used by sharing. */
   targetId?: string
   /** Include only this owned Project while still syncing accessible shared work. */
   ownedId?: string
@@ -217,8 +217,7 @@ export function collectChanges(store: SyncStore, options: SyncOptions = {}): unk
       && includeOwned && board.access !== 'shared'
     if (accountAware && board.syncAccount && board.syncAccount !== account && !mayShareTarget) continue
     if (accountAware && board.access === 'shared' && (!account || board.syncAccount !== account)) continue
-    // Free members may edit shared boards and optionally back up one selected
-    // personal Project. No other owned row leaves the device.
+    // Free members may edit shared boards. No owned row leaves the device.
     if (!includeOwned && board.access !== 'shared') continue
     if (board.access !== 'shared' && ownedId && board.id !== ownedId) continue
     // Sharing replays its one required Project even when the full-sync marker
@@ -285,12 +284,17 @@ export function preserveConflicts(
   return kept
 }
 
-/** Apply what the server sent. A tombstone removes; anything else replaces. */
-export function applyRemote(store: SyncStore, boards: RemoteBoard[]): number {
+/**
+ * Apply what the server sent. A tombstone removes; anything else replaces.
+ * Without includeOwned (Free), only shared work is applied: an owned project
+ * from the account is neither restored nor deleted, so local work stays local.
+ */
+export function applyRemote(store: SyncStore, boards: RemoteBoard[], includeOwned = true): number {
   let applied = 0
   const local = new Map(store.list().map((board) => [board.id, board]))
   for (const board of boards) {
     if (!board || typeof board.id !== 'string') continue
+    if (!includeOwned && board.access !== 'shared' && local.get(board.id)?.access !== 'shared') continue
     // A save can happen while a request is in flight. Do not let an older
     // response erase it; its newer savedAt remains pending for the next pass.
     // A local save normally wins over an older in-flight response. A shared
@@ -386,7 +390,9 @@ export async function syncOnce(
       // A conflict is different: its winner must reconcile the original id
       // even when it was written by this device (for example, another tab).
       for (const board of boards) {
-        if (board && typeof board.id === 'string' && board.device !== store.deviceId()) remoteIds.add(board.id)
+        if (!board || typeof board.id !== 'string' || board.device === store.deviceId()) continue
+        if (options.includeOwned === false && board.access !== 'shared' && !sharedIds.has(board.id)) continue
+        remoteIds.add(board.id)
       }
       for (const conflict of conflicts) {
         if (conflict && typeof conflict.id === 'string') remoteIds.add(conflict.id)
@@ -411,7 +417,7 @@ export async function syncOnce(
       const winnerIds = new Set(winners.map((winner) => winner.id))
       // The page often repeats the winner. Apply it once, preferring the
       // explicit conflict payload that lets us converge past the cursor.
-      pulled += applyRemote(store, [...winners, ...boards.filter((board) => !winnerIds.has(board?.id))])
+      pulled += applyRemote(store, [...winners, ...boards.filter((board) => !winnerIds.has(board?.id))], options.includeOwned ?? true)
       if (typeof response.cursor === 'string' && response.cursor) store.setCursor(response.cursor)
 
       if (sentForResponse) {
