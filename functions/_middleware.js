@@ -27,6 +27,7 @@ const PAGE = `<!doctype html>
 <main>
   <h1>Board is offline for now</h1>
   <p>We're working on Board and will have it back soon. Projects saved in this browser stay on your device and will be here when Board returns.</p>
+  <p>Board is open source. The code is on <a href="https://github.com/TacticsJournal/board">GitHub</a>, where you can also run it yourself.</p>
   <p><a href="https://tacticsjournal.com/">Go to Tactics Journal</a></p>
 </main>
 </body>
