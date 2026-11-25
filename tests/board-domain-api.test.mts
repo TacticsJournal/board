@@ -120,27 +120,6 @@ test('import drafts never forward cookies or auth headers, but keep the client I
   assert.equal(write.headers.get('Content-Type'), 'application/json')
 })
 
-test('events carry no cookie, auth, IP, or browser User-Agent', async () => {
-  await withUpstream(() => new Response(null, { status: 204 }), async (seen) => {
-    const response = await proxyBoard({
-      request: request('https://board.tacticsjournal.com/api/board/events', {
-        method: 'POST',
-        headers: { ...SENSITIVE, Origin: 'https://board.tacticsjournal.com', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event: 'editor_opened', detail: '', plan: 'free' }),
-      }),
-      params: { path: 'events' },
-    })
-    assert.equal(response.status, 204)
-    const upstream = seen()!
-    assert.equal(upstream.url, 'https://tacticsjournal.com/api/board/events')
-    for (const name of ['Cookie', 'Authorization', 'CF-Connecting-IP', 'X-Forwarded-For', 'X-Real-IP', 'True-Client-IP', 'CF-IPCountry', 'Referer']) {
-      assert.equal(upstream.headers.get(name), null, name)
-    }
-    assert.equal(upstream.headers.get('User-Agent'), 'TacticsBoard/1.0')
-    assert.deepEqual(await upstream.json(), { event: 'editor_opened', detail: '', plan: 'free' })
-  })
-})
-
 test('board proxy validates bounded same-origin board links before storing them', async () => {
   await withUpstream(() => Response.json({ id: 'b'.repeat(22) }, { status: 201 }), async (seen) => {
     const response = await proxyBoard({
@@ -217,9 +196,10 @@ test('board proxy rejects originless and foreign writes, and unsupported methods
       }),
       params: { path: 'events' },
     })
-    assert.equal(foreignEvent.status, 403)
+    // Board sends no usage counters, so the events path is gone.
+    assert.equal(foreignEvent.status, 404)
     const eventRead = await proxyBoard({ request: request('https://board.tacticsjournal.com/api/board/events'), params: { path: 'events' } })
-    assert.equal(eventRead.status, 405)
+    assert.equal(eventRead.status, 404)
     const removed = await proxyBoard({
       request: request('https://board.tacticsjournal.com/api/board/sync', { method: 'PUT', headers: { Origin: 'https://board.tacticsjournal.com' }, body: '{}' }),
       params: { path: 'sync' },
