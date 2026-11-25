@@ -3,10 +3,9 @@
  * board styled here looks the same to whoever opens it, in the editor, in an
  * export, and on a thumbnail.
  *
- * Styling a board is free, like every other local edit. What Pro buys is
- * carrying it off this device: the appearance rides on the scene, and a board
- * only syncs with Pro. Nothing that draws asks an entitlement question, so a
- * shared board reaches whoever opens it looking as its author left it.
+ * Styling a board is free, like every other edit. The appearance rides on the
+ * scene, so a copied or exported board reaches whoever opens it looking as its
+ * author left it.
  *
  * One thing is not here: the pitch. A pitch is an image rather than a set of
  * values, so a pitch someone makes their own is a background in the library

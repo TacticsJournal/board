@@ -4,7 +4,6 @@ import { PlayerObj, SceneObj, BOARD_W, emptyMatch, normalizeHex, uid, insertByTi
 import { icon } from './icons'
 import { rosterByNumber } from './roster'
 import type { PathNode } from './path-nodes'
-import type { LibrarySyncStore, SyncedLibraryRecord } from './library-sync.ts'
 
 /** Mirror one node across the halfway line, handles and all. */
 function flipNodeX(n: PathNode) {
@@ -46,8 +45,6 @@ const TEAM_SIDES: TeamSide[] = ['home', 'away']
 const MAX_LOADED_TEAMS = TEAM_SIDES.length
 
 const TEAMS_KEY = 'tbm-teams-v1'
-const TEAMS_SYNC_KEY = 'tbm-teams-sync-v1'
-type TeamSyncMeta = { updatedAt: string; syncAccount?: string }
 const INDEX_KEY = 'tbm-team-index-v2'
 /** A month: club lists move at the pace of promotions, not of sessions. */
 const INDEX_TTL = 30 * 24 * 60 * 60 * 1000
@@ -164,13 +161,6 @@ export class TeamPanel {
   private placed = 0
   private editingSide: TeamSide = 'home'
   private storageKey: string
-  private syncKey: string
-  private readonly baseStorageKey: string
-  private readonly baseSyncKey: string
-  private libraryAccount: string | null = null
-  private syncMeta: TeamSyncMeta
-  private syncInitialized = false
-  private libraryListeners = new Set<() => void>()
   private searchTimer: number | null = null
   private searchSeq = 0
   private loadSeq = 0
@@ -186,10 +176,6 @@ export class TeamPanel {
     options: TeamPanelOptions = {},
   ) {
     this.storageKey = options.storageKey ?? TEAMS_KEY
-    this.syncKey = this.storageKey === TEAMS_KEY ? TEAMS_SYNC_KEY : `${this.storageKey}-sync`
-    this.baseStorageKey = this.storageKey
-    this.baseSyncKey = this.syncKey
-    this.syncMeta = this.readSyncMeta()
     if (options.seedTeams && (options.resetToSeed || !localStorage.getItem(this.storageKey))) {
       try { localStorage.setItem(this.storageKey, JSON.stringify(options.seedTeams)) } catch { /* private mode */ }
     }
@@ -240,109 +226,6 @@ export class TeamPanel {
   activeTeamName() { return this.teamName || null }
 
   getTeam(name: string) { return this.loaded.find(t => t.name === name) }
-
-  /** Local setup writes wake account sync; remote applications intentionally do not. */
-  subscribeLibrary(fn: () => void) { this.libraryListeners.add(fn); return () => this.libraryListeners.delete(fn) }
-
-  /** Keep fixed-id team setup rows separate when different accounts use one browser. */
-  activateLibraryAccount(account: string | null) {
-    if (!account || account === this.libraryAccount) return
-    const storageKey = `${this.baseStorageKey}:${account}`
-    const syncKey = `${this.baseSyncKey}:${account}`
-    let stored: string | null = null
-    try { stored = localStorage.getItem(storageKey) } catch { /* private mode */ }
-    if (stored === null) {
-      const baseState = this.readSyncMetaAt(this.baseSyncKey)
-      const canClaim = !baseState.meta.syncAccount || baseState.meta.syncAccount === account
-      const hasLegacyRecord = this.loaded.length > 0 || baseState.initialized
-      if (canClaim && hasLegacyRecord) {
-        const claimed = { ...baseState.meta, syncAccount: account }
-        try {
-          localStorage.setItem(storageKey, JSON.stringify(this.loaded))
-          localStorage.setItem(syncKey, JSON.stringify(claimed))
-          localStorage.setItem(this.baseSyncKey, JSON.stringify(claimed))
-        } catch { /* private mode */ }
-      }
-    }
-    this.storageKey = storageKey
-    this.syncKey = syncKey
-    this.libraryAccount = account
-    this.syncInitialized = false
-    this.syncMeta = this.readSyncMeta()
-    try { this.loaded = this.hydrateLoaded(JSON.parse(localStorage.getItem(this.storageKey) ?? '[]')) } catch { this.loaded = [] }
-    this.teams = []
-    this.roster = []
-    this.clearResults()
-    this.setEditingSide('home')
-  }
-
-  librarySyncStore(): LibrarySyncStore {
-    return {
-      // A fresh device with no setup has no record to push. This lets an
-      // existing account setup pull instead of tying an empty 2000 revision.
-      list: () => !this.syncInitialized && !this.loaded.length ? [] : [{
-        id: 'team-setup', kind: 'team_setup' as const, name: 'Team setup', payload: { teams: this.loaded },
-        updatedAt: this.syncMeta.updatedAt, ...(this.syncMeta.syncAccount ? { syncAccount: this.syncMeta.syncAccount } : {}),
-      }],
-      apply: (record) => this.applyLibraryRecord(record),
-      bind: (ids, account) => {
-        if (!ids.includes('team-setup') || (this.syncMeta.syncAccount && this.syncMeta.syncAccount !== account)) return
-        this.syncInitialized = true
-        this.syncMeta = { ...this.syncMeta, syncAccount: account }
-        this.persistSyncMeta()
-      },
-    }
-  }
-
-  private readSyncMetaAt(key: string): { meta: TeamSyncMeta; initialized: boolean } {
-    try {
-      const raw = JSON.parse(localStorage.getItem(key) ?? '{}')
-      if (typeof raw.updatedAt === 'string' && Number.isFinite(Date.parse(raw.updatedAt))) {
-        return {
-          initialized: true,
-          meta: { updatedAt: raw.updatedAt, ...(typeof raw.syncAccount === 'string' && raw.syncAccount ? { syncAccount: raw.syncAccount } : {}) },
-        }
-      }
-    } catch { /* legacy setup gets an old but valid revision */ }
-    return { initialized: false, meta: { updatedAt: new Date(Date.UTC(2000, 0, 1)).toISOString() } }
-  }
-
-  private readSyncMeta(): TeamSyncMeta {
-    const state = this.readSyncMetaAt(this.syncKey)
-    this.syncInitialized = state.initialized
-    return state.meta
-  }
-
-  private persistSyncMeta() {
-    try { localStorage.setItem(this.syncKey, JSON.stringify(this.syncMeta)) } catch { /* private mode */ }
-  }
-
-  private markLibraryChanged() {
-    const prior = Date.parse(this.syncMeta.updatedAt)
-    this.syncInitialized = true
-    this.syncMeta = { ...this.syncMeta, updatedAt: new Date(Math.max(Date.now(), Number.isFinite(prior) ? prior + 1 : 0)).toISOString() }
-    this.persistSyncMeta()
-    for (const fn of this.libraryListeners) fn()
-  }
-
-  private applyLibraryRecord(record: SyncedLibraryRecord) {
-    if (record.kind !== 'team_setup' || record.id !== 'team-setup') return
-    if (record.syncAccount && record.syncAccount !== this.libraryAccount) return
-    if (this.syncInitialized && Date.parse(this.syncMeta.updatedAt) >= Date.parse(record.updatedAt)) return
-    const teams = record.deleted ? [] : record.payload && typeof record.payload === 'object'
-      ? (record.payload as Record<string, unknown>).teams : []
-    this.loaded = this.hydrateLoaded(teams)
-    try { localStorage.setItem(this.storageKey, JSON.stringify(this.loaded)) } catch { /* private mode */ }
-    this.syncInitialized = true
-    this.syncMeta = { updatedAt: record.updatedAt, ...(record.syncAccount ? { syncAccount: record.syncAccount } : {}) }
-    this.persistSyncMeta()
-    this.teams = []
-    this.roster = []
-    this.clearResults()
-    // This only rerenders the reusable setup. It never calls syncMatchCodes,
-    // so a pulled setup cannot rewrite the Project currently being edited.
-    this.setEditingSide('home')
-  }
 
   /**
    * Point the roster and dot defaults at one side without touching the side
@@ -651,7 +534,6 @@ export class TeamPanel {
 
   private persistLoaded() {
     try { localStorage.setItem(this.storageKey, JSON.stringify(this.loaded)) } catch { /* storage full */ }
-    this.markLibraryChanged()
   }
 
   /** Fill blank match names from the loaded sides with the team's code, the

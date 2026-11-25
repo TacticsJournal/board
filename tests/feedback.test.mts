@@ -42,12 +42,22 @@ test('the feedback row icon is the Iconify tabler:message-report body', () => {
   assert.ok(!icons.includes('api.iconify.design'))
 })
 
-test('feedback submits to the site API and session details only fill blank controls', () => {
-  assert.match(main, /`\$\{TJ_ORIGIN\}\/api\/feedback`/)
-  assert.match(main, /credentials: 'include'/)
-  assert.match(main, /if \(name && !name\.value && accountName\) name\.value = accountName/)
-  assert.match(main, /if \(email && !email\.value && accountEmail\) email\.value = accountEmail/)
-  assert.match(main, /typeof data\.name === 'string'/)
+test('feedback posts only what the reader typed, with no cookies or referrer', () => {
+  assert.match(main, /const FEEDBACK_ENDPOINT = 'https:\/\/tacticsjournal\.com\/api\/feedback'/)
+  const start = main.indexOf('fetch(FEEDBACK_ENDPOINT')
+  assert.ok(start > -1)
+  const call = main.slice(start, main.indexOf('})', start))
+  assert.match(call, /credentials: 'omit'/)
+  assert.match(call, /referrerPolicy: 'no-referrer'/)
+  assert.doesNotMatch(main, /credentials: 'include'/)
+  // The page goes as origin and path only: never the query or hash, which can hold a link id.
+  assert.match(main, /page_url: window\.location\.origin \+ window\.location\.pathname,/)
+  assert.doesNotMatch(main, /page_url: window\.location\.href/)
+  const body = main.slice(main.lastIndexOf('const payload', start), start)
+  const keys = [...body.matchAll(/^\s+([a-z_]+): /gm)].map(match => match[1]).sort()
+  assert.deepEqual(keys, ['browser', 'device', 'email', 'issue', 'name', 'page_url', 'website'])
+  // The device and browser are what the reader typed; nothing fills them in.
+  assert.doesNotMatch(main, /accountName|accountEmail/)
   assert.match(main, /target === 'feedback'/)
   assert.match(main, /Thank you for the feedback! We'll send you an email soon if we have questions or make any changes\./)
 })

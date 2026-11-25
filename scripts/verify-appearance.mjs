@@ -1,8 +1,7 @@
 /* Appearance, driven the way someone would on a phone: open the panel over the
    board, push into Appearance, drag a slider and watch the board itself follow,
    undo the whole drag in one, pick a colour from the six, and type a number the
-   step cannot land on. Run against the dev server, which is where a build
-   grants the Pro this screen asks for:
+   step cannot land on. Run against the dev server:
 
      npm run dev -- --port 5183
      BOARD_URL=http://localhost:5183/ node scripts/verify-appearance.mjs
@@ -213,16 +212,16 @@ check(await page.$('[data-quick="appearance"]') !== null, 'back returns to the p
 check(await page.$eval('[data-quick="appearance"] .setItemValue', e => e.textContent.trim()) === 'Styled',
   'the root row says the board is styled')
 
-/* A free account styles its board like any other local edit. Pro is what
-   carries it off the device, and the appearance travels on the board. */
-await page.goto(`${baseUrl}?plan=free`, { waitUntil: 'load' })
+/* Styling is free like any other local edit, and it travels on the board.
+   A fresh load still offers it with no lock. */
+await page.goto(baseUrl, { waitUntil: 'load' })
 await page.waitForSelector('#actionRow', { timeout: 20000 })
 await page.waitForTimeout(1500)
 await page.click('[data-room="settings"]')
 await page.waitForTimeout(400)
 await page.click('[data-quick="appearance"]')
 await page.waitForTimeout(400)
-check(await page.$('.panelLock') === null, 'a free account is not shown a lock')
+check(await page.$('.panelLock') === null, 'nobody is shown a lock')
 check(await page.$eval('.panelList', e => !e.hasAttribute('inert')), 'and the list is live')
 const freeRange = await page.$('[data-look-range="player.outline"]')
 const fb = await freeRange.boundingBox()
@@ -231,7 +230,7 @@ await page.mouse.down()
 await page.mouse.move(fb.x + fb.width * 0.8, fb.y + fb.height / 2, { steps: 10 })
 await page.mouse.up()
 await page.waitForTimeout(300)
-check(typeof (await look())?.player?.outline === 'number', 'and a free account can actually style the board')
+check(typeof (await look())?.player?.outline === 'number', 'and the board can actually be styled')
 
 /* The board keeps a floor. A short window is the normal case on a phone, where
    the browser's own chrome takes a third of the screen before the app starts. */

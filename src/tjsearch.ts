@@ -5,9 +5,7 @@
  * public, so the request carries no credentials. Results open on the site.
  */
 
-import { TJ_ORIGIN } from './origin'
-
-const TJ = TJ_ORIGIN
+const TJ = 'https://tacticsjournal.com'
 const DEBOUNCE_MS = 200
 
 interface SearchResult {
@@ -65,7 +63,7 @@ function initSearch(root: HTMLElement) {
       return
     }
     status!.textContent = 'Searching…'
-    fetch(`${TJ}/api/search?q=${encodeURIComponent(query)}&limit=30`, { headers: { Accept: 'application/json' } })
+    fetch(`${TJ}/api/search?q=${encodeURIComponent(query)}&limit=30`, { credentials: 'omit', referrerPolicy: 'no-referrer', headers: { Accept: 'application/json' } })
       .then((response) => {
         if (!response.ok) throw new Error('Search failed')
         return response.json() as Promise<SearchResponse>

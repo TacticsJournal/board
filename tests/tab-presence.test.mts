@@ -108,10 +108,10 @@ test('no board, malformed messages, and a missing BroadcastChannel are all quiet
   assert.equal(lonely.duplicate, false)
 })
 
-test('the board page shows and clears its own banner, and still uses the shared device for the room', () => {
+test('the board page shows and clears its own banner', () => {
   const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
-  assert.match(main, /const collaborationDevice = sync\.deviceId\(\)/)
+  assert.doesNotMatch(main, /deviceId\(\)/)
   assert.match(main, /Close the other tab/)
   assert.match(main, /addEventListener\('pagehide', \(\) => tabPresence\.leave\(\)\)/)
-  assert.match(main, /announceTab\(\)\n  queueMicrotask/)
+  assert.match(main, /tabBoardChanged = announceTab/)
 })

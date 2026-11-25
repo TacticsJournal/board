@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
-  FREE_PROJECT_LIMIT,
   addBoard,
   appendBoardCopy,
   appendProjectCopy,
@@ -20,7 +19,6 @@ import {
   HANDOFF,
   pointOnArrow,
   tweenScene,
-  freshDeviceDestination,
   loadLibrary,
   migrateLibrary,
   rememberBoard,
@@ -51,27 +49,9 @@ function libraryOf(count: number): Library {
   return { version: 2, currentId: projects[0]?.id ?? '', projects }
 }
 
-test('a clean device opens meaningful remote work instead of its untouched starter', () => {
-  const starter = newProject(scene())
-  const emptyRemote = newProject(scene())
-  emptyRemote.updated = starter.updated + 2
-  const work = newProject(scene(), 'Session plan')
-  work.updated = starter.updated + 1
-  work.boards[0].scene.objects.push({ id: 'ball', type: 'ball', x: 100, y: 100, size: 20, flipX: false, flipY: false })
-  const lib: Library = { version: 2, currentId: starter.id, projects: [starter, emptyRemote, work] }
-  const remoteIds = new Set([emptyRemote.id, work.id])
-
-  assert.equal(freshDeviceDestination(lib, { id: starter.id, updated: starter.updated }, remoteIds)?.id, work.id)
-  starter.updated += 1
-  assert.equal(freshDeviceDestination(lib, { id: starter.id, updated: starter.updated - 1 }, remoteIds), null)
-})
-
-test('Free and Pro both allow unlimited local projects', () => {
-  assert.equal(FREE_PROJECT_LIMIT, 3, 'legacy display constant remains import-compatible')
+test('local projects are unlimited', () => {
   for (const count of [0, 3, 4, 100]) {
-    const lib = libraryOf(count)
-    assert.equal(canCreateProject(lib, false), true)
-    assert.equal(canCreateProject(lib, true), true)
+    assert.equal(canCreateProject(libraryOf(count)), true)
   }
 })
 

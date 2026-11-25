@@ -59,6 +59,6 @@ After receiving `init`, send:
 
 `board:read` lets the extension read the current project and board. `board:write` lets it add up to 100 supported objects to the current board. The host sanitizes every object, assigns new ids, and uses normal undo and autosave.
 
-Extensions stay local to the project and device. Self-hosted Skills stay local too; the official hosted service provides owner-controlled Skill sync for agent links.
+Extensions stay local to the project and device. Skills stay local too, in every build.
 
 See [`examples/extensions/formation-generator/index.html`](../examples/extensions/formation-generator/index.html) for a static extension.

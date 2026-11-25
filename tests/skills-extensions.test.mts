@@ -2,10 +2,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-import { boardSkillsUrl } from '../src/board-api.ts'
-import { upstreamRequest } from '../functions/api/board/[[path]].js'
 import { EXTENSION_PROTOCOL, allowedExtensionUrl, extensionObjects, manifestsMatch, parseExtensionMessage } from '../src/extension-runtime.ts'
-import { MAX_EXTENSIONS, MAX_SKILLS, addUserSkill, installExtension, mergeSyncedSkills, newUserSkill, normalizeProjectSkillsState, skillsForSync, validateExtensionPath } from '../src/skills-extensions.ts'
+import { MAX_EXTENSIONS, MAX_SKILLS, addUserSkill, installExtension, newUserSkill, normalizeProjectSkillsState, validateExtensionPath } from '../src/skills-extensions.ts'
 
 const now = '2026-01-01T00:00:00.000Z'
 const paths = ['/extensions/formation-generator/index.html']
@@ -44,13 +42,8 @@ test('same-origin frame URLs must come from the compiled allowlist', () => {
   }
 })
 
-test('skill sync uses the strict server shape', () => {
+test('local skills stay within the skill limit', () => {
   const local = normalizeProjectSkillsState({ skills: [{ id: 'skill_1', name: 'Formation rules', instructions: 'Keep player ids.', enabled: false, createdAt: now, updatedAt: now }] }, now)
-  assert.deepEqual(skillsForSync(local), [{ id: 'skill_1', name: 'Formation rules', instructions: 'Keep player ids.', enabled: false }])
-  const merged = mergeSyncedSkills(local, [{ id: 'skill_1', name: 'Updated rules', instructions: 'Keep player ids.', enabled: true }], 'r2', now)
-  assert.equal(merged?.skills[0].enabled, true)
-  assert.equal(merged?.revision, 'r2')
-  assert.equal(mergeSyncedSkills(local, [{ id: 'skill_1', name: 'Bad', instructions: '', enabled: true }], 'r3', now), null)
   assert.equal(addUserSkill({ ...local, skills: Array.from({ length: MAX_SKILLS }, () => newUserSkill()) }, newUserSkill()), null)
 })
 
@@ -80,7 +73,7 @@ test('hosted mode keeps official and self-hosted extensions separate', () => {
   assert.doesNotMatch(main, /data-extension-url-form|validateExtensionUrl|Add an extension from a URL/)
   assert.match(main, /if \(!BOARD_SELF_HOSTED\) return/)
   assert.match(main, /BOARD_SELF_HOSTED \? `<div class="setGroupHead">Hosting<\/div>/)
-  assert.match(main, /if \(sync && !BOARD_SELF_HOSTED\) void syncCurrentSkills/)
+  assert.doesNotMatch(main, /syncCurrentSkills|skillsForSync|mergeSyncedSkills/)
   assert.match(main, /if \(BOARD_SELF_HOSTED\) return \[/)
   assert.match(main, /if \(!BOARD_SELF_HOSTED\) startAgentImport/)
   assert.match(main, /approvedManifest/)
@@ -90,6 +83,4 @@ test('hosted mode keeps official and self-hosted extensions separate', () => {
   assert.match(runtime, /\[this\.channel\.port2\]/)
   assert.doesNotMatch(runtime, /window\.addEventListener\('message'/)
   assert.match(runtime, /allowedExtensionUrl\(options\.url, options\.allowedPaths, location\.origin\)/)
-  assert.equal(boardSkillsUrl(), '/api/board/skills')
-  assert.equal(upstreamRequest(new Request('https://board.tacticsjournal.com/api/board/skills?board_id=board-1'), { path: 'skills' })?.url, 'https://tacticsjournal.com/api/board/skills?board_id=board-1')
 })

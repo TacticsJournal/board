@@ -2,20 +2,13 @@ import { Store } from './store'
 import { BOARD_W, Scene, objectsInDrawOrder, isLight, headNeedsLine, paperInk, sceneIsDark, sceneLook, scenePaper, armPoints, headPoints, playerDisplayName, resolveNamePos } from './types'
 import { pitchArt, pitchById, pitchIconScale, PITCH_PAPER } from './pitches'
 import { nodeSegments, nodesToSvgPath, segmentEndTangent } from './path-nodes'
-import { canCreateAgentLink, hasPaidBoardAccess, isPro } from './entitlements'
-import { boardInvitationsUrl, boardSharesUrl, boardUserSearchUrl } from './board-api'
-import { canCreateSavedBoard, editableBoardNames, savedBoardNamesByRecency, sharedBoardNames, swapEditableSlot, writeSavedBoards } from './saved-board-policy'
-import { canOpenBoardHistory, type BoardHistoryContext } from './board-history'
-import { canReviewBoardProposals } from './board-proposals'
-import type { AgentAccessMode } from './board-api'
+import { savedBoardNamesByRecency, writeSavedBoards } from './saved-board-policy'
 import { icon } from './icons'
 import { fontFaceCss } from './fonts.ts'
 import { fontStack, haloAgainst, inkOn } from './appearance.ts'
-import { mountSlidingPills } from './sliding-pill'
 import { getAsset } from './assets'
 import { ballSrc, coneSrc, goalFullSrc, goalSmallSrc, livePlayerSrc, CONE_ASPECT, GOAL_ASPECT, LIVE_ART_SHEET, LIVE_MARKER_ELLIPSE, LIVE_PLAYER_CROP, MARKER_ASPECT } from './board-art'
 import { arrowRenderedHeadSize, arrowShaftWidth, ARROW_DOT_GAP } from './board-art'
-import { conflictName, newId, recordTombstones } from './sync'
 import { remoteCurrentDecision, type RemoteCurrentDecision } from './remote-current'
 import {
   copyDocumentForConflict, documentScene, migrateProject, normalizeBoardDocument, normalizeDocumentArrowLegends, preserveDocumentFields, tryNormalizeBoardDocument,
@@ -23,9 +16,7 @@ import {
 } from './projects'
 
 const KEY = 'tbm-projects-v1'
-const FREE_LIMIT_MESSAGE = 'Free includes three editable saved boards. Delete saved boards until fewer than three remain, or export this board without saving.'
 const STORAGE_ERROR_MESSAGE = 'Could not save boards on this device. Free some browser storage and try again; your existing saved boards were not changed.'
-let shareUserSearchId = 0
 
 function escXml(value: unknown) {
   return String(value ?? '')
@@ -383,7 +374,19 @@ export function previewSvg(scene: Scene | undefined, resolved?: string | null): 
 }
 
 /** `id` is what survives a rename, so sync knows this is the same board. */
-export type SavedProject = { savedAt: string; scene: BoardDocument; id?: string; importId?: string; access?: 'shared'; ownerUsername?: string | null; readOnly?: boolean; syncAccount?: string }
+export type SavedProject = { savedAt: string; scene: BoardDocument; id?: string; importId?: string }
+
+/** Ids are opaque and only have to be unique and URL-safe. */
+export function newId(random: () => number = Math.random): string {
+  let out = ''
+  while (out.length < 20) out += Math.floor(random() * 36 ** 6).toString(36)
+  return `b-${out.slice(0, 20)}`
+}
+
+/** A name that says where the kept copy came from, without growing every time. */
+export function conflictName(name: string): string {
+  return /\(this device\)$/.test(name) ? name : `${name} (this device)`
+}
 
 /** A full Project document and the stable id of the saved row that carries it. */
 export type SavedProjectDocument = {
@@ -392,16 +395,6 @@ export type SavedProjectDocument = {
   project: Project
   savedAt: string
   importId?: string
-  access?: 'shared'
-  ownerUsername?: string | null
-  readOnly?: boolean
-  syncAccount?: string
-}
-
-type ProjectDocumentActions = {
-  target: { id: string; name: string; savedAt: string; accountBinding: string } | null
-  history: boolean
-  proposals: boolean
 }
 
 export type BoardDocumentAdapter = {
@@ -417,12 +410,23 @@ function isSavedProject(value: unknown): value is SavedProject {
     && !!(value as SavedProject).scene && typeof (value as SavedProject).scene === 'object'
 }
 
+/**
+ * Every saved row is a local project. Rows written while Board had accounts
+ * may still carry sync and sharing fields; they mean nothing now, so a copy
+ * shared from someone else is simply a local project this browser keeps.
+ */
+function localRow(saved: SavedProject): SavedProject {
+  const { savedAt, scene, id, importId } = saved
+  return { savedAt, scene, ...(typeof id === 'string' && id ? { id } : {}), ...(typeof importId === 'string' ? { importId } : {}) }
+}
+
 function readAll(storageKey = KEY): SavedProjects {
   try {
     const parsed = JSON.parse(localStorage.getItem(storageKey) ?? '{}')
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
     return Object.fromEntries(Object.entries(parsed)
-      .filter((entry): entry is [string, SavedProject] => isSavedProject(entry[1])))
+      .filter((entry): entry is [string, SavedProject] => isSavedProject(entry[1]))
+      .map(([name, saved]) => [name, localRow(saved)]))
   } catch { return {} }
 }
 
@@ -441,8 +445,6 @@ function writeAll(all: SavedProjects, storageKey = KEY): boolean {
   return storedSetIsWritable(storageKey) && writeSavedBoards(localStorage, storageKey, all).ok
 }
 
-export type SavesLocalChange = { shared: boolean }
-
 export type SavesPanelOptions = {
   /** Optional localStorage key override. */
   storageKey?: string
@@ -452,62 +454,6 @@ export type SavesPanelOptions = {
   resetToSeed?: boolean
   /** Board name whose live edits should be written back to the save list. */
   currentName?: string
-}
-
-/** The copy shortcut, named for the keyboard in front of the reader. */
-function copyKeys(): string {
-  const apple = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
-  return apple ? '\u2318C' : 'Ctrl+C'
-}
-
-/**
- * One way of handing a link over, wherever a link is handed over: an agent's,
- * a person's invitation, the link an email could not carry. The link is shown
- * as well as copied, because the clipboard is refused often enough - a browser
- * that wants a gesture, an insecure context - that a copy nobody can see is a
- * copy nobody has.
- */
-function linkField(ariaLabel: string, placeholder = ''): string {
-  return `<span class="linkField">
-    <input type="text" readonly data-link-out aria-label="${escXml(ariaLabel)}" placeholder="${escXml(placeholder)}">
-    <button type="button" class="copyIconButton" data-link-copy aria-label="Copy ${escXml(ariaLabel.toLowerCase())}">
-      <span class="t-icon-swap" data-state="a" aria-hidden="true">
-        <span class="t-icon" data-icon="a">${icon('copy')}</span>
-        <span class="t-icon" data-icon="b">${icon('check')}</span>
-      </span>
-    </button>
-  </span>`
-}
-
-/**
- * Copy what the field holds, however this browser will let us. The button
- * swaps to a check for two seconds. A refusal leaves the link selected and
- * names the keyboard shortcut through the button label.
- */
-async function copyLinkField(field: HTMLElement): Promise<boolean> {
-  const input = field.querySelector<HTMLInputElement>('[data-link-out]')!
-  const button = field.querySelector<HTMLButtonElement>('[data-link-copy]')!
-  let done = false
-  try {
-    if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
-    await navigator.clipboard.writeText(input.value)
-    done = true
-  } catch { /* the older selection copy still works where the new one is off */ }
-  if (!done) {
-    input.focus()
-    input.select()
-    try { done = document.execCommand('copy') } catch { done = false }
-  }
-  const swap = button.querySelector<HTMLElement>('.t-icon-swap')!
-  swap.dataset.state = done ? 'b' : 'a'
-  button.setAttribute('aria-label', done ? 'Copied' : `Press ${copyKeys()} to copy the selected link`)
-  if (done) window.setTimeout(() => {
-    if (!button.isConnected) return
-    swap.dataset.state = 'a'
-    button.setAttribute('aria-label', `Copy ${input.getAttribute('aria-label')?.toLowerCase() || 'link'}`)
-  }, 2000)
-  else { input.focus(); input.select() }
-  return done
 }
 
 export class SavesPanel {
@@ -539,35 +485,6 @@ export class SavesPanel {
       than what this tab last knew about). Lets the caller offer to load
       the newer version, keep the local copy, or export a backup first. */
   onExternalConflict: (name: string, state?: RemoteCurrentDecision) => void = () => {}
-  /** Set by main: fires after any write to the saved-boards record — a save,
-      a rename, a delete, an autosave. Board sync listens for it so an edit
-      reaches the member's other devices as it happens rather than when this
-      tab is next put away. */
-  onLocalChange: (change?: SavesLocalChange) => void = () => {}
-  /** Set by main: flushes and syncs this saved Project, returning its final row id. */
-  onPrepareShare: (boardId: string) => Promise<string> = async () => {
-    throw new Error('Board sharing is unavailable.')
-  }
-  /**
-   * Set by main: flushes/syncs all saved boards and returns the issued link
-   * URL. `mode` is what the link may do with the project: propose a version
-   * for review, or edit it directly.
-   */
-  onCreateAgentLink: (boardId: string, mode: AgentAccessMode) => Promise<string> = async () => {
-    throw new Error('Agent links are unavailable.')
-  }
-  /** Set by main: offer account backup when an explicit save reaches Free's limit. */
-  onFreeLimit: () => void = () => {}
-  /**
-   * Set by main: who this device is signed in as and what they hold. Version
-   * history belongs to owned, synced projects on a Pro account, so the default
-   * grants nothing and the action never appears until main says otherwise.
-   */
-  historyContext: () => BoardHistoryContext = () => ({ pro: false, signedIn: false, selfHosted: true, accountBinding: null })
-  /** Set by main: open the version-history screen for one owned saved project. */
-  onOpenHistory: (target: { id: string; name: string; savedAt: string; accountBinding: string }) => void = () => {}
-  /** Set by main: open the proposals screen for one owned saved project. */
-  onOpenProposals: (target: { id: string; name: string; accountBinding: string }) => void = () => {}
   /** Set by main: what to call a board saved without anyone naming it. */
   defaultBoardName: () => string = () => ''
 
@@ -613,9 +530,6 @@ export class SavesPanel {
       else if (k === 'save') this.save()
       else if (k === 'load') this.load(btn.dataset.name!)
       else if (k === 'delete') this.remove(btn.dataset.name!)
-      else if (k === 'agent-link') void this.createAgentLink(btn.dataset.id!)
-      else if (k === 'history') this.openHistory(btn.dataset.name!)
-      else if (k === 'proposals') this.openProposals(btn.dataset.name!)
     })
     window.addEventListener('storage', (event) => {
       if (event.storageArea !== localStorage || event.key !== this.storageKey) return
@@ -640,13 +554,8 @@ export class SavesPanel {
     if (this.onNewBoard(kind)) this.close()
   }
 
-  /** Keep the current editable board before it is replaced. Locked boards are never changed. */
-  /**
-   * `quiet` is for the background save that runs as you draw: it must never
-   * interrupt with the free-limit notice, which belongs to a save you asked
-   * for. Everything else about the two is the same.
-   */
-  autosaveCurrent(quiet = false, defaultName?: string): boolean {
+  /** Keep the current board before it is replaced. */
+  autosaveCurrent(_quiet = false, defaultName?: string): boolean {
     if (this.pendingRemoteDecision === 'conflict' || this.pendingRemoteDecision === 'conflict-delete') return false
     const all = readAll(this.storageKey)
     const sceneJson = this.sceneJson()
@@ -655,10 +564,6 @@ export class SavesPanel {
     if (this.currentName && this.currentSavedSceneJson === sceneJson) return true
     if (this.currentName && all[this.currentName]) return this.autosaveNamed(this.currentName, all)
     if (Object.values(all).some(p => JSON.stringify(p.scene) === sceneJson)) return true
-    if (!canCreateSavedBoard(all, hasPaidBoardAccess())) {
-      if (!quiet) { this.showStatus(FREE_LIMIT_MESSAGE); this.onFreeLimit() }
-      return false
-    }
     // a board saved in the background is named after the board it is, not
     // after the moment it happened to be saved
     const base = this.nameInput().value.trim() || defaultName?.trim() || this.defaultBoardName().trim() || `Board ${new Date().toLocaleString()}`
@@ -703,71 +608,23 @@ export class SavesPanel {
       return [{
         name, rowId: saved.id, project, savedAt: saved.savedAt,
         ...(saved.importId ? { importId: saved.importId } : {}),
-        ...(saved.access === 'shared'
-          ? { access: 'shared' as const, ownerUsername: saved.ownerUsername ?? null, ...(saved.readOnly ? { readOnly: true } : {}) }
-          : {}),
-        ...(saved.syncAccount ? { syncAccount: saved.syncAccount } : {}),
       }]
     })
   }
 
-  /** Open a bearer invitation as a local read-only copy before account access is claimed. */
-  openInvitationPreview(preview: {
-    id: string
-    name: string
-    document: BoardDocument
-    ownerUsername?: string | null
-    updatedAt?: string
-  }): boolean {
-    const template = JSON.parse(JSON.stringify(preview.document))
-    if (!tryNormalizeBoardDocument(template)) {
-      this.showStatus('This invitation uses a document format this version cannot open.')
-      return false
-    }
-    const all = readAll(this.storageKey)
-    const existing = Object.entries(all).find(([, saved]) => saved.id === preview.id)
-    // A link must never replace an owned row or accepted collaborator work.
-    // Reopening the same unclaimed preview simply restores its stored copy.
-    if (existing) return this.applyLoad(existing[0], all, false)
-    const name = this.uniqueName(preview.name.trim() || 'Shared project', all)
-    all[name] = {
-      id: preview.id,
-      savedAt: preview.updatedAt || new Date().toISOString(),
-      scene: template,
-      access: 'shared',
-      ownerUsername: preview.ownerUsername ?? null,
-      readOnly: true,
-    }
-    if (!writeAll(all, this.storageKey)) {
-      this.showStatus(STORAGE_ERROR_MESSAGE)
-      return false
-    }
-    return this.applyLoad(name, all, false)
-  }
-
-  /** Discard canvas-only preview changes before claiming its account access. */
-  restoreInvitationPreview(id: string): boolean {
-    const all = readAll(this.storageKey)
-    const found = Object.entries(all).find(([, saved]) => saved.id === id
-      && saved.access === 'shared' && saved.readOnly === true && !saved.syncAccount)
-    return found ? this.applyLoad(found[0], all, false) : false
-  }
-
   /**
    * Write Project documents by Project id, never by their display name. A
-   * rename therefore keeps its D1 row id and every row-owned bit of metadata.
+   * rename therefore keeps its row id and every row-owned bit of metadata.
    */
   persistProjectDocuments(projects: readonly Project[]): boolean {
     const all = readAll(this.storageKey)
     const next: SavedProjects = { ...all }
     const now = new Date().toISOString()
     let changed = false
-    let blocked = false
     for (const project of projects) {
       const found = Object.entries(next).find(([, saved]) => migrateProject(saved.scene)?.id === project.id)
       const oldName = found?.[0]
       const existing = found?.[1]
-      if (existing?.readOnly) { blocked = true; continue }
       const scene = existing ? preserveDocumentFields(existing.scene, project) : project
       const base = project.name.trim() || 'Untitled project'
       let name = base
@@ -783,8 +640,8 @@ export class SavesPanel {
       }
       changed = true
     }
-    if (!changed) return !blocked
-    return this.commit(next) && !blocked
+    if (!changed) return true
+    return this.commit(next)
   }
 
   private nameInput() { return this.el.querySelector('[data-sv="name"]') as HTMLInputElement }
@@ -792,113 +649,9 @@ export class SavesPanel {
     const status = this.el.querySelector('[data-sv="status"]') as HTMLElement
     status.textContent = message
   }
-  /** Return an agent link for the board on screen without opening Settings. */
-  async currentAgentLink(mode: AgentAccessMode = 'propose'): Promise<
-    { status: 'ok'; url: string } | { status: 'save-first' | 'not-allowed' }
-  > {
-    if (!canCreateAgentLink()) return { status: 'not-allowed' }
-    // an unsaved board is not a reason to refuse: save it and carry on. A board
-    // nobody has drawn on yet reads as "not dirty", so ask whether a saved
-    // board exists rather than whether this one has changed.
-    if (!this.currentName || !this.currentId || !this.isCurrentSaved()) this.autosaveCurrent(true)
-    const id = this.currentBoardId()
-    if (!id || !this.isCurrentSaved()) return { status: 'save-first' }
-    const url = await this.onCreateAgentLink(id, mode)
-    if (!url) throw new Error('The server returned no agent link.')
-    return { status: 'ok', url }
-  }
-
-  private async createAgentLink(boardId: string): Promise<void> {
-    if (!boardId) {
-      this.showStatus('Could not create agent link. This saved board has no stable id; your work was kept locally.')
-      return
-    }
-    this.showStatus('Saving and creating agent link…')
-    try {
-      const url = await this.onCreateAgentLink(boardId, 'propose')
-      if (!url) throw new Error('The server returned no agent link.')
-      try {
-        if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
-        await navigator.clipboard.writeText(url)
-        this.showStatus('Agent instructions copied to your clipboard. Paste it in your coding agent. What the agent saves waits for you in Proposals. The link expires in 24 hours.')
-      } catch {
-        this.showManualAgentLink(url)
-      }
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : 'The request failed.'
-      this.showStatus(`Could not create agent link: ${reason} Your saved work was kept locally.`)
-    }
-  }
-  private showManualAgentLink(url: string): void {
-    const dialog = document.createElement('dialog')
-    dialog.className = 'agentLinkDialog'
-    dialog.innerHTML = `<form method="dialog">
-      <p>The agent link is below. Paste it in your coding agent; it expires in 24 hours.</p>
-      ${linkField('Agent link')}
-      <button type="submit">Done</button>
-    </form>`
-    dialog.addEventListener('close', () => dialog.remove())
-    document.body.appendChild(dialog)
-    dialog.showModal()
-    const field = dialog.querySelector<HTMLElement>('.linkField')!
-    const input = field.querySelector('input') as HTMLInputElement
-    input.value = url
-    input.focus()
-    input.select()
-    field.querySelector('[data-link-copy]')!.addEventListener('click', () => { void copyLinkField(field) })
-    this.showStatus('The agent link is ready to copy.')
-  }
   /** True when the on-screen board matches the last persisted state. */
   isCurrentSaved(): boolean {
     return this.currentSavedSceneJson === this.sceneJson()
-  }
-
-  /** Whether the project on screen belongs to someone else. */
-  isCurrentShared(): boolean {
-    const id = this.currentId
-    if (!id) return false
-    return Object.values(readAll(this.storageKey)).some((project) => project.id === id && project.access === 'shared')
-  }
-
-  /** Whether the project on screen is one this account may only read. */
-  isCurrentReadOnly(): boolean {
-    const id = this.currentId
-    if (!id) return false
-    return Object.values(readAll(this.storageKey))
-      .some((project) => project.id === id && project.access === 'shared' && project.readOnly === true)
-  }
-
-  /**
-   * Give one locally owned row a fresh sync id without recording a delete.
-   * The old id may belong to another account on the server, so a tombstone for
-   * it would be an unauthorized delete. The document and its Project id stay
-   * unchanged.
-   */
-  reidentifySavedBoard(boardId: string): string {
-    const all = readAll(this.storageKey)
-    const found = Object.entries(all).find(([, project]) => project.id === boardId)
-    if (!found) throw new Error('This saved Project is no longer on this device.')
-    const [name, saved] = found
-    if (saved.access === 'shared' || saved.readOnly === true) {
-      throw new Error('Only a locally owned saved Project can be reidentified.')
-    }
-
-    const used = new Set(Object.values(all).flatMap((project) => project.id ? [project.id] : []))
-    let replacement = ''
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      const candidate = newId()
-      if (!used.has(candidate)) { replacement = candidate; break }
-    }
-    if (!replacement) throw new Error('Could not create a fresh local id for this Project.')
-
-    const { syncAccount: _previousAccount, ...local } = saved
-    const next = { ...all, [name]: { ...local, id: replacement } }
-    if (!writeAll(next, this.storageKey)) throw new Error(STORAGE_ERROR_MESSAGE)
-    if (this.currentId === boardId) this.currentId = replacement
-    // Deliberately bypass commit: replacing a foreign account's id is not a
-    // local deletion and must not create a tombstone for the old row.
-    this.onLocalChange({ shared: false })
-    return replacement
   }
 
   /** The stable id of the saved board on screen, assigning one to a legacy row when needed. */
@@ -923,7 +676,6 @@ export class SavesPanel {
       return project?.id === documentId || (!project && saved.id === documentId)
     })
     if (!found) return true
-    if (found[1].access === 'shared') return false
     const next = { ...all }
     delete next[found[0]]
     if (!this.commit(next)) return false
@@ -945,55 +697,9 @@ export class SavesPanel {
       this.detachCurrent()
       return false
     }
-    // The saved row may have changed through sync while another project was
+    // The saved row may have changed in another tab while another project was
     // open. Load that durable copy instead of blessing a stale local project.
     return this.applyLoad(found[0], all, false)
-  }
-
-  /**
-   * Sync starts by writing a dirty named board synchronously. An unnamed
-   * canvas has no saved-board record and is deliberately not a sync candidate.
-   */
-  flushCurrentForSync(): boolean {
-    if (!this.currentName) return true
-    this.currentBoardId()
-    const all = readAll(this.storageKey)
-    if (!all[this.currentName]) {
-      if (this.pendingRemoteDecision === 'conflict' || this.pendingRemoteDecision === 'conflict-delete') return false
-      this.detachCurrent()
-      return true
-    }
-    return this.autosaveNamed(this.currentName, all)
-  }
-
-  /**
-   * localStorage does not send a storage event back to the tab that wrote it.
-   * After sync changes the currently open record, update a clean canvas now;
-   * for a dirty canvas use the normal external-conflict choice instead.
-   */
-  applyRemoteCurrent(remoteIds: readonly string[], currentId: string | null): boolean {
-    // The sync request may have started while a different board was open. Do
-    // not trust a stale id from its caller: loading or detaching it could
-    // replace the board that is actually on screen now.
-    if (currentId !== this.currentId) return false
-    const all = readAll(this.storageKey)
-    const found = currentId ? Object.entries(all).find(([, project]) => project.id === currentId) : undefined
-    const decision = remoteCurrentDecision(remoteIds, currentId, !!found, !this.isCurrentSaved())
-    if (decision === 'none') return false
-    this.pendingRemoteDecision = decision
-    if (decision === 'detach') {
-      // Keep the on-screen scene exportable, but never let autosave recreate a
-      // board that another device cleanly deleted.
-      this.detachCurrent('Deleted on another device. The board remains on screen to export or save as a new board.')
-      this.pendingRemoteDecision = 'none'
-    } else if (decision === 'load') {
-      this.applyLoad(found![0], all, false)
-      this.pendingRemoteDecision = 'none'
-    } else {
-      this.onExternalConflict(this.currentName ?? found?.[0] ?? 'this board', decision)
-      this.renderList()
-    }
-    return decision === 'conflict' || decision === 'conflict-delete'
   }
 
   /** Legacy name retained while saved `scene` can hold a whole document. */
@@ -1017,8 +723,8 @@ export class SavesPanel {
     this.showStatus(status)
   }
   private snapshot(): SavedProject {
-    // Saving over a board, or renaming one, keeps its id: to every other device
-    // this is the same board edited, not a new one appearing.
+    // Saving over a board, or renaming one, keeps its id: it is the same board
+    // edited, not a new one appearing.
     const all = readAll(this.storageKey)
     const existing = (this.currentName ? all[this.currentName] : undefined)
       ?? Object.values(all).find((project) => project.id === this.currentId)
@@ -1026,39 +732,11 @@ export class SavesPanel {
       savedAt: new Date().toISOString(),
       scene: this.documentForSave(),
       id: existing?.id || newId(),
-      ...(existing?.syncAccount ? { syncAccount: existing.syncAccount } : {}),
-      ...(existing?.access === 'shared' ? {
-        access: 'shared' as const,
-        ownerUsername: existing.ownerUsername ?? null,
-        ...(existing.readOnly ? { readOnly: true } : {}),
-      } : {}),
     }
   }
   private commit(all: SavedProjects): boolean {
-    const before = readAll(this.storageKey)
-    const nextIds = new Set(Object.values(all).map((entry) => entry.id).filter(Boolean))
-    if (Object.values(before).some((entry) => entry.access === 'shared' && entry.id && !nextIds.has(entry.id))) {
-      this.showStatus('A shared board cannot be replaced or deleted. Load it before editing, or save under another name.')
-      return false
-    }
     if (!writeAll(all, this.storageKey)) { this.showStatus(STORAGE_ERROR_MESSAGE); return false }
-    // A board that has left the record is a delete, and a delete has to travel
-    // or it comes back from whichever device has not synced yet.
-    const surviving = new Set(Object.values(all).map((entry) => entry.id).filter(Boolean) as string[])
-    const removed = Object.entries(before)
-      // Removing a shared row locally is never a deletion on the server. In
-      // normal use the UI does not offer this; this guard also protects an
-      // import/reset or a future management path from revoking someone else's board.
-      .filter(([, entry]) => entry.access !== 'shared')
-      .filter(([, entry]) => entry.id && !surviving.has(entry.id))
-      .map(([name, entry]) => ({ id: entry.id as string, name, ...(entry.syncAccount ? { syncAccount: entry.syncAccount } : {}) }))
-    if (removed.length) recordTombstones(removed, new Date().toISOString())
-    const sharedChanged = Object.entries(before).some(([name, entry]) => entry.access === 'shared'
-      && (!all[name] || JSON.stringify(all[name]) !== JSON.stringify(entry)))
-      || Object.entries(all).some(([name, entry]) => entry.access === 'shared'
-        && (!before[name] || JSON.stringify(before[name]) !== JSON.stringify(entry)))
     this.showStatus('')
-    this.onLocalChange({ shared: sharedChanged })
     return true
   }
   private uniqueName(base: string, all: SavedProjects): string {
@@ -1074,8 +752,8 @@ export class SavesPanel {
       if (this.isCurrentSaved()) this.detachCurrent()
       return
     }
-    // A clean canvas follows a remote rename by id. A dirty canvas keeps its
-    // old label until the conflict decision makes a safe local copy.
+    // A clean canvas follows a rename in another tab by id. A dirty canvas keeps
+    // its old label until the conflict decision makes a safe local copy.
     if (this.isCurrentSaved()) {
       this.currentName = found[0]
       this.nameInput().value = found[0]
@@ -1084,14 +762,6 @@ export class SavesPanel {
   private autosaveNamed(name: string, all: SavedProjects): boolean {
     const sceneJson = this.sceneJson()
     if (this.currentSavedSceneJson === sceneJson) return true
-    if (all[name]?.readOnly === true) {
-      this.showStatus('This shared project is read-only. Canvas changes are not saved.')
-      return false
-    }
-    if (!editableBoardNames(all, hasPaidBoardAccess()).has(name)) {
-      this.showStatus('This saved board is read-only. Export the current canvas as an image to keep these changes.')
-      return false
-    }
     all[name] = this.snapshot()
     if (!this.commit(all)) return false
     this.currentDocumentTemplate = JSON.parse(JSON.stringify(all[name].scene))
@@ -1102,36 +772,8 @@ export class SavesPanel {
   private save() {
     const all = readAll(this.storageKey)
     const name = this.nameInput().value.trim() || `Board ${new Date().toLocaleDateString()}`
-    const editable = editableBoardNames(all, hasPaidBoardAccess())
     const currentExists = !!this.currentName && !!all[this.currentName]
-
-    if (currentExists && all[this.currentName!]?.readOnly === true) {
-      this.showStatus('This shared project is read-only. Canvas changes are not saved.')
-      return
-    }
-    if (currentExists && !editable.has(this.currentName!)) {
-      this.showStatus('This saved board is read-only. Delete newer saved boards until it becomes editable, or export the current canvas as an image.')
-      return
-    }
-    if (all[name]?.readOnly === true) {
-      this.showStatus('That shared project is read-only and cannot be overwritten.')
-      return
-    }
-    if (all[name] && !editable.has(name)) {
-      this.showStatus('That saved board is read-only. Load or delete it, or choose another name when a save slot is available.')
-      return
-    }
-    if (all[name]?.access === 'shared' && all[name].id !== this.currentId) {
-      this.showStatus('Load that shared board before editing it, or save this board under another name.')
-      return
-    }
     if (all[name] && !confirm(`Overwrite saved board "${name}"?`)) return
-
-    if (!all[name] && !currentExists && !canCreateSavedBoard(all, hasPaidBoardAccess())) {
-      this.showStatus(FREE_LIMIT_MESSAGE)
-      this.onFreeLimit()
-      return
-    }
 
     const next = { ...all }
     if (currentExists && this.currentName !== name) delete next[this.currentName!]
@@ -1149,58 +791,7 @@ export class SavesPanel {
     const all = readAll(this.storageKey)
     const p = all[name]
     if (!p) return
-    const editable = editableBoardNames(all, hasPaidBoardAccess())
-    if (!editable.has(name) && !hasPaidBoardAccess()) {
-      this.promptSwap(name, all, editable)
-      return
-    }
     this.applyLoad(name, all)
-  }
-
-  private promptSwap(targetName: string, all: SavedProjects, editable: ReadonlySet<string>) {
-    // Shared boards are independently editable and never a personal slot to
-    // sacrifice when a Free user opens a read-only personal board.
-    const editableNames = savedBoardNamesByRecency(all).filter(n => all[n].access !== 'shared' && editable.has(n))
-    if (!editableNames.length) {
-      this.showStatus('No editable boards available to swap.')
-      return
-    }
-
-    const dialog = document.createElement('dialog')
-    dialog.className = 'swapDialog'
-    const safe = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
-    dialog.innerHTML = `
-      <form method="dialog">
-        <p>Make <strong>${safe(targetName)}</strong> editable by swapping it with one of your current editable boards.</p>
-        <p>Choose a board to move to read-only:</p>
-        <ul class="swapChoices">${editableNames.map(n =>
-          `<li><button type="button" class="swapPick" data-sacrifice="${safe(n)}">Make <strong>${safe(targetName)}</strong> editable by moving <strong>${safe(n)}</strong> to read-only?</button></li>`
-        ).join('')}</ul>
-        <button type="button" class="swapCancel">Cancel</button>
-      </form>`
-
-    dialog.addEventListener('click', (e) => {
-      const pick = (e.target as HTMLElement).closest('.swapPick') as HTMLElement | null
-      if (pick) {
-        const sacrificeName = pick.dataset.sacrifice!
-        const result = swapEditableSlot(all, sacrificeName, targetName)
-        if (!result.ok) {
-          this.showStatus(result.reason)
-        } else {
-          const updated = result.boards as SavedProjects
-          if (!this.commit(updated)) { dialog.close(); return }
-          this.applyLoad(targetName, updated)
-        }
-        dialog.close()
-        return
-      }
-      if ((e.target as HTMLElement).closest('.swapCancel')) {
-        dialog.close()
-      }
-    })
-    dialog.addEventListener('close', () => dialog.remove())
-    document.body.appendChild(dialog)
-    dialog.showModal()
   }
 
   private applyLoad(name: string, all: SavedProjects, close = true): boolean {
@@ -1219,24 +810,15 @@ export class SavesPanel {
     this.currentName = name
     this.currentId = p.id ?? null
     this.currentSavedSceneJson = this.sceneJson()
-    const editable = editableBoardNames(all, hasPaidBoardAccess())
-    if (!editable.has(name)) {
-      this.showStatus('Read-only saved board. You can view or change it and export the current canvas as an image, but moving boards to another device exports only the stored copy.')
-    } else this.showStatus('')
+    this.showStatus('')
     this.renderList()
     if (close) this.close()
     return true
   }
 
-  /** New canvases remain usable when Free has no available saved-board slot. */
+  /** Give a new canvas its own saved board. */
   registerNew(): boolean {
     const all = readAll(this.storageKey)
-    if (!canCreateSavedBoard(all, hasPaidBoardAccess())) {
-      this.detachCurrent()
-      this.showStatus(FREE_LIMIT_MESSAGE)
-      this.onFreeLimit()
-      return false
-    }
     let n = 1
     while (all[`Board ${n}`]) n++
     const name = `Board ${n}`
@@ -1278,7 +860,7 @@ export class SavesPanel {
     return this.applyLoad(found[0], all)
   }
 
-  /** Keep a dirty remote-conflict canvas without overwriting the remote id. */
+  /** Keep a dirty conflicting canvas without overwriting the other tab's id. */
   keepCurrentConflict(): boolean {
     if (this.pendingRemoteDecision !== 'conflict' && this.pendingRemoteDecision !== 'conflict-delete') return false
     const all = readAll(this.storageKey)
@@ -1298,11 +880,11 @@ export class SavesPanel {
     return true
   }
 
-  /** Accept a remote delete while leaving the visible scene available to export. */
+  /** Accept a delete in another tab while leaving the visible scene available to export. */
   acceptRemoteDeletion(): boolean {
     if (this.pendingRemoteDecision !== 'conflict-delete') return false
     this.pendingRemoteDecision = 'none'
-    this.detachCurrent('Deleted on another device. The board remains on screen to export or save as a new board.')
+    this.detachCurrent('Deleted in another tab. The board remains on screen to export or save as a new board.')
     this.renderList()
     return true
   }
@@ -1320,19 +902,17 @@ export class SavesPanel {
     })
   }
 
-  /** Device-transfer file containing personal boards. Shared boards come from their owner through sync. */
+  /** Device-transfer file containing every saved board. */
   exportFile(): string {
-    const personal = Object.fromEntries(Object.entries(readAll(this.storageKey))
-      .filter(([, project]) => project.access !== 'shared'))
     return JSON.stringify({
       app: 'tactics-board-mapper',
       version: 1,
       exportedAt: new Date().toISOString(),
-      boards: personal,
+      boards: readAll(this.storageKey),
     })
   }
 
-  /** Merge without eviction. Free overflow is preserved and classified by recency. */
+  /** Merge without eviction. */
   importFile(text: string): number {
     const data = JSON.parse(text)
     const incoming = data?.boards && typeof data.boards === 'object' && !Array.isArray(data.boards) ? data.boards : null
@@ -1402,7 +982,7 @@ export class SavesPanel {
 
   private remove(name: string) {
     const all = readAll(this.storageKey)
-    if (!all[name] || all[name].access === 'shared') return
+    if (!all[name]) return
     if (!confirm(`Delete saved board "${name}"?`)) return
     const next = { ...all }
     delete next[name]
@@ -1414,674 +994,35 @@ export class SavesPanel {
   /** Root-list summary for unlimited local saved boards. */
   countLabel(): string {
     const all = readAll(this.storageKey)
-    const total = savedBoardNamesByRecency(all).filter(name => all[name].access !== 'shared').length
+    const total = savedBoardNamesByRecency(all).length
     return total ? `${total}` : 'None yet'
-  }
-
-  /** Open collaborator management for the owned board currently on screen. */
-  inviteCurrentByUsername(): 'opened' | 'save-first' | 'owner-only' {
-    // as with the agent link: save it rather than sending the person away
-    if (!this.currentName || !this.currentId) this.autosaveCurrent(true)
-    if (!this.currentName || !this.currentId) return 'save-first'
-    const found = Object.entries(readAll(this.storageKey)).find(([, project]) => project.id === this.currentId)
-    if (!found) return 'save-first'
-    if (found[1].access === 'shared') return 'owner-only'
-    this.openShare(found[0])
-    return 'opened'
-  }
-
-  /**
-   * Put the sharing form somewhere. The saved-boards list gives it a dialog of
-   * its own; the share sheet hands it the sheet it is already standing in, so
-   * choosing "Invite @username" stays where the reader is instead of throwing
-   * a second window over the first.
-   */
-  embedShareForm(host: HTMLElement): 'ok' | 'save-first' | 'owner-only' {
-    if (!this.currentName || !this.currentId) this.autosaveCurrent(true)
-    if (!this.currentName || !this.currentId) return 'save-first'
-    const found = Object.entries(readAll(this.storageKey)).find(([, project]) => project.id === this.currentId)
-    if (!found) return 'save-first'
-    if (found[1].access === 'shared') return 'owner-only'
-    host.appendChild(this.shareForm(found[0]))
-    host.querySelector<HTMLInputElement>('input[name="username"]')?.focus()
-    return 'ok'
-  }
-
-  private openShare(name: string) {
-    const form = this.shareForm(name, () => dialog.close())
-    if (!form) return
-    const dialog = document.createElement('dialog')
-    dialog.className = 'shareDialog'
-    dialog.setAttribute('aria-labelledby', 'shareTitle')
-    dialog.appendChild(form)
-    dialog.addEventListener('close', () => dialog.remove())
-    document.body.appendChild(dialog)
-    dialog.showModal()
-    dialog.querySelector<HTMLInputElement>('input[name="username"]')?.focus()
-  }
-
-  /**
-   * The form itself: the same one wherever it is put.
-   *
-   * Three ways to name someone and one question about what they may do, over a
-   * single list of everyone who can already reach the board. The list holds
-   * accepted collaborators and invitations still in flight together, because
-   * to the owner they are one question: who can open this, and what can they
-   * do with it?
-   */
-  private shareForm(name: string, onCancel?: () => void): HTMLFormElement {
-    const board = readAll(this.storageKey)[name]
-    const canInvite = isPro()
-    const safe = (value: string) => escXml(value)
-    const userListId = `shareUserList${++shareUserSearchId}`
-    const form = document.createElement('form')
-    form.className = 'shareForm'
-    form.innerHTML = `
-      <h2 id="shareTitle">Share ${safe(name)}</h2>
-      <div class="shareWays" role="tablist">
-        ${[['email', 'Email'], ['username', '@username'], ['link', 'Copy link']].map(([key, label], index) => `
-          <button type="button" role="tab" data-share-way="${key}" aria-selected="${index === 0}"${canInvite ? '' : ' disabled'}>${label}</button>`).join('')}
-      </div>
-      <label data-share-field="email">Email address
-        <input name="email" type="email" autocomplete="off" maxlength="254" placeholder="coach@club.com" ${canInvite ? '' : 'disabled'}>
-      </label>
-      <label data-share-field="username" hidden>Username
-        <span class="shareUserCombo" data-share-user-combo>
-          <input name="username" autocomplete="off" maxlength="80" placeholder="Search name or @username" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" aria-controls="${userListId}" ${canInvite ? '' : 'disabled'}>
-          <span class="shareUserPanel" data-share-user-panel hidden>
-            <span class="shareUserOptions" id="${userListId}" role="listbox" aria-label="User suggestions"></span>
-            <span class="shareUserEmpty" data-share-user-empty hidden>No users found.</span>
-          </span>
-        </span>
-        <span class="shareUserLive" data-share-user-live role="status" aria-live="polite"></span>
-      </label>
-      <div class="shareLinkField" data-share-field="link" hidden>
-        <span class="shareRoleLabel">Invitation link</span>
-        ${linkField('Invitation link', 'Made when you copy it')}
-      </div>
-      <div class="shareRole">
-        <span class="shareRoleLabel" id="shareRoleLabel">They can</span>
-        <div class="shareWays" role="radiogroup" aria-labelledby="shareRoleLabel">
-          ${[['write', 'Edit the project'], ['read', 'Read only']].map(([value, label], index) => `
-            <button type="button" role="radio" data-share-role-pick="${value}" aria-checked="${index === 0}"${canInvite ? '' : ' disabled'}>${label}</button>`).join('')}
-        </div>
-      </div>
-      <div class="shareActions">
-        <button type="submit" ${canInvite ? '' : 'disabled'} data-share-submit>Share</button>
-        ${onCancel ? '<button type="button" data-share-close>Cancel</button>' : ''}
-      </div>
-      <p class="shareStatus" role="status" aria-live="polite">${canInvite ? '' : 'Pro is needed to invite someone. You can still remove access.'}</p>
-      <h3>People with access</h3><ul class="shareList"></ul>`
-    mountSlidingPills(form)
-    const dialog = { close: () => onCancel?.() }
-    const status = form.querySelector('.shareStatus') as HTMLElement
-    const list = form.querySelector('.shareList') as HTMLElement
-    const submit = form.querySelector<HTMLButtonElement>('[data-share-submit]')!
-    const field = (key: string) => form.querySelector<HTMLElement>(`[data-share-field="${key}"]`)!
-    const input = (key: string) => field(key).querySelector('input') as HTMLInputElement
-    const usernameInput = input('username')
-    const userCombo = form.querySelector<HTMLElement>('[data-share-user-combo]')!
-    const userPanel = form.querySelector<HTMLElement>('[data-share-user-panel]')!
-    const userOptions = form.querySelector<HTMLElement>('.shareUserOptions')!
-    const userEmpty = form.querySelector<HTMLElement>('[data-share-user-empty]')!
-    const userLive = form.querySelector<HTMLElement>('[data-share-user-live]')!
-    const linkBox = form.querySelector<HTMLElement>('.linkField')!
-    const linkOut = linkBox.querySelector('input') as HTMLInputElement
-    const copyButton = linkBox.querySelector<HTMLButtonElement>('[data-link-copy]')!
-    copyButton.disabled = !canInvite
-    let way = 'email'
-    let shareId = board.id
-    let shareReady = false
-    let preparingShare: Promise<void> | null = null
-
-    type UserSuggestion = { displayName: string; username: string; title: string; avatarUrl: string | null }
-    let userSearchTimer: ReturnType<typeof setTimeout> | null = null
-    let userSearchController: AbortController | null = null
-    let userSearchVersion = 0
-    let userSuggestions: UserSuggestion[] = []
-    let activeUser = -1
-
-    const userQuery = () => usernameInput.value.trim().replace(/^@/, '')
-    const cancelUserRequest = () => {
-      if (userSearchTimer !== null) clearTimeout(userSearchTimer)
-      userSearchTimer = null
-      userSearchController?.abort()
-      userSearchController = null
-      userSearchVersion += 1
-    }
-    const hideUserResults = (clear = false) => {
-      userPanel.hidden = true
-      userCombo.classList.remove('is-open')
-      usernameInput.setAttribute('aria-expanded', 'false')
-      usernameInput.removeAttribute('aria-activedescendant')
-      activeUser = -1
-      if (clear) {
-        userSuggestions = []
-        userOptions.replaceChildren()
-        userEmpty.hidden = true
-      }
-    }
-    const closeUserSearch = (clear = false) => {
-      cancelUserRequest()
-      hideUserResults(clear)
-    }
-    const safeAvatarUrl = (raw: unknown) => {
-      if (typeof raw !== 'string' || !raw) return null
-      try {
-        const url = new URL(raw, 'https://tacticsjournal.com')
-        if (url.protocol !== 'https:') return null
-        if (url.hostname !== 'tacticsjournal.com' && url.hostname !== 'images.tacticsjournal.com') return null
-        return url.href
-      } catch { return null }
-    }
-    const initials = (user: UserSuggestion) => {
-      const words = user.displayName.split(/\s+/).filter(Boolean)
-      return (words.length ? words.slice(0, 2).map((word) => word[0]).join('') : user.username.slice(0, 2)).toUpperCase()
-    }
-    const setActiveUser = (next: number) => {
-      if (!userSuggestions.length) return
-      activeUser = (next + userSuggestions.length) % userSuggestions.length
-      for (const [index, option] of [...userOptions.querySelectorAll<HTMLElement>('[role="option"]')].entries()) {
-        const selected = index === activeUser
-        option.classList.toggle('is-active', selected)
-        option.setAttribute('aria-selected', String(selected))
-      }
-      const active = userOptions.querySelector<HTMLElement>(`#${userListId}-${activeUser}`)
-      if (active) {
-        usernameInput.setAttribute('aria-activedescendant', active.id)
-        active.scrollIntoView({ block: 'nearest' })
-      }
-    }
-    const chooseUser = (user: UserSuggestion) => {
-      usernameInput.value = `@${user.username}`
-      closeUserSearch(true)
-      usernameInput.focus()
-    }
-    const renderUserResults = (users: unknown[]) => {
-      userSuggestions = users.flatMap((value): UserSuggestion[] => {
-        if (!value || typeof value !== 'object') return []
-        const row = value as Record<string, unknown>
-        const username = typeof row.username === 'string' ? row.username.trim().slice(0, 80) : ''
-        if (!username) return []
-        return [{
-          username,
-          displayName: (typeof row.display_name === 'string' ? row.display_name.trim() : '').slice(0, 160) || `@${username}`,
-          title: (typeof row.title === 'string' ? row.title.trim() : '').slice(0, 160),
-          avatarUrl: safeAvatarUrl(row.avatar_url),
-        }]
-      }).slice(0, 30)
-      userOptions.replaceChildren()
-      userEmpty.hidden = userSuggestions.length > 0
-      for (const [index, user] of userSuggestions.entries()) {
-        const option = document.createElement('button')
-        option.type = 'button'
-        option.tabIndex = -1
-        option.id = `${userListId}-${index}`
-        option.className = 'shareUserOption'
-        option.setAttribute('role', 'option')
-        option.setAttribute('aria-selected', String(index === 0))
-
-        const avatar = document.createElement('span')
-        avatar.className = 'shareUserAvatar'
-        if (user.avatarUrl) {
-          const image = document.createElement('img')
-          image.src = user.avatarUrl
-          image.alt = ''
-          image.loading = 'lazy'
-          image.addEventListener('error', () => {
-            image.remove()
-            avatar.textContent = initials(user)
-          }, { once: true })
-          avatar.appendChild(image)
-        } else avatar.textContent = initials(user)
-
-        const main = document.createElement('span')
-        main.className = 'shareUserMain'
-        const identity = document.createElement('span')
-        identity.className = 'shareUserIdentity'
-        const displayName = document.createElement('strong')
-        displayName.textContent = user.displayName
-        const handle = document.createElement('span')
-        handle.textContent = `@${user.username}`
-        identity.append(displayName, handle)
-        main.appendChild(identity)
-        if (user.title) {
-          const title = document.createElement('small')
-          title.textContent = user.title
-          main.appendChild(title)
-        }
-        option.append(avatar, main)
-        option.addEventListener('mousedown', (event) => event.preventDefault())
-        option.addEventListener('click', () => chooseUser(user))
-        userOptions.appendChild(option)
-      }
-      userPanel.hidden = false
-      userCombo.classList.add('is-open')
-      usernameInput.setAttribute('aria-expanded', 'true')
-      userLive.textContent = userSuggestions.length ? `${userSuggestions.length} users found.` : 'No users found.'
-      if (userSuggestions.length) setActiveUser(0)
-      else usernameInput.removeAttribute('aria-activedescendant')
-    }
-    const scheduleUserSearch = () => {
-      cancelUserRequest()
-      const query = userQuery()
-      if (way !== 'username' || !canInvite || !query) {
-        hideUserResults(true)
-        userLive.textContent = ''
-        return
-      }
-      hideUserResults()
-      const version = userSearchVersion
-      userSearchTimer = setTimeout(async () => {
-        userSearchTimer = null
-        const controller = new AbortController()
-        userSearchController = controller
-        try {
-          const response = await fetch(`${boardUserSearchUrl()}?q=${encodeURIComponent(query)}`, {
-            credentials: 'include', signal: controller.signal,
-          })
-          if (!response.ok) throw new Error('search_failed')
-          const data = await response.json()
-          if (version !== userSearchVersion || way !== 'username' || userQuery() !== query) return
-          renderUserResults(Array.isArray(data?.users) ? data.users : [])
-        } catch (error) {
-          if (controller.signal.aborted || version !== userSearchVersion) return
-          hideUserResults(true)
-          userLive.textContent = ''
-        } finally {
-          if (userSearchController === controller) userSearchController = null
-        }
-      }, 200)
-    }
-
-    usernameInput.addEventListener('input', scheduleUserSearch)
-    usernameInput.addEventListener('focus', scheduleUserSearch)
-    usernameInput.addEventListener('blur', () => {
-      setTimeout(() => {
-        if (!userCombo.contains(document.activeElement)) closeUserSearch()
-      }, 0)
-    })
-    usernameInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && !userPanel.hidden) {
-        event.preventDefault()
-        closeUserSearch()
-        return
-      }
-      if (userPanel.hidden || !userSuggestions.length) return
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        event.preventDefault()
-        setActiveUser(activeUser + (event.key === 'ArrowDown' ? 1 : -1))
-      } else if (event.key === 'Enter' && activeUser >= 0) {
-        event.preventDefault()
-        chooseUser(userSuggestions[activeUser])
-      }
-    })
-
-    /**
-     * A board created on this device may still be waiting for the debounced
-     * sync when this form opens. All requests share one preparation pass, and
-     * a failed pass remains retryable when the owner submits again.
-     */
-    const prepareShare = async () => {
-      if (shareReady) return
-      if (!preparingShare) {
-        if (!shareId) throw new Error('This saved Project has no stable id.')
-        preparingShare = this.onPrepareShare(shareId)
-          .then((finalId) => {
-            if (!finalId) throw new Error('This saved Project has no stable id.')
-            shareId = finalId
-            shareReady = true
-          })
-          .finally(() => { preparingShare = null })
-      }
-      try {
-        await preparingShare
-      } catch (error) {
-        // Preparation may have safely replaced the row id before a later
-        // network step failed. Keep a retry on this form pointed at that row.
-        const latestId = readAll(this.storageKey)[name]?.id
-        if (latestId) shareId = latestId
-        throw error
-      }
-    }
-
-    /**
-     * A link that was made for one permission cannot stand for another, so
-     * changing what the reader may do sends the next copy back to the server.
-     */
-    const forgetLink = () => {
-      linkOut.value = ''
-      copyButton.innerHTML = `${icon('copy')}Copy`
-    }
-
-    /**
-     * One press: the link is made, copied, and left in the field so it can be
-     * read or copied again. The button says what happened, briefly, in place -
-     * a copy that says nothing is a copy nobody trusts.
-     */
-    const copyLink = async () => {
-      copyButton.disabled = true
-      try {
-        if (!linkOut.value) {
-          const data = await request(boardInvitationsUrl(), 'POST', {
-            board_id: shareId, kind: 'link', role: role(), board_name: name,
-          })
-          if (!data?.url) throw new Error('The link could not be made.')
-          linkOut.value = data.url
-          await refresh()
-        }
-        const copied = await copyLinkField(linkBox)
-        status.textContent = copied
-          ? 'Copied. Anyone with the link can view. One person can join within 24 hours.'
-          : 'Copy this link. Anyone with it can view; one person can join within 24 hours.'
-      } catch (error) {
-        status.textContent = error instanceof Error ? error.message : 'That did not work.'
-      } finally {
-        copyButton.disabled = !isPro()
-      }
-    }
-
-    const request = async (url: string, method: string, body?: object, query = '') => {
-      await prepareShare()
-      const response = await fetch(`${url}${query}`, {
-        method, credentials: 'include', headers: body ? { 'Content-Type': 'application/json' } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-      })
-      let data: any = null
-      try { data = await response.json() } catch { /* an empty body is still an answer */ }
-      // The server says why. Saying "could not share this board" over the top
-      // of it is how an owner ends up with no idea what to fix.
-      if (!response.ok) throw new Error(data?.error || 'That did not work.')
-      return data
-    }
-
-    const roleLabel = (role: string) => (role === 'read' ? 'Read only' : 'Can edit')
-    const refresh = async () => {
-      const query = `?board_id=${encodeURIComponent(shareId!)}`
-      const [shares, invitations] = await Promise.all([
-        request(boardSharesUrl(), 'GET', undefined, query).then((data) => data?.shares || []).catch(() => null),
-        request(boardInvitationsUrl(), 'GET', undefined, query).then((data) => data?.invitations || []).catch(() => []),
-      ])
-      if (!shares) { status.textContent = 'Could not load who has access.'; return }
-      const people = shares.map((share: any) => {
-        const id = typeof share?.id === 'string' ? share.id : ''
-        const username = typeof share?.username === 'string' ? share.username : ''
-        return `<li>
-          <span class="shareWho">${username ? `@${safe(username)}` : 'Account without a username'}</span>
-          <button type="button" class="shareRoleBtn" data-share-role="${safe(id)}" data-role="${safe(share?.role || 'write')}">${roleLabel(share?.role)}</button>
-          <button type="button" data-share-remove="${safe(id)}" ${id ? '' : 'disabled'}>Remove</button>
-        </li>`
-      })
-      const pending = invitations.map((invitation: any) => {
-        const id = typeof invitation?.id === 'string' ? invitation.id : ''
-        const to = invitation?.kind === 'email' && invitation?.email ? safe(invitation.email) : 'Invite link'
-        return `<li>
-          <span class="shareWho">${to}<small>Not accepted yet</small></span>
-          <span class="shareRoleBtn is-fixed">${roleLabel(invitation?.role)}</span>
-          <button type="button" data-share-withdraw="${safe(id)}" ${id ? '' : 'disabled'}>Revoke</button>
-        </li>`
-      })
-      list.innerHTML = people.length || pending.length
-        ? [...people, ...pending].join('')
-        : '<li class="shareEmpty">Nobody else yet.</li>'
-    }
-
-    const chooseWay = (next: string) => {
-      way = next
-      for (const tab of form.querySelectorAll<HTMLButtonElement>('[data-share-way]')) {
-        tab.setAttribute('aria-selected', String(tab.dataset.shareWay === next))
-      }
-      field('email').hidden = next !== 'email'
-      field('username').hidden = next !== 'username'
-      field('link').hidden = next !== 'link'
-      // The link has no separate step to press: copying is what makes it, so
-      // the form's own button has nothing left to do here.
-      submit.hidden = next === 'link'
-      submit.textContent = next === 'email' ? 'Send invitation' : 'Share'
-      status.textContent = next === 'link'
-        ? 'Anyone with the link can view. One person can join the project within 24 hours.'
-        : ''
-      if (next !== 'username') closeUserSearch()
-      if (next !== 'link') input(next).focus()
-    }
-
-    // What they may do is one question carried by whichever way named them, so
-    // it is held here rather than read back out of the way that is showing.
-    let chosenRole = 'write'
-    const role = () => chosenRole
-    const chooseRole = (next: string) => {
-      if (next !== chosenRole) forgetLink()
-      chosenRole = next
-      for (const option of form.querySelectorAll<HTMLButtonElement>('[data-share-role-pick]')) {
-        option.setAttribute('aria-checked', String(option.dataset.shareRolePick === next))
-      }
-    }
-
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault()
-      if (!isPro()) return
-      closeUserSearch()
-      status.textContent = ''
-      submit.disabled = true
-      try {
-        // The link way has no submit: its Copy button is the whole step.
-        if (way === 'link') return
-        if (way === 'username') {
-          const username = input('username').value.trim().replace(/^@/, '')
-          if (!username) return
-          const data = await request(boardSharesUrl(), 'POST', { board_id: shareId, username, role: role() })
-          input('username').value = ''
-          status.textContent = `Shared with @${data?.username || username}, ${roleLabel(data?.role).toLowerCase()}.`
-        } else if (way === 'email') {
-          const email = input('email').value.trim()
-          if (!email) return
-          const data = await request(boardInvitationsUrl(), 'POST', {
-            board_id: shareId, kind: 'email', email, role: role(), board_name: name,
-          })
-          input('email').value = ''
-          status.textContent = data?.delivered === false
-            ? 'The invitation was made but the email could not be sent. Copy the link instead.'
-            : `Invitation sent to ${email}.`
-          if (data?.delivered === false && data?.url) await this.offerCopy(data.url, status)
-        }
-        await refresh()
-      } catch (error) {
-        status.textContent = error instanceof Error ? error.message : 'That did not work.'
-      } finally {
-        submit.disabled = !isPro()
-      }
-    })
-
-    form.addEventListener('click', async (event) => {
-      const target = event.target as HTMLElement
-      if (target.closest('[data-share-close]')) dialog.close()
-      const tab = target.closest<HTMLElement>('[data-share-way]')
-      if (tab?.dataset.shareWay) { chooseWay(tab.dataset.shareWay); return }
-
-      const pick = target.closest<HTMLElement>('[data-share-role-pick]')
-      if (pick?.dataset.shareRolePick) { chooseRole(pick.dataset.shareRolePick); return }
-
-      if (target.closest('[data-link-copy]')) { await copyLink(); return }
-
-      const change = target.closest<HTMLElement>('[data-share-role]')
-      if (change) {
-        // The listed permission is the control: tapping it is what changes it.
-        const next = change.dataset.role === 'read' ? 'write' : 'read'
-        try {
-          const username = change.closest('li')?.querySelector('.shareWho')?.textContent?.trim().replace(/^@/, '')
-          if (!username || username.startsWith('Account without')) throw new Error('That account has no username to name.')
-          await request(boardSharesUrl(), 'POST', { board_id: shareId, username, role: next })
-          status.textContent = ''
-          await refresh()
-        } catch (error) {
-          status.textContent = error instanceof Error ? error.message : 'That did not work.'
-        }
-        return
-      }
-
-      const withdraw = target.closest<HTMLElement>('[data-share-withdraw]')
-      if (withdraw) {
-        try {
-          await request(boardInvitationsUrl(), 'DELETE', {
-            board_id: shareId, invitation_id: withdraw.dataset.shareWithdraw,
-          })
-          status.textContent = 'Invitation withdrawn.'
-          await refresh()
-        } catch (error) {
-          status.textContent = error instanceof Error ? error.message : 'That did not work.'
-        }
-        return
-      }
-
-      const remove = target.closest<HTMLElement>('[data-share-remove]')
-      if (!remove) return
-      try {
-        await request(boardSharesUrl(), 'DELETE', { board_id: shareId, collaborator_id: remove.dataset.shareRemove })
-        status.textContent = 'Removed collaborator.'
-        await refresh()
-      } catch (error) {
-        status.textContent = error instanceof Error ? error.message : 'That did not work.'
-      }
-    })
-
-    chooseWay('email')
-    void refresh()
-    return form
-  }
-
-  /**
-   * Hand over a link. The clipboard is refused often enough — a browser that
-   * wants a gesture, an insecure context — that the link is always shown as
-   * well, ready to select.
-   */
-  private async offerCopy(url: string, status: HTMLElement): Promise<void> {
-    if (!url) { status.textContent = 'The link could not be made.'; return }
-    status.parentElement?.querySelector('.linkField.is-loose')?.remove()
-    const holder = document.createElement('div')
-    holder.innerHTML = linkField('Invitation link')
-    const field = holder.firstElementChild as HTMLElement
-    field.classList.add('is-loose')
-    ;(field.querySelector('input') as HTMLInputElement).value = url
-    status.after(field)
-    field.querySelector('[data-link-copy]')!.addEventListener('click', () => { void copyLinkField(field) })
-    const copied = await copyLinkField(field)
-    status.textContent = copied ? 'Invite link copied. It works once.' : 'Copy this link. It works once.'
   }
 
   /** Say something in the saved-list status line, where a reader is looking. */
   announce(message: string): void { this.showStatus(message) }
 
-  /** Move keyboard focus to one saved row's History button, when it still exists. */
-  focusHistoryAction(boardId: string): boolean {
-    const button = this.el.querySelector<HTMLElement>(`[data-sv="history"][data-id="${CSS.escape(boardId)}"]`)
-    button?.focus()
-    return !!button
-  }
-
-  /** Move keyboard focus to one saved row's Proposals button, when it still exists. */
-  focusProposalsAction(boardId: string): boolean {
-    const button = this.el.querySelector<HTMLElement>(`[data-sv="proposals"][data-id="${CSS.escape(boardId)}"]`)
-    button?.focus()
-    return !!button
-  }
-
-  /**
-   * What the projects library may offer for its visible cards. Read storage
-   * once and migrate each saved document once, rather than repeating that work
-   * for every card.
-   */
-  projectActionsFor(projectIds: readonly string[]): Map<string, ProjectDocumentActions> {
-    const none: ProjectDocumentActions = { target: null, history: false, proposals: false }
-    const wanted = new Set(projectIds)
-    const actions = new Map<string, ProjectDocumentActions>(projectIds.map(id => [id, none]))
-    if (!wanted.size) return actions
-
-    const all = readAll(this.storageKey)
-    const editable = editableBoardNames(all, hasPaidBoardAccess())
-    const context = this.historyContext()
-    const found = new Set<string>()
-    for (const [name, saved] of Object.entries(all)) {
-      const project = migrateProject(saved.scene)
-      if (!project || !wanted.has(project.id) || found.has(project.id)) continue
-      found.add(project.id)
-      if (!saved.id) continue
-      const locked = !editable.has(name)
-      const row = { ...saved, locked }
-      const history = canOpenBoardHistory(row, context)
-      const proposals = canReviewBoardProposals(row, context)
-      if (history || proposals) {
-        actions.set(project.id, {
-          target: { id: saved.id, name, savedAt: saved.savedAt, accountBinding: saved.syncAccount! },
-          history,
-          proposals,
-        })
-      }
-    }
-    return actions
-  }
-
-  /** The one-card form used by menus and the Settings screens. */
-  projectActions(projectId: string) {
-    return this.projectActionsFor([projectId]).get(projectId) ?? { target: null, history: false, proposals: false }
-  }
-
-  private openProposals(name: string): void {
-    const saved = readAll(this.storageKey)[name]
-    if (!saved?.id) return
-    const locked = !editableBoardNames(readAll(this.storageKey), hasPaidBoardAccess()).has(name)
-    if (!canReviewBoardProposals({ ...saved, locked }, this.historyContext())) return
-    this.onOpenProposals({ id: saved.id, name, accountBinding: saved.syncAccount! })
-  }
-
-  private openHistory(name: string): void {
-    const saved = readAll(this.storageKey)[name]
-    if (!saved?.id) return
-    const locked = !editableBoardNames(readAll(this.storageKey), hasPaidBoardAccess()).has(name)
-    if (!canOpenBoardHistory({ ...saved, locked }, this.historyContext())) return
-    this.onOpenHistory({ id: saved.id, name, savedAt: saved.savedAt, accountBinding: saved.syncAccount! })
-  }
-
   private renderList() {
     const all = readAll(this.storageKey)
     const names = savedBoardNamesByRecency(all)
-    const editable = editableBoardNames(all, hasPaidBoardAccess())
-    const shared = sharedBoardNames(all)
     const list = this.el.querySelector('[data-sv="list"]')!
     if (!names.length) {
       list.innerHTML = '<p class="setNote">No saved boards yet. Local saved boards are unlimited.</p>'
       return
     }
-    const row = (n: string, locked: boolean) => {
+    const row = (n: string) => {
       const project = all[n]
-      const isShared = project.access === 'shared'
       const d = new Date(project.savedAt)
       const dateText = Number.isFinite(d.getTime()) ? d.toLocaleString() : 'Date unavailable'
       const preview = documentScene(project.scene)
       const count = preview.objects.length
       const safe = n.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
-      const owner = project.ownerUsername ? `Shared by @${escXml(project.ownerUsername)}` : 'Shared board'
-      const readOnly = isShared && project.readOnly === true
-      const safeId = String(project.id ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
-      return `<div class="setItem saveItem${locked ? ' saveItemLocked' : ''}">
+      return `<div class="setItem saveItem">
         <span class="savePrev" data-sv="load" data-name="${safe}">${previewSvg(preview)}</span>
-        <span class="saveMeta" data-sv="load" data-name="${safe}"><strong>${safe}</strong><span>${isShared ? `${owner}${readOnly ? ' - read-only' : ''}` : `${dateText} - ${count} objects`}</span></span>
-        ${locked || readOnly ? `<span class="saveReadOnly">${icon('lock')}Read-only</span>` : ''}
-        ${!locked && canCreateAgentLink() && all[n].id ? `<button class="setItemAction" data-sv="agent-link" data-id="${safeId}">Copy agent link</button>` : ''}
-        ${canReviewBoardProposals({ ...project, locked }, this.historyContext()) ? `<button class="setItemAction" data-sv="proposals" data-name="${safe}" data-id="${safeId}" aria-label="Proposed versions of ${safe}">Proposals</button>` : ''}
-        ${canOpenBoardHistory({ ...project, locked }, this.historyContext()) ? `<button class="setItemAction" data-sv="history" data-name="${safe}" data-id="${safeId}" aria-label="Version history for ${safe}">History</button>` : ''}
-        <button class="setItemAction" data-sv="load" data-name="${safe}">${locked ? 'Open' : 'Load'}</button>
-        ${!isShared ? `<button class="setItemAction danger" data-sv="delete" data-name="${safe}" aria-label="Delete ${safe}">${icon('trash')}</button>` : ''}
+        <span class="saveMeta" data-sv="load" data-name="${safe}"><strong>${safe}</strong><span>${dateText} - ${count} objects</span></span>
+        <button class="setItemAction" data-sv="load" data-name="${safe}">Load</button>
+        <button class="setItemAction danger" data-sv="delete" data-name="${safe}" aria-label="Delete ${safe}">${icon('trash')}</button>
       </div>`
     }
-    const sharedNames = names.filter(n => shared.has(n))
-    const personal = names.filter(n => !shared.has(n))
-    const open = personal.filter(n => editable.has(n))
-    const locked = personal.filter(n => !editable.has(n))
-    const editableHead = 'Saved boards'
-    list.innerHTML = [
-      sharedNames.length ? `<div class="setGroupHead">Shared with you</div><div class="setGroup">${sharedNames.map(n => row(n, false)).join('')}</div>` : '',
-      open.length ? `<div class="setGroupHead">${editableHead}</div><div class="setGroup">${open.map(n => row(n, false)).join('')}</div>` : '',
-      locked.length ? `<div class="setGroupHead">Read-only</div><div class="setGroup">${locked.map(n => row(n, true)).join('')}</div>` : '',
-    ].join('')
+    list.innerHTML = `<div class="setGroupHead">Saved boards</div><div class="setGroup">${names.map(row).join('')}</div>`
   }
 }

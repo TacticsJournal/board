@@ -17,7 +17,6 @@
  * rename, duplicate and delete are all testable without a browser.
  */
 
-import type { LibrarySyncStore, SyncedLibraryRecord } from './library-sync.ts'
 
 const INDEX_KEY = 'tbm-bg-index-v1'
 export const BG_PREFIX = 'bg:'
@@ -57,10 +56,9 @@ export type BackgroundMeta = {
   /** approximate stored size of the full image */
   bytes: number
   at: number
-  /** Durable revision used by account sync. */
+  /** Last local revision. */
   updatedAt: string
-  syncAccount?: string
-  /** Deleted rows remain locally so their delete can reach another device. */
+  /** Old delete records from retired account sync. Never shown. */
   deleted?: boolean
 }
 
@@ -143,10 +141,8 @@ function sanitizeMeta(value: unknown): BackgroundMeta | null {
     boardH: num(m.boardH, boardHeightFor(w, h)),
     bytes: Math.max(0, num(m.bytes, 0)),
     at,
-    // Existing shelf rows need a real (old) revision so they upload when no
-    // server record exists, without winning over a newer remote revision.
+    // Existing shelf rows get a real (old) revision.
     updatedAt: typeof m.updatedAt === 'string' && Number.isFinite(Date.parse(m.updatedAt)) ? m.updatedAt : legacyTime,
-    ...(typeof m.syncAccount === 'string' && m.syncAccount ? { syncAccount: m.syncAccount } : {}),
     ...(m.deleted === true ? { deleted: true } : {}),
   }
 }
@@ -301,8 +297,6 @@ export type BackgroundStore = {
   setKind(id: string, kind: BackgroundKind): Promise<void>
   duplicate(id: string): Promise<BackgroundMeta | null>
   remove(id: string): Promise<void>
-  /** Async adapter used by library-sync; remote application never announces a local edit. */
-  librarySyncStore(): LibrarySyncStore
 }
 
 export function createBackgroundStore(
@@ -313,8 +307,8 @@ export function createBackgroundStore(
   // The index is what the picker and the scene read, and it answers
   // synchronously: the mirror holds it across reloads while the database opens.
   let index: BackgroundMeta[] = mirror.read().filter(meta => !meta.deleted)
-  // The mirror is intentionally live-only, but it still gives legacy records
-  // an old revision until IndexedDB supplies their bytes and tombstones.
+  // The mirror is live-only; IndexedDB supplies the bytes and any old delete
+  // records once it opens.
   let records = new Map(index.map(meta => [meta.id, meta]))
   let loaded = false
   const listeners = new Set<(source?: 'local' | 'remote') => void>()
@@ -334,9 +328,6 @@ export function createBackgroundStore(
     const prior = previous ? Date.parse(previous) : Number.NaN
     return new Date(Math.max(now(), Number.isFinite(prior) ? prior + 1 : 0, Date.UTC(2000, 0, 1))).toISOString()
   }
-  const payload = (meta: BackgroundMeta) => ({
-    backgroundKind: meta.kind, w: meta.w, h: meta.h, boardH: meta.boardH, bytes: meta.bytes, at: meta.at,
-  })
   function replace(meta: BackgroundMeta, source: 'local' | 'remote' = 'local') {
     records.set(meta.id, meta)
     index = newest([...records.values()])
@@ -442,101 +433,11 @@ export function createBackgroundStore(
     async remove(id) {
       const meta = records.get(id)
       if (!meta || meta.deleted) return
-      const deleted = { ...meta, deleted: true, updatedAt: revision(meta.updatedAt) }
-      try { await driver.put(deleted) } catch { /* keep the local tombstone in memory */ }
+      try { await driver.remove(id) } catch { /* the index still forgets it */ }
       images.delete(id)
-      replace(deleted)
+      records.delete(id)
+      index = newest([...records.values()])
+      publish('local')
     },
-
-    librarySyncStore(): LibrarySyncStore {
-      return {
-        async list() {
-          // Include IndexedDB tombstones even if authentication completed before
-          // the normal picker startup had finished opening the database.
-          if (!loaded) await thisLoad()
-          const out: SyncedLibraryRecord[] = []
-          for (const meta of records.values()) {
-            const src = meta.deleted ? null : await thisImage(meta.id)
-            const record: SyncedLibraryRecord = {
-              id: meta.id, kind: 'background', name: meta.name,
-              payload: { ...payload(meta), ...(src ? { bytes: dataUrlBytes(src) } : {}) },
-              updatedAt: meta.updatedAt, ...(meta.syncAccount ? { syncAccount: meta.syncAccount } : {}),
-            }
-            if (meta.deleted) record.deleted = true
-            else if (src) record.src = src
-            out.push(record)
-          }
-          return out
-        },
-        async apply(record) {
-          if (record.kind !== 'background') return
-          const current = records.get(record.id)
-          if (current && Date.parse(current.updatedAt) >= Date.parse(record.updatedAt)) return
-          const data = record.payload && typeof record.payload === 'object'
-            ? record.payload as Record<string, unknown> : {}
-          const w = typeof data.w === 'number' && data.w > 0 ? data.w : current?.w ?? 800
-          const h = typeof data.h === 'number' && data.h > 0 ? data.h : current?.h ?? 418
-          const meta: BackgroundMeta = {
-            id: record.id, name: cleanName(record.name),
-            kind: isBackgroundKind(data.backgroundKind) ? data.backgroundKind : current?.kind ?? 'broadcast', w, h,
-            boardH: typeof data.boardH === 'number' && data.boardH > 0 ? data.boardH : current?.boardH ?? boardHeightFor(w, h),
-            bytes: typeof record.src === 'string' ? dataUrlBytes(record.src)
-              : typeof data.bytes === 'number' && data.bytes >= 0 ? data.bytes : current?.bytes ?? 0,
-            at: typeof data.at === 'number' && Number.isFinite(data.at) ? data.at : current?.at ?? Date.parse(record.updatedAt),
-            updatedAt: record.updatedAt, ...(record.syncAccount ? { syncAccount: record.syncAccount } : {}),
-            ...(record.deleted ? { deleted: true } : {}),
-          }
-          if (meta.deleted) {
-            await driver.put(meta)
-            images.delete(meta.id)
-          } else if (typeof record.src === 'string' && record.src.startsWith('data:image/jpeg')) {
-            // A full JPEG is a valid tile until a browser has made a smaller one.
-            await driver.put({ ...meta, full: record.src, thumb: record.src })
-            images.set(meta.id, record.src)
-          } else return
-          replace(meta, 'remote')
-        },
-        async bind(ids, account) {
-          for (const id of ids) {
-            const meta = records.get(id)
-            if (!meta || (meta.syncAccount && meta.syncAccount !== account)) continue
-            const bound = { ...meta, syncAccount: account }
-            const row = await driver.get(id)
-            if (row) await driver.put({ ...row, syncAccount: account })
-            records.set(id, bound)
-          }
-          index = newest([...records.values()])
-          mirror.write(index)
-        },
-      }
-    },
-  }
-
-  // Avoid exposing the image cache through the adapter object and keep list()
-  // safe when it is called after methods have been detached.
-  async function thisLoad() {
-    let rows: StoredBackground[]
-    try { rows = await driver.list() } catch { loaded = true; return }
-    records = new Map(rows.flatMap(row => {
-      const clean = sanitizeStored(row)
-      if (!clean) return []
-      const { full: _full, thumb: _thumb, ...meta } = clean
-      return [[meta.id, meta] as const]
-    }))
-    index = newest([...records.values()])
-    loaded = true
-    publish('remote')
-  }
-
-  async function thisImage(id: string) {
-    if (records.get(id)?.deleted) return null
-    const cached = images.get(id)
-    if (cached) return cached
-    try {
-      const row = sanitizeStored(await driver.get(id))
-      if (!row?.full) return null
-      images.set(id, row.full)
-      return row.full
-    } catch { return null }
   }
 }

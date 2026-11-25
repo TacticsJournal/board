@@ -239,36 +239,6 @@ test('backgrounds saved before the choice existed stay broadcasts', async () => 
   assert.equal(store.get('bg:old')?.kind, 'broadcast')
 })
 
-test('background sync keeps tombstones local, binds accepted rows, and hydrates pulled JPEG bytes', async () => {
-  const store = newStore()
-  const local = await store.add(shot('Local'))
-  const sync = store.librarySyncStore()
-  let notices = 0
-  store.subscribe(source => { if (source === 'local') notices++ })
-  await sync.bind([local.id], 'a'.repeat(64))
-  assert.equal((await sync.list())[0].syncAccount, 'a'.repeat(64))
-
-  await sync.apply({
-    id: 'bg:remote', kind: 'background', name: 'Remote camera',
-    payload: { backgroundKind: 'broadcast', w: 1600, h: 900, boardH: 450, bytes: 300, at: 20 },
-    updatedAt: '2026-08-18T12:00:00.000Z', syncAccount: 'a'.repeat(64), src: IMAGE,
-  })
-  assert.equal(store.get('bg:remote')?.name, 'Remote camera')
-  assert.equal(await store.image('bg:remote'), IMAGE)
-  assert.equal(store.get('bg:remote')?.bytes, dataUrlBytes(IMAGE), 'pulled size comes from the JPEG')
-  assert.equal(notices, 0, 'pulled rows do not look like local edits')
-
-  await sync.apply({
-    id: 'bg:remote', kind: 'background', name: 'Deleted background', payload: undefined,
-    updatedAt: '2026-08-18T12:00:01.000Z', syncAccount: 'a'.repeat(64), deleted: true,
-  })
-  assert.equal(store.get('bg:remote'), null, 'a payload-free remote tombstone still removes the image')
-
-  await store.remove(local.id)
-  assert.equal(store.get(local.id), null)
-  assert.equal((await sync.list()).find(row => row.id === local.id)?.deleted, true)
-})
-
 test('the kind decides what the board offers on the image', async () => {
   const { pitchById, setCustomPitches } = await import('../src/pitches.ts')
   const { backgrounds } = await import('../src/background-library.ts')

@@ -1,7 +1,5 @@
-/** Legacy display constant retained for import compatibility. Local saved boards are unlimited. */
-export const FREE_EDITABLE_BOARD_LIMIT = 3
-
-export type SavedBoardRecord = Readonly<{ savedAt: string; access?: 'shared' }>
+/** Local saved boards are unlimited, and every one of them is editable. */
+export type SavedBoardRecord = Readonly<{ savedAt: string }>
 export type SavedBoardCollection = Readonly<Record<string, SavedBoardRecord>>
 
 function savedTime(record: SavedBoardRecord | undefined): number | null {
@@ -24,75 +22,6 @@ export function savedBoardNamesByRecency(boards: SavedBoardCollection): string[]
     if (aTime !== null && bTime !== null && aTime !== bTime) return bTime < aTime ? -1 : 1
     return compareNames(a, b)
   })
-}
-
-/** Shared boards are editable for their collaborator and do not use a personal Free slot. */
-export function sharedBoardNames(boards: SavedBoardCollection): ReadonlySet<string> {
-  return new Set(Object.entries(boards).flatMap(([name, board]) => board.access === 'shared' ? [name] : []))
-}
-
-/** Every local saved board is editable. */
-export function editableBoardNames(boards: SavedBoardCollection, _pro: boolean): ReadonlySet<string> {
-  return new Set(savedBoardNamesByRecency(boards))
-}
-
-export function canCreateSavedBoard(_boards: SavedBoardCollection, _pro: boolean): boolean {
-  return true
-}
-
-export type SlotSwapResult =
-  | { ok: true; boards: Record<string, SavedBoardRecord> }
-  | { ok: false; reason: string }
-
-/**
- * Swap one editable slot with a read-only board. The sacrifice board
- * becomes read-only and the target board takes its editable slot.
- * Neither board is deleted or overwritten -- only savedAt timestamps
- * change so the target ranks among the three most recent.
- *
- * Pro users never need this (all boards are editable).
- */
-export function swapEditableSlot(
-  boards: SavedBoardCollection,
-  sacrificeName: string,
-  targetName: string,
-): SlotSwapResult {
-  if (sacrificeName === targetName) return { ok: false, reason: 'Cannot swap a board with itself.' }
-  if (!boards[sacrificeName]) return { ok: false, reason: 'The board to swap out does not exist.' }
-  if (!boards[targetName]) return { ok: false, reason: 'The board to swap in does not exist.' }
-  if (boards[sacrificeName].access === 'shared') {
-    return { ok: false, reason: 'Shared boards do not use a personal editable slot.' }
-  }
-
-  const editable = editableBoardNames(boards, false)
-  if (!editable.has(sacrificeName)) return { ok: false, reason: 'The board to swap out is not currently editable.' }
-  if (editable.has(targetName)) return { ok: false, reason: 'The board to swap in is already editable.' }
-
-  // Give the target the sacrifice's timestamp and push the sacrifice
-  // just behind the oldest editable board so it drops out of the top 3.
-  const recency = savedBoardNamesByRecency(boards)
-  const editableList = recency.filter((n) => editable.has(n))
-  const oldestEditable = editableList[editableList.length - 1]
-
-  // The target takes the sacrifice's position by inheriting its savedAt.
-  // The sacrifice gets a timestamp one millisecond before the oldest
-  // editable board, ensuring it drops below the free limit.
-  const oldestTime = savedTime(boards[oldestEditable])
-  const demotedTime = oldestTime !== null
-    ? new Date(oldestTime - 1).toISOString()
-    : boards[sacrificeName].savedAt
-
-  const updated = { ...boards }
-  updated[targetName] = { ...boards[targetName], savedAt: boards[sacrificeName].savedAt }
-  updated[sacrificeName] = { ...boards[sacrificeName], savedAt: demotedTime }
-
-  // Verify the swap achieved its goal
-  const newEditable = editableBoardNames(updated, false)
-  if (!newEditable.has(targetName)) {
-    return { ok: false, reason: 'Swap did not produce the expected result.' }
-  }
-
-  return { ok: true, boards: updated }
 }
 
 export type StorageWriter = Pick<Storage, 'setItem'>

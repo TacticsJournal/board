@@ -36,7 +36,6 @@ export type PitchStyle = {
       someone's own background, where nobody can know. */
   surface?: PitchSurface
   /** Legacy metadata. Local pitch styles are Free. */
-  pro: boolean
   /** clean pitch, shown only to the board admin account */
   adminOnly?: boolean
   /** background is a user-imported broadcast screenshot (localStorage);
@@ -59,16 +58,16 @@ export type PitchStyle = {
 }
 
 export const PITCHES: PitchStyle[] = [
-  { id: 'pitch', label: 'Pitch', src: new URL('../assets/pitch/pitch_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/pitch_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/pitch_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/pitch_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/pitch_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/pitch_marked_cream.jpg', import.meta.url).href }, boardH: 618, pro: false, category: 'pitch', sides: 1, scoreboard: { x: 745, y: 86 }, surface: { x: [{ min: 0.00223, max: 0.99777 }], y: { min: 0.08767, max: 0.90909 } } },
-  { id: 'pitch-up', label: 'Vertical', src: new URL('../assets/pitch/pitch_up_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/pitch_up_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/pitch_up_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/pitch_up_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/pitch_up_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/pitch_up_marked_cream.jpg', import.meta.url).href }, boardH: 640, pro: false, category: 'vertical', sides: 1, scoreboard: { x: 75, y: 133 }, surface: { x: [{ min: -0.00131, max: 1.00006 }], y: { min: -0.01198, max: 0.93594 } } },
-  { id: 'full-pitch', label: 'Full Pitch', src: new URL('../assets/pitch/full_pitch_marked.png', import.meta.url).href, papers: { dark: new URL('../assets/pitch/full_pitch_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/full_pitch_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/full_pitch_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/full_pitch_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/full_pitch_marked_cream.jpg', import.meta.url).href }, boardH: 1066, pro: false, category: 'fullpitch', sides: 1, scoreboard: { x: 75, y: 133 }, defaultSizes: { player: 15, name: 20, label: 23 }, surface: { x: [{ min: -0.00025, max: 0.999 }], y: { min: -0.00135, max: 1.00041 } } },
-  { id: 'training', label: 'Training', src: new URL('../assets/pitch/training_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/training_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/training_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/training_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/training_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/training_marked_cream.jpg', import.meta.url).href }, boardH: 418, pro: false, category: 'training', sides: 1, scoreboard: { x: 745, y: 86, logo: true }, awayCodeLift: 44, surface: { x: [{ min: 0.05563, max: 0.94312 }], y: { min: 0.11364, max: 0.88636 } } },
-  { id: 'sidebyside', label: 'Two pitches', src: new URL('../assets/pitch/sidebyside_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/sidebyside_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/sidebyside_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/sidebyside_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/sidebyside_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/sidebyside_marked_cream.jpg', import.meta.url).href }, boardH: 533, pro: false, category: 'sidebyside', sides: 2, scoreboard: { x: 400, y: 95 }, surface: { x: [{ min: 0.03315, max: 0.45372 }, { min: 0.54503, max: 0.9656 }], y: { min: 0.00646, max: 0.99354 } } },
+  { id: 'pitch', label: 'Pitch', src: new URL('../assets/pitch/pitch_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/pitch_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/pitch_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/pitch_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/pitch_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/pitch_marked_cream.jpg', import.meta.url).href }, boardH: 618, category: 'pitch', sides: 1, scoreboard: { x: 745, y: 86 }, surface: { x: [{ min: 0.00223, max: 0.99777 }], y: { min: 0.08767, max: 0.90909 } } },
+  { id: 'pitch-up', label: 'Vertical', src: new URL('../assets/pitch/pitch_up_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/pitch_up_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/pitch_up_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/pitch_up_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/pitch_up_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/pitch_up_marked_cream.jpg', import.meta.url).href }, boardH: 640, category: 'vertical', sides: 1, scoreboard: { x: 75, y: 133 }, surface: { x: [{ min: -0.00131, max: 1.00006 }], y: { min: -0.01198, max: 0.93594 } } },
+  { id: 'full-pitch', label: 'Full Pitch', src: new URL('../assets/pitch/full_pitch_marked.png', import.meta.url).href, papers: { dark: new URL('../assets/pitch/full_pitch_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/full_pitch_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/full_pitch_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/full_pitch_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/full_pitch_marked_cream.jpg', import.meta.url).href }, boardH: 1066, category: 'fullpitch', sides: 1, scoreboard: { x: 75, y: 133 }, defaultSizes: { player: 15, name: 20, label: 23 }, surface: { x: [{ min: -0.00025, max: 0.999 }], y: { min: -0.00135, max: 1.00041 } } },
+  { id: 'training', label: 'Training', src: new URL('../assets/pitch/training_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/training_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/training_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/training_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/training_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/training_marked_cream.jpg', import.meta.url).href }, boardH: 418, category: 'training', sides: 1, scoreboard: { x: 745, y: 86, logo: true }, awayCodeLift: 44, surface: { x: [{ min: 0.05563, max: 0.94312 }], y: { min: 0.11364, max: 0.88636 } } },
+  { id: 'sidebyside', label: 'Two pitches', src: new URL('../assets/pitch/sidebyside_marked.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/sidebyside_marked_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/sidebyside_marked_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/sidebyside_marked_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/sidebyside_marked_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/sidebyside_marked_cream.jpg', import.meta.url).href }, boardH: 533, category: 'sidebyside', sides: 2, scoreboard: { x: 400, y: 95 }, surface: { x: [{ min: 0.03315, max: 0.45372 }, { min: 0.54503, max: 0.9656 }], y: { min: 0.00646, max: 0.99354 } } },
   /* The old single-slot screenshot board. Every screenshot is a saved
      background now, so this is never offered; it stays so boards drawn on it
      keep their art. */
-  { id: 'live', label: 'Live', src: '', boardH: 372, pro: false, category: 'live', sides: 1, live: true, hidden: true },
-  { id: 'classic', label: 'Classic', src: new URL('../assets/pitch/pitch.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/pitch_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/pitch_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/pitch_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/pitch_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/pitch_cream.jpg', import.meta.url).href }, boardH: 418, pro: true, adminOnly: true, category: 'classic', sides: 1, scoreboard: { x: 745, y: 86, logo: true }, surface: { x: [{ min: 0.00164, max: 0.99649 }], y: { min: -0.1104, max: 1.10203 } } },
+  { id: 'live', label: 'Live', src: '', boardH: 372, category: 'live', sides: 1, live: true, hidden: true },
+  { id: 'classic', label: 'Classic', src: new URL('../assets/pitch/pitch.jpeg', import.meta.url).href, papers: { dark: new URL('../assets/pitch/pitch_dark.jpg', import.meta.url).href, slate: new URL('../assets/pitch/pitch_slate.jpg', import.meta.url).href, grass: new URL('../assets/pitch/pitch_grass.jpg', import.meta.url).href, steel: new URL('../assets/pitch/pitch_steel.jpg', import.meta.url).href, cream: new URL('../assets/pitch/pitch_cream.jpg', import.meta.url).href }, boardH: 418, adminOnly: true, category: 'classic', sides: 1, scoreboard: { x: 745, y: 86, logo: true }, surface: { x: [{ min: 0.00164, max: 0.99649 }], y: { min: -0.1104, max: 1.10203 } } },
 ]
 
 /**
@@ -136,31 +135,9 @@ export const DEFAULT_PITCH = 'pitch'
  * same as our own art.
  */
 let CUSTOM: PitchStyle[] = []
-/** A shared background is session data, not a picker item or a personal row. */
-let ACTIVE_SHARED: PitchStyle[] = []
 
 export function setCustomPitches(styles: PitchStyle[]): void {
   CUSTOM = styles
-}
-
-export function setActiveSharedPitches(styles: PitchStyle[]): void {
-  ACTIVE_SHARED = styles.filter(style => style.id.startsWith('bg:'))
-}
-
-export function setActiveSharedPitch(style: PitchStyle): void {
-  if (!style.id.startsWith('bg:')) return
-  ACTIVE_SHARED = [...ACTIVE_SHARED.filter(item => item.id !== style.id), style]
-}
-
-export function clearActiveSharedPitches(): void {
-  ACTIVE_SHARED = []
-}
-
-export function sharedPitchPlaceholder(id: string, boardH = 418): PitchStyle {
-  return {
-    id, label: 'Shared background', src: '', boardH: Math.max(1, Math.min(32768, boardH)),
-    category: 'custom', sides: 1, pro: false, live: true, custom: true, missing: true,
-  }
 }
 
 export function customPitches(): PitchStyle[] {
@@ -176,7 +153,7 @@ export function allPitches(): PitchStyle[] {
 function missingBackground(id: string): PitchStyle {
   return {
     id, label: 'Missing background', src: '', boardH: 418,
-    category: 'custom', sides: 1, pro: false, live: true, custom: true, missing: true,
+    category: 'custom', sides: 1, live: true, custom: true, missing: true,
   }
 }
 
@@ -253,8 +230,6 @@ export function pitchLines(id: string | undefined | null): PitchLines | null {
 }
 
 export function pitchById(id: string | undefined | null): PitchStyle {
-  const shared = ACTIVE_SHARED.find(p => p.id === id)
-  if (shared) return shared
   const custom = CUSTOM.find(p => p.id === id)
   if (custom) return custom
   const built = PITCHES.find(p => p.id === id)

@@ -1,10 +1,10 @@
 /**
  * Notice when the same board is open in another tab of this browser.
  *
- * Tabs share one sync device, so the collaboration room counts them as a single
- * editor and relays nothing between them: each only sees the other's edits once
- * they are saved. Rather than let that look like broken live editing, the tabs
- * find each other here and the page asks the person to close one.
+ * Tabs share one local storage, and nothing relays edits between them: each
+ * only sees the other's edits once they are saved. Rather than let that look
+ * broken, the tabs find each other here and the page asks the person to close
+ * one.
  *
  * Nothing leaves the browser. Each tab announces its board on a
  * BroadcastChannel; a tab showing the same board answers, and a closing tab

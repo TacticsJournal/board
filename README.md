@@ -8,17 +8,24 @@ Board is free and open source. Read [Introducing Board](https://tacticsjournal.c
 
 ## Use the hosted Board
 
-Open [board.tacticsjournal.com](https://board.tacticsjournal.com/). You can start without an account.
+Open [board.tacticsjournal.com](https://board.tacticsjournal.com/). There are no accounts and nothing to buy.
 
-The free hosted Board keeps three projects and three saved boards editable in your browser. Older saved boards remain available read-only. You can export a project file to another device or export a board as a PNG.
+Every feature is free: every pitch style, custom backgrounds and assets, reusable groups, animation, screenshot import, PNG, GIF, and video export, and unlimited projects and saved boards. Projects, images, fonts, and other files stay in your browser. Use Move to another device to carry a project file to another browser.
 
-The Annual Board License adds every pitch style, custom backgrounds and assets, reusable groups, animation, unlimited editable projects, and copy links on the hosted Board. Pro includes the Board License, cloud sync, real-time collaboration, and links that let Claude, ChatGPT, or another agent work on one project.
+The hosted Board talks to Tactics Journal only when you ask it to, and never with cookies:
+
+- **Copy link** sends the board or project you chose, with a preview image for a single board, to Tactics Journal. The copy is kept for 24 hours so the link can open, then it expires.
+- **Feedback** sends the name, email, issue, device, browser, and page (origin and path only) you submit.
+- **Site search** in the header sends the words you search for.
+- **Aggregate counters** record editor opens and exports by format. They carry no IP address, visitor ID, URL, referrer, cookies, or free text.
+
+Board sets no cookies, uses no third-party analytics, and sells nothing.
 
 ## Self-host Board
 
-A self-host build enables every local editing and export feature without a Board License or Pro account. Boards, backgrounds, and uploaded assets stay in that browser profile. Board does not send them to a server.
+A self-host build has every local editing and export feature. Boards, backgrounds, and uploaded assets stay in that browser profile. Board does not send them to a server.
 
-Self-hosting does not include Tactics Journal accounts, cloud sync, collaboration, billing, or agent links. Those depend on Tactics Journal-operated services. Team search can still contact TheSportsDB and Wikipedia from the browser.
+Self-hosting does not include Copy link, Feedback, site search, or the aggregate counters, because those use Tactics Journal-operated services. Team search can still contact TheSportsDB and Wikipedia from the browser.
 
 ### Run the Docker image
 
@@ -110,13 +117,14 @@ Browser
          │
          ├── TheSportsDB and Wikipedia for optional team data
          └── Tactics Journal APIs in the hosted build only
+             (24-hour copy links, feedback, site search, aggregate counters)
 
 Vite self-host build → static dist/ → nginx, Docker, or another static server
 ```
 
 A self-host installation needs no application server or database. `backend/main.py` is an optional FastAPI homography experiment. The browser already performs the same pitch mapping itself.
 
-The main code lives under `src/`. `board.ts` owns canvas interaction and rendering, `main.ts` assembles the interface and workflows, and `store.ts` manages editor state. Separate modules handle import, export, persistence, sync, and extensions.
+The main code lives under `src/`. `board.ts` owns canvas interaction and rendering, `main.ts` assembles the interface and workflows, and `store.ts` manages editor state. Separate modules handle import, export, local persistence, and extensions.
 
 ## Develop
 

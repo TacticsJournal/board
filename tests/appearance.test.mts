@@ -175,7 +175,7 @@ test('the board is drawn with it, everywhere a board is drawn', () => {
   assert.match(saves, /inkOn\(look\['player\.numberColor'\]/)
 })
 
-test('an appearance change is a board change: it undoes, and it syncs', () => {
+test('an appearance change is a board change: it undoes, and it saves', () => {
   assert.match(store, /appearance: s\.appearance/)
   assert.match(store, /if \(parsed\.appearance\) this\.scene\.appearance = parsed\.appearance/)
 })
@@ -209,9 +209,8 @@ test('appearance is a panel screen, over the board rather than across it', () =>
   assert.match(main, /function endLookDrag[\s\S]*?store\.endGesture\(\)/)
   // Writing a property repaints the row, not the whole list.
   assert.match(main, /function writeLook[\s\S]*?refreshLookRow\(key\)/)
-  /* How a board is drawn is a local edit, like every other one: free. Pro is
-     what carries it off this device - a board only syncs with Pro, and the
-     appearance rides on the board. So nothing here asks to be paid for. */
+  /* How a board is drawn is a local edit, like every other one: free. Board
+     sells nothing, so nothing here asks to be paid for. */
   assert.doesNotMatch(main, /function setBoardAppearance[\s\S]{0,200}?hasPaidBoardAccess/)
   assert.doesNotMatch(main, /function writeLook[\s\S]{0,200}?hasPaidBoardAccess/)
   assert.doesNotMatch(main, /function panelAppearanceHtml[\s\S]{0,300}?hasPaidBoardAccess/)

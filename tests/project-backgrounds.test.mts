@@ -109,9 +109,7 @@ test('bytes that arrive later redraw what is already on screen', () => {
   assert.match(view, /for \(const scene of scenes\) this\.background\(scene, project\.id\)/)
 })
 
-test('the host reads shared backgrounds through the shared scope and its own from the shelf', () => {
-  assert.match(main, /resolveBackground: \(id, projectId\) => \(\s*sharedBackgroundScope && projectId === sharedBackgroundProjectId\s*\? sharedBackgroundScope\(id\)\s*: backgrounds\.image\(id\)\s*\)/)
-  assert.match(main, /sharedBackgroundProjectId = row\.project\.id/)
-  // a scope that changes or goes away takes the bytes read through it with it
-  assert.match(main, /boardsView\.clearBackgroundCache\(\)/)
+test('the host reads every background from this browser\'s own shelf', () => {
+  assert.match(main, /resolveBackground: \(id\) => backgrounds\.image\(id\)/)
+  assert.doesNotMatch(main, /sharedBackgroundScope|sharedBackgroundProjectId/)
 })

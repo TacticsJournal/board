@@ -39,7 +39,7 @@ function toStyle(meta: BackgroundMeta): PitchStyle {
     // pitch and a camera frame asks, the way our own styles do.
     category: broadcast ? 'live' : 'custom',
     sides: 1,
-    pro: true,
+   
     // A broadcast behaves the way an imported screenshot always has: single
     // live players, a flip, light arrows, no team overlay. A pitch is drawn on
     // like our own art.

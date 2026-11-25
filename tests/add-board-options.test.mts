@@ -6,18 +6,18 @@ import { addBoardChoices } from '../src/add-board-options.ts'
 import type { PitchStyle } from '../src/pitches.ts'
 
 const style = (over: Partial<PitchStyle> & { id: string }): PitchStyle => ({
-  label: over.id, src: '', boardH: 418, category: 'pitch', pro: false, ...over,
+  label: over.id, src: '', boardH: 418, category: 'pitch', ...over,
 })
 
 const builtIn: PitchStyle[] = [
   style({ id: 'pitch', label: 'Pitch', src: 'pitch.jpeg', boardH: 618 }),
-  style({ id: 'pitch-up', label: 'Vertical', src: 'up.jpeg', boardH: 640, pro: true }),
-  style({ id: 'live', label: 'Live', pro: true, hidden: true }),
-  style({ id: 'classic', label: 'Classic', src: 'classic.jpeg', pro: true, adminOnly: true }),
+  style({ id: 'pitch-up', label: 'Vertical', src: 'up.jpeg', boardH: 640 }),
+  style({ id: 'live', label: 'Live', hidden: true }),
+  style({ id: 'classic', label: 'Classic', src: 'classic.jpeg', adminOnly: true }),
 ]
 const saved: PitchStyle[] = [
-  style({ id: 'bg:1', label: 'Half space', boardH: 500, pro: true, custom: true }),
-  style({ id: 'bg:gone', label: 'Missing background', pro: true, custom: true, missing: true }),
+  style({ id: 'bg:1', label: 'Half space', boardH: 500, custom: true }),
+  style({ id: 'bg:gone', label: 'Missing background', custom: true, missing: true }),
 ]
 
 const paid = (input: Partial<Parameters<typeof addBoardChoices>[0]> = {}) => addBoardChoices({
