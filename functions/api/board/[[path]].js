@@ -1,28 +1,25 @@
 import { boardOrigin, upstreamOrigin } from '../../lib/board-origin.js';
 
 /**
- * The fixed Board proxy to tacticsjournal.com. Board has no accounts, so only
- * two paths remain:
+ * The fixed Board proxy to tacticsjournal.com. Board has no accounts and
+ * sends no usage counters, so one path remains:
  *
  * - `import-drafts`: the anonymous Copy link. A browser stores one board (with
  *   a JPEG preview) or one project, and anyone with the link reads it back.
  *   tacticsjournal.com keeps each draft for 24 hours.
- * - `events`: aggregate product counters.
  *
  * Upstream headers are built from an allowlist. Cookies and Authorization are
- * never forwarded. Import drafts forward the client IP so tacticsjournal.com
- * can rate-limit link creation; events carry no IP and a fixed User-Agent.
+ * never forwarded. The client IP is forwarded so tacticsjournal.com can
+ * rate-limit link creation.
  */
-const ALLOWED = new Set(['import-drafts', 'events']);
+const ALLOWED = new Set(['import-drafts']);
 const IMPORT_PAYLOAD = /^[A-Za-z0-9_-]+$/;
 const IMPORT_PREVIEW = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/;
 const MAX_IMPORT_BODY_BYTES = 512 * 1024;
 const MAX_BOARD_PAYLOAD_CHARS = 4000;
 const MAX_PROJECT_PAYLOAD_CHARS = 350_000;
 const MAX_IMPORT_PREVIEW_CHARS = 500_000;
-const MAX_EVENT_BODY_BYTES = 2048;
 const DRAFT_USER_AGENT = 'TacticsBoardAgent/1.0';
-const EVENTS_USER_AGENT = 'TacticsBoard/1.0';
 
 function boardPath(params) {
   const value = params?.path;
@@ -47,14 +44,10 @@ function upstreamHeaders(request, path) {
     if (value) headers.set(name, value);
   }
   headers.set('Origin', boardOrigin(request));
-  if (path === 'import-drafts') {
-    // tacticsjournal.com rate-limits link creation and reads by client IP.
-    const ip = request.headers.get('CF-Connecting-IP');
-    if (ip) headers.set('CF-Connecting-IP', ip);
-    headers.set('User-Agent', DRAFT_USER_AGENT);
-  } else {
-    headers.set('User-Agent', EVENTS_USER_AGENT);
-  }
+  // tacticsjournal.com rate-limits link creation and reads by client IP.
+  const ip = request.headers.get('CF-Connecting-IP');
+  if (ip) headers.set('CF-Connecting-IP', ip);
+  headers.set('User-Agent', DRAFT_USER_AGENT);
   return headers;
 }
 
@@ -66,7 +59,6 @@ function upstreamHeaders(request, path) {
 export function upstreamRequest(request, params = {}, body = undefined) {
   const path = boardPath(params);
   if (!ALLOWED.has(path) || !hasAllowedWriteOrigin(request)) return null;
-  if (path === 'events' && request.method.toUpperCase() !== 'POST') return null;
 
   const incoming = new URL(request.url);
   const target = new URL(`/api/board/${path}`, upstreamOrigin());
@@ -150,16 +142,6 @@ async function importDraftBody(request) {
   return JSON.stringify({ payload: body.payload, preview: body.preview });
 }
 
-async function eventBody(request) {
-  if (!isJson(request)) return null;
-  const text = await boundedText(request, MAX_EVENT_BODY_BYTES);
-  if (text === null) return null;
-  try {
-    const body = JSON.parse(text);
-    return body && typeof body === 'object' && !Array.isArray(body) ? JSON.stringify(body) : null;
-  } catch { return null; }
-}
-
 export async function onRequest(context) {
   const request = context.request;
   const path = boardPath(context.params);
@@ -172,10 +154,6 @@ export async function onRequest(context) {
   if (path === 'import-drafts' && method === 'POST') {
     body = await importDraftBody(request);
     if (body === null) return jsonError('Send one bounded board or project payload.', 400);
-  } else if (path === 'events') {
-    if (method !== 'POST') return new Response('Method not allowed.', { status: 405, headers: { 'Cache-Control': 'no-store', Allow: 'POST' } });
-    body = await eventBody(request);
-    if (body === null) return jsonError('Send one event.', 400);
   } else if (!isRead(request)) {
     return new Response('Method not allowed.', { status: 405, headers: { 'Cache-Control': 'no-store', Allow: 'GET, HEAD, POST' } });
   }

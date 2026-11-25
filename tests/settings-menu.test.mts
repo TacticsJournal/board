@@ -76,13 +76,11 @@ test('Agents and Help keep every destination discoverable, with no account rows'
   assert.equal(occurrences(help, 'data-goto="about"'), 1)
 })
 
-test('the hosted privacy page describes tracking and personal data accurately', () => {
+test('the privacy note says Board collects no usage data', () => {
   const about = sliceBetween(main, 'data-pane="about"', 'data-pane="self-host"')
   assert.match(about, /<strong>Privacy, data, copyright and use<\/strong>/)
-  assert.match(about, /Board sends first-party aggregate counters/)
-  assert.match(about, /no IP address, account ID, visitor ID, URL, referrer, cookies, or arbitrary text/)
-  assert.match(about, /kept for 14 months/)
-  assert.match(about, /no advertising, third-party analytics, or cross-site tracking cookies/)
+  assert.match(about, /Board collects no usage data/)
+  assert.doesNotMatch(main, /recordProductEvent|boardPresenceUrl/)
 })
 
 test('every icon in a settings row is one CSS sizes, not a bare SVG', () => {

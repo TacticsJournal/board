@@ -64,7 +64,6 @@ import { STILL_COPY, dropDecision, dropLabel, imageFiles, isTypingTarget, pasteD
 import { openComposer } from './composer'
 import { CATEGORY_SCENES_RECOVERED_SUFFIX, planCategorySnapshotRecovery } from './category-recovery'
 import { exportAnimation } from './animate-export'
-import { recordProductEvent } from './product-events'
 import { downloadProjectImage, exportProjectImages, type ProjectImageFile } from './project-image-export'
 import { startAgentImport, type BoardImportResult } from './agent-import-ui'
 import { createBoardImportUrl, createProjectImportUrl, isAgentImportTooLarge, type AgentImportDraft, type BoardImportMode } from './agent-import'
@@ -4758,7 +4757,6 @@ function dataUrlToBlob(url: string): Blob {
 
 /** `url` is a board already drawn some other way (the export sheet's look). */
 function exportPng(url = board.exportPng()) {
-  void recordProductEvent('board_exported', 'png')
   const filename = store.scene.pitch === 'classic'
     ? 'Pitch - Board Tactics Journal.png'
     : 'tactics-board.png'
@@ -5960,7 +5958,6 @@ async function openExportSheet() {
         await exportProjectImages(styled(), defaults, (done, total) => {
           status.textContent = `Building the project images\u2026 ${done} of ${total}`
         }, undefined, individualFallback)
-        void recordProductEvent('board_exported', 'png')
         if (!fellBack) close()
       } catch (err) {
         setBusy(false)
@@ -5975,7 +5972,6 @@ async function openExportSheet() {
         const pct = Math.round(done * 100 / total)
         status.textContent = kind === 'gif' ? `Building the GIF\u2026 ${pct}%` : `Recording the video\u2026 ${pct}%`
       })
-      void recordProductEvent('board_exported', kind)
       close()
     } catch (err) {
       setBusy(false)
@@ -7069,7 +7065,8 @@ settingsEl.innerHTML = `
       <div class="setTutorial">
         <strong>Privacy, data, copyright and use</strong>
         <p><b>Your boards stay here.</b> Board is free and has no accounts. Projects, boards, backgrounds, fonts, assets and settings are kept in this browser's own storage and are never sent to Tactics Journal. Clearing this site's data in your browser deletes them, so use Move to another device to keep a copy as a file.</p>
-        ${BOARD_SELF_HOSTED ? '' : '<p><b>What leaves this browser.</b> Copy link sends the board or project you chose, with a preview image for a board, to Tactics Journal, which keeps it for 24 hours so the link can open. Feedback sends the name, email, issue, device, browser and page you submit. Board sends first-party aggregate counters for editor opens and exports by format. These counters contain no IP address, account ID, visitor ID, URL, referrer, cookies, or arbitrary text and are kept for 14 months. None of these requests carry cookies, and Board sets no cookies of its own. We use no advertising, third-party analytics, or cross-site tracking cookies.</p>'}
+        ${BOARD_SELF_HOSTED ? '' : '<p><b>What leaves this browser.</b> Copy link sends the board or project you chose, with a preview image for a board, to Tactics Journal, which keeps it for 24 hours so the link can open. Feedback sends the name, email, issue, device, browser and page you submit. None of these requests carry cookies, and Board sets no cookies of its own.</p>'}
+        <p><b>Privacy.</b> Board collects no usage data. There is no analytics, telemetry, advertising, or tracking.</p>
         <p><b>Data sources.</b> Team search and kit colors use TheSportsDB public API. Squad names, shirt numbers and positions are read from current squad sections on Wikipedia through the Wikipedia API. Third-party data may be incomplete, delayed or inaccurate; verify it before publishing.</p>
         <p><b>Copyright.</b> Except for identified third-party materials, the software and bundled assets are available under the MIT license. Club names, player names, colors and other source data remain the property of their respective owners and data providers. Tactics Journal and Tactics Board names and logos are reserved trademarks.</p>
         <p><b>Interface icons.</b> The icons in Settings and the menus are <a href="https://tabler.io/icons" target="_blank" rel="noopener">Tabler Icons</a>, copyright Paweł Kuna, used under the MIT license. The full license text is served at <a href="/LICENSE-icons" target="_blank" rel="noopener">/LICENSE-icons</a>.</p>
@@ -9091,8 +9088,6 @@ registerWebMcp({
     loadBoardIntoEditor(project.boards[editingBoard].scene)
   },
 })
-
-if (!BOARD_SELF_HOSTED) void recordProductEvent('editor_opened')
 
 // debugging/testing handle
 ;(window as any).__tbm = { store, board, importer, saves, entitlements, backgrounds, pitchById, officialExtensions }
